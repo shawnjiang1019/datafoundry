@@ -1196,7 +1196,8 @@ const removeLegacyBuiltinDemoDataSourceOnce = (metadataStore: MetadataStore, use
 };
 
 const BUILTIN_SKILL_SOURCES = [
-  { id: "data-analysis", path: join(BUILTIN_SKILL_ROOT, "data-analysis", "SKILL.md") }
+  { id: "data-analysis", path: join(BUILTIN_SKILL_ROOT, "data-analysis", "SKILL.md") },
+  { id: "data-analysis-orchestration", path: join(BUILTIN_SKILL_ROOT, "data-analysis-orchestration", "SKILL.md") }
 ] as const;
 
 const ensureBuiltinConfigResources = async (

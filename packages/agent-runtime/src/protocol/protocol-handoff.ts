@@ -20,6 +20,10 @@ export type ProtocolHandoffDecision =
   | { status: "accepted"; reasonCodes: string[]; target: ProtocolIdentity }
   | { status: "rejected"; reasonCode: string };
 
+/** Evidence-governed analysis protocols: leaving one with unresolved goals is refused,
+ * and only they may be route-corrected back to general-task before touching data. */
+export const STRICT_ANALYSIS_PROTOCOL_IDS: readonly string[] = ["data-analysis", "data-analysis-planned"];
+
 /** Evaluate whether a proposed protocol handoff may create a new segment. */
 export const evaluateProtocolHandoff = (input: ProtocolHandoffInput): ProtocolHandoffDecision => {
   if (input.current.protocolId === input.target.protocolId) {
@@ -28,7 +32,7 @@ export const evaluateProtocolHandoff = (input: ProtocolHandoffInput): ProtocolHa
   if (!input.authorizedProtocolIds.includes(input.target.protocolId)) {
     return { status: "rejected", reasonCode: "PROTOCOL_HANDOFF_NOT_AUTHORIZED" };
   }
-  const strictProtocolIds = new Set(input.strictProtocolIds ?? ["data-analysis"]);
+  const strictProtocolIds = new Set(input.strictProtocolIds ?? STRICT_ANALYSIS_PROTOCOL_IDS);
   if (
     strictProtocolIds.has(input.current.protocolId)
     && !strictProtocolIds.has(input.target.protocolId)

@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { ToolExecutionError } from "../errors/tool-execution-error.js";
-import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 
 import {
   ActionRouter,
@@ -15,10 +13,23 @@ import type {
   AnalysisContractGrounder,
   AnalysisContractGroundingInput
 } from "./model-analysis-contract-grounder.js";
-import type { AnalysisValidationFinding } from "./analysis-contract.js";
 import type { AnalysisRequirement } from "./analysis-requirements.js";
+import {
+  analysisContractGroundingEventResult,
+  semanticResolutionEventResult
+} from "./data-analysis-hooks.js";
 import { InMemoryProtocolStateStore } from "./in-memory-protocol-state-store.js";
+import { STRICT_ANALYSIS_PROTOCOL_IDS } from "./protocol-handoff.js";
 import { ProtocolHandoffCoordinator } from "./protocol-handoff-coordinator.js";
+import {
+  dataAnalysisExtension,
+  generalTaskExtension,
+  ProtocolExtensionRegistry,
+  type ProtocolActionHooks,
+  type ProtocolExtension,
+  type ProtocolHookContext,
+  type ProtocolRuntimeActionDefinition
+} from "./protocol-extensions.js";
 import { ProtocolRegistry } from "./protocol-registry.js";
 import {
   ProtocolRouter,
@@ -27,17 +38,8 @@ import {
   type ProtocolRouteResult
 } from "./protocol-router.js";
 import { ProtocolRuntime, type ProtocolRuntimeOptions } from "./protocol-runtime.js";
-import { verifyAnalysisResult } from "./result-verifier.js";
-import {
-  createDataAnalysisProtocol,
-  reduceDataAnalysisAction,
-  type DataAnalysisState
-} from "./protocols/data-analysis.js";
-import {
-  createGeneralTaskProtocol,
-  reduceGeneralTaskAction,
-  type GeneralTaskState
-} from "./protocols/general-task.js";
+import type { DataAnalysisState } from "./protocols/data-analysis.js";
+import type { GeneralTaskState } from "./protocols/general-task.js";
 import type {
   AgentProtocolDefinition,
   ContextPackageRef,
@@ -81,6 +83,11 @@ export type CreateRunProtocolBoundaryInput = {
   /** Budgeted background block (see buildHelperContext) forwarded to the protocol
    * classifier as reference material for ambiguous follow-ups. */
   classifierContext?: string;
+  /** Additional protocols beyond general-task and data-analysis (e.g. data-analysis-planned). */
+  extensions?: ProtocolExtension[];
+  /** Route-level substitutions (source protocol id → replacement) applied to
+   * non-explicit, non-restored routes and to handoff targets. */
+  protocolSubstitutions?: Record<string, ProtocolIdentity>;
 };
 
 export type SessionIntent = {
@@ -124,12 +131,28 @@ export const createRunProtocolBoundary = async (
   // and the data-analysis definition is rebuilt once extraction has run. Extraction
   // itself happens after routing: whether to extract is the route's decision, not a
   // keyword guess about one sentence.
+  const extensions = new ProtocolExtensionRegistry([
+    generalTaskExtension,
+    dataAnalysisExtension,
+    ...(input.extensions ?? [])
+  ]);
+  const requirementExtensions = extensions.list().filter((extension) => extension.extractsRequirements);
+  const authorizedExtensions = extensions.list()
+    .filter((extension) => input.authorizedProtocolIds.includes(extension.protocolId));
   const protocolRegistry = new ProtocolRegistry();
-  protocolRegistry.register(createGeneralTaskProtocol(actionNames));
-  protocolRegistry.register(createDataAnalysisProtocol(actionNames));
+  for (const extension of extensions.list()) {
+    protocolRegistry.register(extension.createDefinition(actionNames, []));
+  }
   const router = new ProtocolRouter(protocolRegistry, {
-    ...(input.classifier ? { classifier: input.classifier } : {})
+    ...(input.classifier ? { classifier: input.classifier } : {}),
+    classifierExcludedProtocolIds: extensions.list()
+      .filter((extension) => extension.classifierExcluded)
+      .map((extension) => extension.protocolId)
   });
+  const substitute = (identity: ProtocolIdentity): ProtocolIdentity => {
+    const replacement = input.protocolSubstitutions?.[identity.protocolId];
+    return replacement && input.authorizedProtocolIds.includes(replacement.protocolId) ? replacement : identity;
+  };
   let route: ProtocolRouteResult;
   try {
     route = await router.route({
@@ -200,6 +223,22 @@ export const createRunProtocolBoundary = async (
     });
     throw error;
   }
+  if (!persistedState && route.source !== "explicit") {
+    const substituted = substitute({
+      protocolId: route.definition.id,
+      protocolVersion: route.definition.version
+    });
+    const substitutedDefinition = substituted.protocolId === route.definition.id
+      ? undefined
+      : protocolRegistry.find(substituted.protocolId, substituted.protocolVersion);
+    if (substitutedDefinition) {
+      route = {
+        ...route,
+        definition: substitutedDefinition,
+        reasonCodes: [...route.reasonCodes, `PROTOCOL_SUBSTITUTED:${route.definition.id}`]
+      };
+    }
+  }
   const intentText = effectiveIntentText(input, route.taskRelation);
   let userRequirements: AnalysisRequirement[] = [];
   let requirementsExtracted = Boolean(persistedState);
@@ -210,10 +249,12 @@ export const createRunProtocolBoundary = async (
     requirementsExtracted = true;
     userRequirements = await input.requirementExtractor({ userText: intentText }) ?? [];
     if (userRequirements.length > 0) {
-      protocolRegistry.replace(createDataAnalysisProtocol(actionNames, userRequirements));
+      for (const extension of requirementExtensions) {
+        protocolRegistry.replace(extension.createDefinition(actionNames, userRequirements));
+      }
     }
   };
-  if (route.definition.id === "data-analysis") {
+  if (extensions.get(route.definition.id).extractsRequirements) {
     await extractRequirementsInto();
     const refreshed = protocolRegistry.find(route.definition.id, route.definition.version);
     if (refreshed) {
@@ -222,9 +263,26 @@ export const createRunProtocolBoundary = async (
   }
   let activeProtocolId = route.definition.id;
   const reduceAction = (state: unknown, actionName: string, result: unknown): unknown =>
-    activeProtocolId === "data-analysis"
-      ? reduceDataAnalysisAction(state as DataAnalysisState, actionName, result)
-      : reduceGeneralTaskAction(state as GeneralTaskState, actionName, result);
+    extensions.get(activeProtocolId).reduce(state, actionName, result);
+  let segmentId = persistedState?.segmentId ?? `${input.runId}:segment:1`;
+  // Hooks and runtime actions read the active segment lazily: a handoff swaps both.
+  const hookContext: ProtocolHookContext = {
+    runId: input.runId,
+    intentText,
+    tools: input.tools,
+    ...(input.semanticProvider ? { semanticProvider: input.semanticProvider } : {}),
+    ...(input.semanticRequest ? { semanticRequest: input.semanticRequest } : {}),
+    getDomain: () => protocolRuntime.getState(input.runId, segmentId).domain
+  };
+  const hooksByProtocol = new Map<string, ProtocolActionHooks>();
+  const activeHooks = (): ProtocolActionHooks => {
+    let hooks = hooksByProtocol.get(activeProtocolId);
+    if (!hooks) {
+      hooks = extensions.get(activeProtocolId).createHooks?.(hookContext) ?? {};
+      hooksByProtocol.set(activeProtocolId, hooks);
+    }
+    return hooks;
+  };
   const capabilityRegistry = new CapabilityRegistry();
   capabilityRegistry.register(createToolCapabilityPlugin({
     id: "selected-run-tools",
@@ -234,15 +292,13 @@ export const createRunProtocolBoundary = async (
   capabilityRegistry.register(createRuntimeActionPlugin(
     reduceAction,
     input.semanticProvider,
-    input.analysisContractGrounder
+    input.analysisContractGrounder,
+    authorizedExtensions.flatMap((extension) => extension.runtimeActions?.(hookContext) ?? [])
   ));
   await capabilityRegistry.initialize();
-  let segmentId = persistedState?.segmentId ?? `${input.runId}:segment:1`;
   const runtimeOptions: ProtocolRuntimeOptions = {
     ...(input.runtimeOptions ?? {}),
-    maxActions: input.runtimeOptions?.maxActions ?? (route.definition.id === "data-analysis"
-      ? AGENT_RUNTIME_LIMITS.dataAnalysisMaxProtocolActions
-      : AGENT_RUNTIME_LIMITS.generalTaskMaxProtocolActions),
+    maxActions: input.runtimeOptions?.maxActions ?? extensions.get(route.definition.id).maxProtocolActions,
     ...(!persistedState
       ? {
           startEvents: [
@@ -270,7 +326,7 @@ export const createRunProtocolBoundary = async (
                 warnings: route.warnings
               }
             },
-            ...(route.definition.id === "data-analysis" && userRequirements.length > 0
+            ...(extensions.get(route.definition.id).extractsRequirements && userRequirements.length > 0
               ? [{
                   type: "analysis.requirements.extracted",
                   payload: {
@@ -315,28 +371,13 @@ export const createRunProtocolBoundary = async (
     ...(runtimeOptions.onEvent ? { onEvent: runtimeOptions.onEvent } : {})
   });
   const actionRouter = new ActionRouter(capabilityRegistry, protocolRuntime, {
-    automaticActions: (actionInput) => activeProtocolId === "data-analysis"
-      ? dataAnalysisAutomaticActions(actionInput, input, intentText)
-      : [],
-    preparatoryActions: (actionInput) => activeProtocolId === "data-analysis"
-      ? dataAnalysisPreparatoryActions(actionInput)
-      : [],
-    afterPreparatoryActions: ({ actionName, domain, input: actionInput, phase }) => {
-      if (activeProtocolId !== "data-analysis") {
-        return;
-      }
-      const dataAnalysisState = domain as DataAnalysisState;
-      if (actionName === "run_sql_readonly") {
-        assertCurrentQueryContract(dataAnalysisState);
-      }
-      if (isReportFileAction(actionName, actionInput, phase)) {
-        assertRequirementsCommittedBeforeReport(dataAnalysisState);
-      }
-    },
+    automaticActions: (actionInput) => activeHooks().automaticActions?.(actionInput) ?? [],
+    preparatoryActions: (actionInput) => activeHooks().preparatoryActions?.(actionInput) ?? [],
+    afterPreparatoryActions: (actionInput) => activeHooks().afterPreparatoryActions?.(actionInput),
     serverPolicy: input.serverPolicy ?? allowAction,
     ...(input.resourceAuthorization ? { resourceAuthorization: input.resourceAuthorization } : {}),
     projectContext: input.projectContext,
-    projectFinalObservation: ({ actionName, domain, observation }) =>
+    projectFinalObservation: ({ actionName, domain, observation, rawResult }) =>
       actionName === "protocol.handoff.propose"
         ? handoffObservation({
             observation,
@@ -351,10 +392,12 @@ export const createRunProtocolBoundary = async (
               reasons: ["source:selected-run-tools"]
             }))
           })
-        : activeProtocolId === "data-analysis" && actionName === "inspect_schema"
-        ? projectGroundedSchemaObservation(observation, domain as DataAnalysisState)
-        : observation,
+        : activeHooks().projectFinalObservation?.({ actionName, domain, observation, rawResult }) ?? observation,
     projectProtocolEventResult: ({ actionName, rawResult }) => {
+      const protocolResult = activeHooks().projectProtocolEventResult?.({ actionName, rawResult });
+      if (protocolResult !== undefined) {
+        return protocolResult;
+      }
       if (actionName === "semantic.context.resolve") {
         return semanticResolutionEventResult(rawResult);
       }
@@ -366,12 +409,16 @@ export const createRunProtocolBoundary = async (
       if (actionName !== "protocol.handoff.propose") {
         return;
       }
-      const targetProtocolId = directString(rawResult, "targetProtocolId");
-      const targetProtocolVersion = directString(rawResult, "targetProtocolVersion");
-      if (!targetProtocolId || !targetProtocolVersion) {
+      const proposedProtocolId = directString(rawResult, "targetProtocolId");
+      const proposedProtocolVersion = directString(rawResult, "targetProtocolVersion");
+      if (!proposedProtocolId || !proposedProtocolVersion) {
         throw new Error("PROTOCOL_HANDOFF_PROPOSAL_INVALID");
       }
-      if (targetProtocolId === "data-analysis") {
+      const { protocolId: targetProtocolId, protocolVersion: targetProtocolVersion } = substitute({
+        protocolId: proposedProtocolId,
+        protocolVersion: proposedProtocolVersion
+      });
+      if (extensions.find(targetProtocolId)?.extractsRequirements) {
         // A general-task run handing off to data-analysis still owes the analysis its
         // requirements; extract them now so the new segment starts with a full contract.
         await extractRequirementsInto();
@@ -379,7 +426,7 @@ export const createRunProtocolBoundary = async (
       const current = protocolRuntime.getState(input.runId, segmentId);
       const transitionKind = route.source === "classifier"
         && route.taskRelation === "replace"
-        && current.protocolId === "data-analysis"
+        && STRICT_ANALYSIS_PROTOCOL_IDS.includes(current.protocolId)
         && targetProtocolId === "general-task"
         && current.phase === route.definition.initialPhase
         ? "route-correction" as const
@@ -436,90 +483,11 @@ export const createRunProtocolBoundary = async (
   };
 };
 
-const semanticResolutionEventResult = (value: unknown): Record<string, unknown> => {
-  const provider = directString(value, "provider");
-  const mode = directString(value, "mode");
-  const trust = directString(value, "trust");
-  const datasourceRevision = directString(value, "datasourceRevision");
-  const fallbackReason = directString(value, "fallbackReason");
-  return {
-    ...(provider ? { provider } : {}),
-    ...(mode ? { mode } : {}),
-    ...(trust ? { trust } : {}),
-    ...(datasourceRevision ? { datasourceRevision } : {}),
-    ...(fallbackReason ? { fallbackReason } : {})
-  };
-};
-
-const analysisContractGroundingEventResult = (value: unknown): Record<string, unknown> => {
-  const requirements = recordArray(value, "requirements").filter((requirement) =>
-    directString(requirement, "source") === "user");
-  const structuredRequirementIds: string[] = [];
-  const manualRequirementIds: string[] = [];
-  for (const requirement of requirements) {
-    const requirementId = directString(requirement, "id");
-    if (!requirementId) {
-      continue;
-    }
-    const hasStructuredAssertion = recordArray(requirement, "assertions").some((assertion) =>
-      directString(assertion, "kind") !== "manual");
-    (hasStructuredAssertion ? structuredRequirementIds : manualRequirementIds).push(requirementId);
-  }
-  return {
-    ...(directString(value, "datasourceRevision")
-      ? { datasourceRevision: directString(value, "datasourceRevision") }
-      : {}),
-    structuredRequirementIds,
-    manualRequirementIds,
-    findings: recordArray(value, "findings").map((finding) => ({
-      ...(directString(finding, "requirementId")
-        ? { requirementId: directString(finding, "requirementId") }
-        : {}),
-      ...(directString(finding, "code") ? { code: directString(finding, "code") } : {}),
-      ...(directString(finding, "message") ? { message: directString(finding, "message") } : {})
-    }))
-  };
-};
-
-const projectGroundedSchemaObservation = (
-  observation: unknown,
-  state: DataAnalysisState
-): Record<string, unknown> => {
-  const schemaObservation = typeof observation === "object" && observation !== null && !Array.isArray(observation)
-    ? observation as Record<string, unknown>
-    : { schema: observation };
-  return {
-    ...schemaObservation,
-    analysis_contract: {
-      instruction: [
-        "Use the exact requirement_id, assertion_id, aggregate aliases, and expected columns below in",
-        "run_sql_readonly. Do not invent or rename contract fields."
-      ].join(" "),
-      requirements: state.requirements
-        .filter((requirement) => requirement.source === "user")
-        .map((requirement) => ({
-          requirement_id: requirement.id,
-          description: requirement.description,
-          acceptance_criteria: [...requirement.acceptanceCriteria],
-          assertions: requirement.assertions.map((assertion) => ({
-            assertion_id: assertion.id,
-            kind: assertion.kind,
-            description: assertion.description,
-            source_tables: [...assertion.sourceTables],
-            dimensions: [...assertion.dimensions],
-            sql_constraints: structuredClone(assertion.sqlConstraints),
-            result_checks: structuredClone(assertion.resultChecks),
-            claim_values: structuredClone(assertion.claimValues)
-          }))
-        }))
-    }
-  };
-};
-
 const createRuntimeActionPlugin = (
   reduceAction: (state: unknown, actionName: string, result: unknown) => unknown,
   semanticProvider?: { resolve(request: SemanticRequest): Promise<SemanticResolution> },
-  analysisContractGrounder?: AnalysisContractGrounder
+  analysisContractGrounder?: AnalysisContractGrounder,
+  extensionActions: ProtocolRuntimeActionDefinition[] = []
 ): CapabilityPlugin => {
   const names = [
     "general.answer.commit",
@@ -532,22 +500,44 @@ const createRuntimeActionPlugin = (
     "analysis.evidence.bind",
     "analysis.requirements.commit"
   ];
+  const extensionNames = extensionActions.map((action) => action.name);
+  const collision = extensionNames.find((name, index) =>
+    names.includes(name) || extensionNames.indexOf(name) !== index);
+  if (collision) {
+    throw new Error(`PROTOCOL_RUNTIME_ACTION_DUPLICATE:${collision}`);
+  }
   return {
-    manifest: { id: "protocol-runtime-actions", version: "1", provides: names },
-    actions: names.map((name) => ({
-      name,
-      exposure: name === "protocol.handoff.propose" || name === "analysis.requirements.commit" ? "agent" : "runtime",
-      inputSchema: z.unknown(),
-      outputSchema: z.unknown(),
-      idempotency: "supported",
-      execute: async (_context, actionInput) => executeRuntimeAction(
+    manifest: { id: "protocol-runtime-actions", version: "1", provides: [...names, ...extensionNames] },
+    actions: [
+      ...names.map((name) => ({
         name,
-        actionInput,
-        semanticProvider,
-        analysisContractGrounder
-      ),
-      reduce: (state, result) => reduceAction(state, name, result)
-    }))
+        exposure: name === "protocol.handoff.propose" || name === "analysis.requirements.commit"
+          ? "agent" as const
+          : "runtime" as const,
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        idempotency: "supported" as const,
+        execute: async (_context: unknown, actionInput: unknown) => executeRuntimeAction(
+          name,
+          actionInput,
+          semanticProvider,
+          analysisContractGrounder
+        ),
+        reduce: (state: unknown, result: unknown) => reduceAction(state, name, result)
+      })),
+      ...extensionActions.map((action) => ({
+        name: action.name,
+        exposure: action.exposure,
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        idempotency: "supported" as const,
+        execute: async (context: { abortSignal?: AbortSignal }, actionInput: unknown) => action.execute(
+          actionInput,
+          context.abortSignal ? { abortSignal: context.abortSignal } : {}
+        ),
+        reduce: (state: unknown, result: unknown) => reduceAction(state, action.name, result)
+      }))
+    ]
   };
 };
 
@@ -692,205 +682,6 @@ const handoffObservation = (input: {
 
 const allowAction = (): ProtocolGuardResult => ({ allowed: true });
 
-const dataAnalysisPreparatoryActions = (input: {
-  actionName: string;
-  input: unknown;
-}): Array<{ actionName: string; input: unknown }> => input.actionName === "run_sql_readonly"
-  ? [
-      { actionName: "data.query.plan", input: input.input },
-      { actionName: "data.query.validate", input: input.input }
-    ]
-  : [];
-
-const assertCurrentQueryContract = (state: DataAnalysisState): void => {
-  if (state.currentQueryValidated) {
-    return;
-  }
-  const attempt = state.queryAttempts.find((candidate) => candidate.id === state.currentQueryAttemptId)
-    ?? state.queryAttempts.at(-1);
-  const findings = attempt?.validationFindings ?? [];
-  const findingCodes = findings.map((finding) => finding.code).join(", ") || "QUERY_CONTRACT_INVALID";
-  const exactCorrections = findings.map((finding) => finding.message).join(" ")
-    || "The query does not satisfy its selected analysis assertions.";
-  throw new ToolExecutionError({
-    ok: false,
-    isError: true,
-    error: {
-      code: "QUERY_CONTRACT_VALIDATION_FAILED",
-      category: "validation",
-      message: `SQL was not executed because contract validation failed: ${findingCodes}. ${exactCorrections}`,
-      executionStatus: "not_started",
-      retryable: false,
-      details: {
-        queryAttemptId: attempt?.id ?? "unknown",
-        findings: structuredClone(findings),
-        allowedActions: ["data.query.plan", "data.query.validate", "inspect_schema", "preview_table"]
-      }
-    },
-    recovery: {
-      strategy: "refresh_and_replan",
-      instruction: `Apply these exact SQL corrections, then submit a new query plan: ${exactCorrections}`,
-      avoid: ["Do not repeat the same invalid SQL without addressing the listed findings."]
-    }
-  });
-};
-
-const assertRequirementsCommittedBeforeReport = (state: DataAnalysisState): void => {
-  const incomplete = state.requirements.filter((requirement) =>
-    requirement.source === "user" && requirement.required && requirement.status !== "reported");
-  if (incomplete.length === 0) {
-    return;
-  }
-  throw new ToolExecutionError({
-    ok: false,
-    isError: true,
-    error: {
-      code: "ANALYSIS_REQUIREMENTS_COMMIT_REQUIRED",
-      category: "validation",
-      message: "The final analysis output cannot be written until every required analysis claim is committed.",
-      executionStatus: "not_started",
-      retryable: false,
-      details: {
-        requirementIds: incomplete.map((requirement) => requirement.id),
-        requirements: incomplete.map((requirement) => ({
-          id: requirement.id,
-          status: requirement.status,
-          recovery: requirement.status === "evidenced"
-            ? "Commit this claim with analysis_requirements_commit."
-            : "Finish validated SQL evidence before committing this claim."
-        }))
-      }
-    },
-    recovery: {
-      strategy: "refresh_and_replan",
-      instruction: "Commit evidenced claims, finish any still-pending analyses, then write the final output.",
-      avoid: ["Do not retry the final report write while required claims remain unreported."]
-    }
-  });
-};
-
-const isReportFileAction = (actionName: string, input: unknown, phase: string): boolean => {
-  if (actionName !== "write_file" && actionName !== "edit_file") {
-    return false;
-  }
-  if (phase === "synthesis") {
-    return true;
-  }
-  const filePath = directString(input, "path") ?? directString(input, "filename") ?? "";
-  return /\.(?:html?|markdown|md|rst|txt)$/iu.test(filePath.trim().replace(/\/+$/u, ""));
-};
-
-const dataAnalysisAutomaticActions = (input: {
-  actionName: string;
-  domain: unknown;
-  input: unknown;
-  rawResult: unknown;
-}, boundaryInput: CreateRunProtocolBoundaryInput, intentText: string): Array<{ actionName: string; input: unknown }> => {
-  if (input.actionName === "inspect_schema" && boundaryInput.semanticProvider && boundaryInput.semanticRequest) {
-    return [{
-      actionName: "semantic.context.resolve",
-      input: {
-        ...boundaryInput.semanticRequest,
-        // The semantic service needs the actual task description; a weak follow-up
-        // like "再次尝试" would only return noise, so inherit the session intent text.
-        query: intentText,
-        physicalSchema: input.rawResult
-      }
-    }];
-  }
-  if (input.actionName === "semantic.context.resolve") {
-    const state = input.domain as DataAnalysisState;
-    const userRequirements = state.requirements.filter((requirement) => requirement.source === "user");
-    if (userRequirements.length === 0 || state.contractGrounded) {
-      return [];
-    }
-    return [{
-      actionName: "analysis.contract.ground",
-      input: {
-        requirements: state.requirements,
-        physicalSchema: recordValue(input.input, "physicalSchema"),
-        semanticResolution: input.rawResult,
-        datasourceRevision: directString(input.input, "datasourceRevision") ?? "unknown"
-      }
-    }];
-  }
-  if (input.actionName !== "run_sql_readonly") {
-    return [];
-  }
-  const artifactId = nestedString(input.rawResult, "result", "artifact_id")
-    ?? directString(input.rawResult, "artifact_id");
-  const auditLogId = nestedString(input.rawResult, "result", "audit_log_id")
-    ?? directString(input.rawResult, "audit_log_id");
-  const resultFields = nestedStringArray(input.rawResult, "result", "columns");
-  const validation = validateAnalysisResult(input.rawResult, input.input, input.domain as DataAnalysisState);
-  return [
-    { actionName: "analysis.result.validate", input: validation },
-    ...(artifactId && validation.valid
-      ? [{
-          actionName: "analysis.evidence.bind",
-          input: {
-            artifact_id: artifactId,
-            ...(auditLogId ? { audit_log_id: auditLogId } : {}),
-            evidence_refs: [artifactId],
-            result_fields: resultFields
-          }
-        }]
-      : [])
-  ];
-};
-
-const validateAnalysisResult = (
-  value: unknown,
-  actionInput: unknown,
-  state: DataAnalysisState
-): {
-  valid: boolean;
-  reasons: string[];
-  validation_findings: AnalysisValidationFinding[];
-  verified_values: unknown[];
-} => {
-  const result = recordValue(value, "result");
-  const columns = recordValue(result, "columns");
-  const rows = recordValue(result, "rows");
-  const rowCount = recordValue(result, "row_count");
-  const auditLogId = directString(result, "audit_log_id");
-  const expectedColumns = recordStringArray(actionInput, "expected_columns");
-  const missingColumns = expectedColumns.filter((column) => !Array.isArray(columns) || !columns.includes(column));
-  const reasons = [
-    ...(Array.isArray(columns) ? [] : ["RESULT_COLUMNS_REQUIRED"]),
-    ...(Array.isArray(rows) ? [] : ["RESULT_ROWS_REQUIRED"]),
-    ...(typeof rowCount === "number" && rowCount >= 0 ? [] : ["RESULT_ROW_COUNT_REQUIRED"]),
-    ...(auditLogId ? [] : ["RESULT_AUDIT_LOG_REQUIRED"]),
-    ...missingColumns.map((column) => `RESULT_EXPECTED_COLUMN_MISSING:${column}`)
-  ];
-  const structuralFindings: AnalysisValidationFinding[] = reasons.map((reason) => ({
-    code: reason,
-    message: `Result contract failed: ${reason}.`,
-    severity: "error"
-  }));
-  const attempt = state.queryAttempts?.find((candidate) => candidate.id === state.currentQueryAttemptId);
-  const verification = Array.isArray(columns) && Array.isArray(rows) && typeof rowCount === "number"
-    ? verifyAnalysisResult({
-        columns: columns.filter((column): column is string => typeof column === "string"),
-        rows,
-        rowCount
-      }, attempt?.assertions ?? [])
-    : { valid: false, findings: [], verifiedValues: [] };
-  const validationFindings = [...structuralFindings, ...verification.findings];
-  return {
-    valid: validationFindings.every((finding) => finding.severity !== "error"),
-    reasons: validationFindings.map((finding) => finding.code),
-    validation_findings: validationFindings,
-    verified_values: verification.verifiedValues
-  };
-};
-
-const nestedString = (value: unknown, parent: string, key: string): string | undefined =>
-  directString(recordValue(value, parent), key);
-
-const nestedStringArray = (value: unknown, parent: string, key: string): string[] =>
-  recordStringArray(recordValue(value, parent), key);
-
 const directString = (value: unknown, key: string): string | undefined => {
   const field = recordValue(value, key);
   return typeof field === "string" && field.length > 0 ? field : undefined;
@@ -901,11 +692,6 @@ const recordStringArray = (value: unknown, key: string): string[] => {
   return Array.isArray(field)
     ? field.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
-};
-
-const recordArray = (value: unknown, key: string): unknown[] => {
-  const field = recordValue(value, key);
-  return Array.isArray(field) ? field : [];
 };
 
 const recordValue = (value: unknown, key: string): unknown =>

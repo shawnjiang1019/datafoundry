@@ -5,8 +5,8 @@ Implements KramaBench's System interface (process_dataset + serve_query) backed
 by DataFoundry, so a poor score shows *where* DataFoundry's governed SQL-first
 model breaks down (see notes/gap-analysis.md items 3/5).
 
-Install: copy this file to KramaBench/systems/datafoundry_sut.py, then add to
-KramaBench/systems/__init__.py:
+Setup and usage: see eval/kramabench/README.md. In short, copy this file to
+KramaBench/systems/datafoundry_sut.py and register it in KramaBench/systems/__init__.py:
     from .datafoundry_sut import DataFoundrySUT
 Run one domain (final-answer scoring only, serial):
     python evaluate.py --sut DataFoundrySUT --workload environment --no_pipeline_eval --num_workers 1 --verbose

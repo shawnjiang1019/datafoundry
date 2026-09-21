@@ -465,7 +465,13 @@ const resolveRunTimeoutMs = (
   });
   const timeoutMs = numericRecordValue(profile.payload, "timeoutMs")
     ?? numericRecordValue(profile.payload, "timeout_ms");
-  return timeoutMs !== undefined ? Math.max(1000, Math.min(10 * 60 * 1000, Math.floor(timeoutMs))) : undefined;
+  return timeoutMs !== undefined ? Math.max(1000, Math.min(maxRunTimeoutMs(), Math.floor(timeoutMs))) : undefined;
+};
+
+/** Ceiling for a model profile's run timeout; override with DATAFOUNDRY_MAX_RUN_TIMEOUT_MS. */
+const maxRunTimeoutMs = (): number => {
+  const configured = Number(process.env.DATAFOUNDRY_MAX_RUN_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 1000 ? Math.floor(configured) : 10 * 60 * 1000;
 };
 
 const resolveMcpRuntime = (

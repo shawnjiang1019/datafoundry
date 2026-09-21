@@ -16,6 +16,8 @@ const CAPABILITIES = {
   "datasource.queryPolicy": true,
   "datasource.samplePolicy": true,
   "datasource.server": true,
+  "dtrail.planVerify": true,
+  "dtrail.trailRead": true,
   files: true,
   "kb.chunking": true,
   "kb.citationPolicy": true,

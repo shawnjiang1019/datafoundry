@@ -74,6 +74,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export { createDemoDuckDbConfig, demoDuckDbPath } from "./demo-duckdb.js";
+export { guardReadonlySql } from "./readonly-guard.js";
+export type { SqlGuardResult } from "./readonly-guard.js";
 
 export type {
   AdapterExecutionInput,

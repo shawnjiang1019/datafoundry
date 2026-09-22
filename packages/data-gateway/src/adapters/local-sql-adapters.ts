@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import { DatabaseSync } from "node:sqlite";
 import type * as DuckDbModule from "duckdb";
+import { acquireDuckDb, duckDbAll, duckDbClose } from "./duckdb-runtime.js";
 
 export class SQLiteAdapter implements DataSourceAdapter {
   constructor(private readonly config: Record<string, unknown>) {}
@@ -100,53 +101,17 @@ export class DuckDbAdapter implements DataSourceAdapter {
   }
 
   private async query(sql: string, signal?: AbortSignal | undefined): Promise<Record<string, unknown>[]> {
-    const duckdb = await loadDuckDb();
-    const database = new duckdb.Database(stringConfig(this.config, "path"));
-    const connection = database.connect();
+    const handle = await acquireDuckDb(stringConfig(this.config, "path"));
+    const connection = handle.database.connect();
     try {
       const rows = await duckDbAll(connection, sql, signal);
       return rows.filter(isRecord);
     } finally {
       await duckDbClose(connection);
-      await duckDbCloseDatabase(database);
+      await handle.release();
     }
   }
 }
-
-const loadDuckDb = async (): Promise<typeof DuckDbModule> => {
-  const loaded = await import("duckdb") as unknown as { default?: typeof DuckDbModule } & typeof DuckDbModule;
-  return loaded.default ?? loaded;
-};
-
-const duckDbAll = async (
-  connection: DuckDbModule.Connection,
-  sql: string,
-  signal?: AbortSignal | undefined
-): Promise<DuckDbModule.TableData> =>
-  await new Promise((resolve, reject) => {
-    const abort = (): void => {
-      reject(signal?.reason instanceof Error ? signal.reason : new Error("RUN_CANCELLED"));
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    connection.all(sql, (error, rows) => {
-      signal?.removeEventListener("abort", abort);
-      if (error) {
-        reject(error);
-      } else {
-        resolve(rows);
-      }
-    });
-  });
-
-const duckDbClose = async (connection: DuckDbModule.Connection): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    connection.close((error) => error ? reject(error) : resolve());
-  });
-
-const duckDbCloseDatabase = async (database: DuckDbModule.Database): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    database.close((error) => error ? reject(error) : resolve());
-  });
 
 const applyStandardLimit = (sql: string, limit: number): string => {
   if (/\bLIMIT\s+\d+\b/iu.test(sql)) {

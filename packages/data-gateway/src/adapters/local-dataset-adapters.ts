@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import type * as DuckDbModule from "duckdb";
+import { acquireDuckDb, duckDbAll, duckDbClose, duckDbRun } from "./duckdb-runtime.js";
 
 const INSERT_BATCH_SIZE = 500;
 
@@ -150,9 +151,8 @@ const ensureDemoDuckDbFile = async (
 ): Promise<string> => {
   const path = stringConfig(config, "path", demoDuckDbPath());
   mkdirSync(dirname(path), { recursive: true });
-  const duckdb = await loadDuckDb();
-  const database = new duckdb.Database(path);
-  const connection = database.connect();
+  const handle = await acquireDuckDb(path);
+  const connection = handle.database.connect();
 
   try {
     const rows = await duckDbAll(connection, [
@@ -171,7 +171,7 @@ const ensureDemoDuckDbFile = async (
     }
   } finally {
     await duckDbClose(connection);
-    await duckDbCloseDatabase(database);
+    await handle.release();
   }
 
   return path;
@@ -183,9 +183,8 @@ const executeReadonlySqlOnTables = async (
   limit: number,
   signal?: AbortSignal | undefined
 ): Promise<TableResult> => {
-  const duckdb = await loadDuckDb();
-  const database = new duckdb.Database(":memory:");
-  const connection = database.connect();
+  const handle = await acquireDuckDb(":memory:");
+  const connection = handle.database.connect();
 
   try {
     for (const table of tables) {
@@ -196,7 +195,7 @@ const executeReadonlySqlOnTables = async (
     return rowsToTableResult(rows);
   } finally {
     await duckDbClose(connection);
-    await duckDbCloseDatabase(database);
+    await handle.release();
   }
 };
 
@@ -224,61 +223,6 @@ const loadTableIntoDuckDb = async (
     await duckDbRun(connection, `INSERT INTO ${quoteIdentifier(table.name)} VALUES ${rowsSql}`, signal);
   }
 };
-
-const loadDuckDb = async (): Promise<typeof DuckDbModule> => {
-  const loaded = await import("duckdb") as unknown as { default?: typeof DuckDbModule } & typeof DuckDbModule;
-  return loaded.default ?? loaded;
-};
-
-const duckDbRun = async (
-  connection: DuckDbModule.Connection,
-  sql: string,
-  signal?: AbortSignal | undefined
-): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    const abort = (): void => {
-      reject(signal?.reason instanceof Error ? signal.reason : new Error("RUN_CANCELLED"));
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    connection.run(sql, (error) => {
-      signal?.removeEventListener("abort", abort);
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    });
-  });
-
-const duckDbAll = async (
-  connection: DuckDbModule.Connection,
-  sql: string,
-  signal?: AbortSignal | undefined
-): Promise<DuckDbModule.TableData> =>
-  await new Promise((resolve, reject) => {
-    const abort = (): void => {
-      reject(signal?.reason instanceof Error ? signal.reason : new Error("RUN_CANCELLED"));
-    };
-    signal?.addEventListener("abort", abort, { once: true });
-    connection.all(sql, (error, rows) => {
-      signal?.removeEventListener("abort", abort);
-      if (error) {
-        reject(error);
-      } else {
-        resolve(rows);
-      }
-    });
-  });
-
-const duckDbClose = async (connection: DuckDbModule.Connection): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    connection.close((error) => error ? reject(error) : resolve());
-  });
-
-const duckDbCloseDatabase = async (database: DuckDbModule.Database): Promise<void> =>
-  await new Promise((resolve, reject) => {
-    database.close((error) => error ? reject(error) : resolve());
-  });
 
 const applyStandardLimit = (sql: string, limit: number): string => {
   if (/\bLIMIT\s+\d+\b/iu.test(sql)) {

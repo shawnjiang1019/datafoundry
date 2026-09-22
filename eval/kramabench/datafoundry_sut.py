@@ -185,6 +185,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 try:
                     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                 "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
+                    _fix_csv_header(con, name, path)
                 except duckdb.InvalidInputException:
                     # Several KramaBench CSVs are Windows-1252 (curly quotes, en dashes in 0x80-0x9F),
                     # which DuckDB's latin-1 reader rejects; transcode to a UTF-8 copy first.
@@ -195,6 +196,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                     try:
                         con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                     "SELECT * FROM read_csv_auto(?, sample_size=-1)", [utf8_copy])
+                        _fix_csv_header(con, name, utf8_copy)
                     finally:
                         os.remove(utf8_copy)
                 made += 1
@@ -241,20 +243,141 @@ def _unique_table_names(files: list[str]) -> dict[str, str]:
     return names
 
 
+HEADER_SCAN_ROWS = 25
+
+
+def _split_csv_line(line: str, delimiter: str) -> list[str]:
+    """Split on the delimiter, honouring simple double-quoted fields."""
+    cells, cell, quoted = [], "", False
+    for char in line.rstrip("\r\n"):
+        if char == '"':
+            quoted = not quoted
+        elif char == delimiter and not quoted:
+            cells.append(cell.strip().strip('"'))
+            cell = ""
+        else:
+            cell += char
+    cells.append(cell.strip().strip('"'))
+    return cells
+
+
+def _best_delimiter(lines: list[str]) -> str:
+    """The delimiter that splits every line into the same number of fields.
+
+    Frequency alone is wrong for files like nifc_wildfires.csv: it is tab separated but
+    its numbers contain thousands separators, so commas outnumber tabs and the sniffer
+    shreds each row. Consistency of the field count identifies the true delimiter.
+    """
+    def score(delimiter: str) -> tuple[int, int]:
+        counts = [len(_split_csv_line(line, delimiter)) for line in lines if line.strip()]
+        if not counts:
+            return (0, 0)
+        common = max(set(counts), key=counts.count)
+        return (counts.count(common) if common > 1 else 0, common)
+
+    return max([",", "\t", ";", "|"], key=score)
+
+
+def _fix_csv_header(con, name: str, path: str) -> None:
+    """Re-read a CSV whose header or delimiter DuckDB got wrong.
+
+    Two shapes appear in the KramaBench lakes: title/licence lines before the header
+    (noaa_wildfires_monthly_stats.csv), and a tab-separated file whose values contain
+    commas (nifc_wildfires.csv). Both leave the real header sitting in the data.
+    """
+    columns = [r[0] for r in con.execute(
+        "select column_name from information_schema.columns where table_name = ?", [name]).fetchall()]
+    degenerate = (
+        len(columns) <= 1
+        or sum(1 for c in columns if re.fullmatch(r"column\d+", c)) > len(columns) / 2
+        or any("\t" in c for c in columns)
+        or sum(1 for c in columns if _looks_numeric(c)) > len(columns) / 2
+    )
+    if not degenerate:
+        return
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        lines = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
+    if not lines:
+        return
+    delimiter = _best_delimiter(lines)
+    rows = [_split_csv_line(line, delimiter) for line in lines]
+    skip = detect_header_row(rows)
+    # A file of pure data (e.g. the SILSO sunspot series) has no header-like row at all;
+    # reading one anyway would consume a data row and name the columns after its values.
+    headed = _header_row_score(rows[skip]) > 0 if skip < len(rows) else False
+    con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM '
+                "read_csv_auto(?, sample_size=-1, delim=?, skip=?, header=?)",
+                [path, delimiter, skip if headed else 0, headed])
+    print(f"[ingest] {name}: re-read with delimiter {delimiter!r}"
+          + (f", skipping {skip} preamble row(s)" if headed and skip else "")
+          + ("" if headed else ", no header row (columns named positionally)"))
+
+
+def _header_row_score(values: list) -> float:
+    """How much a row looks like a header: wide, textual, and all names distinct.
+
+    Title and unit rows lose out: a title fills one cell (narrow), a unit row such as
+    '(ppm) (ppm) (ppm)' repeats itself (not distinct), and a data row is mostly numeric.
+    """
+    cells = [v for v in values if v is not None and str(v).strip() != "" and str(v) != "nan"]
+    if len(cells) < 2:
+        return 0.0
+    labels = [str(v).strip() for v in cells]
+    textual = sum(1 for v in cells if isinstance(v, str) and not _looks_numeric(v))
+    distinct = len(set(labels)) / len(labels)
+    return len(cells) * (textual / len(cells)) * distinct
+
+
+def _looks_numeric(value: str) -> bool:
+    try:
+        float(str(value).replace(",", ""))
+        return True
+    except ValueError:
+        return False
+
+
+def detect_header_row(rows: list[list]) -> int:
+    """Index of the most header-like row among the first HEADER_SCAN_ROWS, else 0.
+
+    KramaBench workbooks (climateMeasurements.xlsx, for example) carry a title, a note
+    and a units row before the real header. Reading row 0 as the header turns every
+    column into 'Unnamed: N' and buries the real names in the data, which forces the
+    agent to guess which column is which.
+    """
+    best_index, best_score = 0, 0.0
+    for index, row in enumerate(rows[:HEADER_SCAN_ROWS]):
+        score = _header_row_score(list(row))
+        # A header must be followed by data.
+        if score > best_score and index + 1 < len(rows) and _header_row_score(list(rows[index + 1])) >= 0:
+            best_index, best_score = index, score
+    return best_index
+
+
 def _load_workbook(con, path: str, name: str) -> int:
     """Load every sheet of an Excel workbook as its own table; returns tables created."""
     import pandas as pd  # openpyxl engine; KramaBench's biomedical workbooks put a README on sheet 1
 
-    sheets = pd.read_excel(path, sheet_name=None)
+    raw_sheets = pd.read_excel(path, sheet_name=None, header=None)
     made = 0
-    for sheet, df in sheets.items():
-        table = name if len(sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
-        if df.shape[1] == 1:
-            # One-column sheets are bare lists (e.g. gene names) with no header row; read_excel
-            # would promote the first item to a column name and drop it from the data.
-            first = df.columns[0]
-            df = pd.concat([pd.DataFrame({"value": [first]}), df.rename(columns={first: "value"})],
-                           ignore_index=True)
+    for sheet, raw in raw_sheets.items():
+        table = name if len(raw_sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
+        if raw.shape[1] == 1:
+            # One-column sheets are bare lists (e.g. gene names) with no header row.
+            df = raw.rename(columns={raw.columns[0]: "value"})
+        else:
+            rows = raw.values.tolist()
+            header_index = detect_header_row(rows)
+            if rows and _header_row_score(rows[header_index]) == 0:
+                # No header-like row: keep every row as data and name columns positionally.
+                df = raw.rename(columns={c: f"col_{c}" for c in raw.columns})
+            else:
+                # Re-read through pandas so duplicate names get its .1/.2 suffixes, which is
+                # what the KramaBench reference pipelines refer to (e.g. 'Age_ky.1').
+                df = pd.read_excel(path, sheet_name=sheet, header=header_index)
+                df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
+                if header_index > 0:
+                    print(f"[ingest] {table}: header row {header_index} "
+                          f"({', '.join(str(c) for c in df.columns[:6])}…)")
         df.columns = [str(c) for c in df.columns]
         for col in df.columns[df.dtypes == object]:
             df[col] = df[col].astype("string")  # mixed-type columns break DuckDB's type inference

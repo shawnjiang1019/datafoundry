@@ -13,7 +13,20 @@ KramaBench runs the loop and does the scoring. DataFoundry answers each task thr
 
 For each domain (`process_dataset`):
 
-1. Every file in `data/<domain>/input/` is loaded into a single DuckDB database (`system_scratch/DataFoundrySUT/<domain>.duckdb`). This is one table per CSV/TSV/Parquet/JSON file and one table per Excel sheet. Windows-1252 CSVs are transcoded, and single-column sheets are read as headerless lists.
+1. Every file in `data/<domain>/input/` is loaded into a single DuckDB database (`system_scratch/DataFoundrySUT/<domain>.duckdb`). This is one table per CSV/TSV/Parquet/JSON file and one table per Excel sheet.
+
+   **Ingestion-time transformations.** KramaBench's own reference pipelines do this cleaning in Python. Because this harness loads everything into SQL tables up front, the harness does it instead — so the agent is measured on analysis, not on reconstructing a spreadsheet it cannot reshape. Report these alongside any score:
+
+   | Transformation | Why |
+   | --- | --- |
+   | Header-row detection (first 25 rows, picking the widest row that is textual and has distinct values) | Several files carry title, note or unit rows first. `climateMeasurements.xlsx` has its header on row 5; reading row 0 yields `Unnamed: 7`-style columns and hides `Age_ky`, `Al`, `K` |
+   | Delimiter re-detection by field-count consistency | `nifc_wildfires.csv` is tab separated but its numbers contain thousands separators, so a frequency sniffer picks `,` and shreds every row (losing the 2024 row into the header) |
+   | Preamble skipping for CSVs | `noaa_wildfires_monthly_stats.csv` starts with `Title:`/`Missing:` lines; the Boston beach datasheets carry a title row and a station row |
+   | Windows-1252 transcoding | DuckDB's latin-1 reader rejects curly quotes and en dashes in 0x80–0x9F |
+   | Single-column sheets read as headerless lists | Otherwise the first value becomes the column name and leaves the data |
+   | Parent folder prefixed on table-name collisions | `Fraud data/Alabama.csv` and `Identity Theft data/Alabama.csv` would otherwise overwrite each other |
+
+   Duplicate column names get pandas/DuckDB suffixes (`Age_ky.1`, `Enterococcus_1`), which match the names the reference pipelines use.
 2. That database is registered as a read-only DataFoundry datasource `kb-<domain>` and introspected.
 
 For each task (`serve_query`):
@@ -255,7 +268,8 @@ Get-ChildItem tasks\<domain>_task_* | Group-Object { $_.Name -replace '_\d{8}_\d
 
 ## Known limitations
 
-- **File types not ingested:** `.html`, `.gpkg` (geospatial), `.py`. Tasks that depend only on these can't be answered.
+- **File types not ingested:** `.html`, `.gpkg` (geospatial), `.py`, `.sp3`, `.HDR`, `.tle`. Tasks that depend only on these can't be answered. Some domains are also missing source files that their tasks need (wildfire has no `ZHVI.csv` or `WeatherEvents_*.csv`).
+- **Multi-level headers are flattened:** only the header row itself is used, so a qualifying row above it (e.g. the station names over each `Enterococcus` column in the beach datasheets) is dropped.
 - **SQL only:** these runs had Python execution off (`command_execution_enabled: false`), so statistics had to be computed in SQL.
 - **One skill:** only the built-in `data-analysis` skill is available.
 - **Full-lake mode only:** the SUT ignores KramaBench's `subset_files` and registers the whole lake, so `--use_truth_subset` has no effect yet.

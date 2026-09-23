@@ -1,0 +1,49 @@
+task_id,domain,score,cause,owner
+legal-easy-19,legal,0.0,Population / grain,Agent analysis
+legal-hard-18,legal,0.0,Population / grain,Agent analysis
+legal-hard-22,legal,0.0,Population / grain,Agent analysis
+biomedical-easy-2,biomedical,0.0,Population / grain,Agent analysis
+biomedical-hard-1,biomedical,0.0,Population / grain,Agent analysis
+biomedical-hard-5,biomedical,0.0,Population / grain,Agent analysis
+archeology-hard-5,archeology,0.0,Population / grain,Agent analysis
+environment-hard-16,environment,0.0,Population / grain,Agent analysis
+legal-easy-21,legal,0.0,Tables hidden by schema cap,DataFoundry platform
+legal-easy-26,legal,0.0,Tables hidden by schema cap,DataFoundry platform
+legal-easy-27,legal,0.0,Tables hidden by schema cap,DataFoundry platform
+legal-hard-6,legal,0.0,Tables hidden by schema cap,DataFoundry platform
+legal-hard-23,legal,0.0,Tables hidden by schema cap,DataFoundry platform
+legal-easy-11,legal,0.0,Runtime defect / loop,DataFoundry platform
+legal-hard-29,legal,0.0,Runtime defect / loop,DataFoundry platform
+archeology-hard-1,archeology,0.0,Runtime defect / loop,DataFoundry platform
+archeology-hard-12,archeology,0.0,Runtime defect / loop,DataFoundry platform
+legal-hard-1,legal,0.0,Source data not ingestible,Eval harness
+wildfire-easy-2,wildfire,0.0,Source data not ingestible,Eval harness
+wildfire-easy-3,wildfire,0.31,Source data not ingestible,Eval harness
+wildfire-hard-19,wildfire,0.0,Source data not ingestible,Eval harness
+wildfire-hard-21,wildfire,0.67,Source data not ingestible,Eval harness
+wildfire-hard-5,wildfire,0.0,Header / delimiter lost at ingest,Eval harness
+archeology-hard-2,archeology,0.0,Header / delimiter lost at ingest,Eval harness
+astronomy-easy-3,astronomy,0.0,One table per file (1538 tables),Eval harness
+wildfire-easy-9,wildfire,0.0,Planning,Agent analysis
+wildfire-hard-10,wildfire,0.0,Planning,Agent analysis
+wildfire-hard-17,wildfire,0.75,Planning,Agent analysis
+legal-hard-24,legal,0.0,Output format,Agent analysis
+wildfire-hard-16,wildfire,0.5,Output format,Agent analysis
+wildfire-hard-18,wildfire,0.0,Output format,Agent analysis
+legal-hard-17,legal,0.0,Precision / convention,Agent analysis
+wildfire-hard-6,wildfire,0.97,Precision / convention,Agent analysis
+wildfire-hard-14,wildfire,0.74,Measure definition,Agent analysis
+environment-hard-20,environment,0.67,Measure definition,Agent analysis
+biomedical-easy-9,biomedical,0.0,Wrong source table,Agent analysis
+archeology-hard-9,archeology,0.0,Instruction not followed,Agent analysis
+archeology-easy-8,archeology,0.0,Benchmark / grading artifact,Benchmark or infrastructure
+environment-easy-3,environment,0.0,Benchmark / grading artifact,Benchmark or infrastructure
+astronomy-easy-4,astronomy,0.0,Benchmark / grading artifact,Benchmark or infrastructure
+astronomy-easy-6,astronomy,0.0,Provider unreachable / stream died,Benchmark or infrastructure
+astronomy-hard-7,astronomy,0.0,Provider unreachable / stream died,Benchmark or infrastructure
+astronomy-hard-8,astronomy,0.0,Provider unreachable / stream died,Benchmark or infrastructure
+astronomy-hard-9,astronomy,0.0,Provider unreachable / stream died,Benchmark or infrastructure
+astronomy-hard-10,astronomy,0.0,Provider unreachable / stream died,Benchmark or infrastructure
+astronomy-easy-5,astronomy,0.0,Not yet analysed,Unclassified
+astronomy-hard-11,astronomy,0.0,Not yet analysed,Unclassified
+astronomy-hard-12,astronomy,0.0,Not yet analysed,Unclassified

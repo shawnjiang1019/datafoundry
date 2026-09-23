@@ -22,10 +22,52 @@ export const createDataAnalysisHooks = (context: ProtocolHookContext): ProtocolA
       assertRequirementsCommittedBeforeReport(dataAnalysisState);
     }
   },
-  projectFinalObservation: ({ actionName, domain, observation }) => actionName === "inspect_schema"
-    ? projectGroundedSchemaObservation(observation, domain as DataAnalysisState)
-    : observation
+  projectFinalObservation: ({ actionName, domain, observation }) => {
+    if (actionName === "inspect_schema") {
+      return projectGroundedSchemaObservation(observation, domain as DataAnalysisState);
+    }
+    if (actionName === "analysis.requirements.commit") {
+      return projectCommitObservation(observation, domain as DataAnalysisState);
+    }
+    return observation;
+  }
 });
+
+/**
+ * What the commit actually did, read from the post-commit state.
+ *
+ * The runtime action is a pass-through, so without this the tool answered a successful
+ * commit with the agent's own input echoed back: no confirmation, no statuses, nothing
+ * about what is still outstanding. One KramaBench run then repeated the same commit 67
+ * times and spent its entire step budget after the analysis was already complete.
+ */
+export const projectCommitObservation = (
+  observation: unknown,
+  state: DataAnalysisState
+): Record<string, unknown> => {
+  const userRequirements = (state.requirements ?? []).filter((requirement) => requirement.source === "user");
+  const pending = userRequirements.filter((requirement) =>
+    requirement.required && requirement.status !== "reported");
+  return {
+    ...(typeof observation === "object" && observation !== null && !Array.isArray(observation)
+      ? observation as Record<string, unknown>
+      : { result: observation }),
+    commit_result: {
+      committed: true,
+      reported_claim_ids: (state.reportedClaims ?? []).map((claim) => claim.id),
+      requirements: userRequirements.map((requirement) => ({
+        requirement_id: requirement.id,
+        status: requirement.status,
+        reported_claim_ids: [...requirement.reportedClaimIds]
+      })),
+      pending_requirement_ids: pending.map((requirement) => requirement.id),
+      instruction: pending.length === 0
+        ? "Every required claim is committed. Do not commit again; write the final answer."
+        : `Committed. Still to commit: ${pending.map((requirement) => requirement.id).join(", ")}. `
+          + "Do not resubmit a claim whose requirement already shows status 'reported'."
+    }
+  };
+};
 
 export const semanticResolutionEventResult = (value: unknown): Record<string, unknown> => {
   const provider = directString(value, "provider");

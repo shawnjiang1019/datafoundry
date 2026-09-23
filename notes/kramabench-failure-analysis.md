@@ -21,7 +21,7 @@ Two builds are involved, so scores are not comparable across the line: the later
 | biomedical | 5 / 9 (55.6%) | pre-fix | |
 | archeology | 6 / 12 (50.0%) | post-fix | Climate workbook header lost at ingest (since fixed) |
 | environment | **17.67 / 20 (88.3%)** | post-fix | Beach datasheets still mis-ingested in this run |
-| astronomy | in progress | post-fix | Rate-limited while run in parallel |
+| astronomy | 2 / 8 (25.0%) of tasks that ran | post-fix | 4 of 12 excluded: the model endpoint was unreachable (`Cannot connect to API: getaddrinfo`). Over all 12 it is 16.7% |
 
 environment is the cleanest signal so far: 17 exact answers, one partial, two wrong, no run loops, and 0–2 SQL failures per run.
 

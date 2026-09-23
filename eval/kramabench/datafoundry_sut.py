@@ -173,9 +173,11 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
         raise SystemExit("pip install duckdb")
     files = [p for p in sorted(glob.glob(os.path.join(dataset_directory, "**", "*"), recursive=True))
              if not os.path.isdir(p)]
-    names = _unique_table_names(files)
     con = duckdb.connect(out_path)
     made, skipped = 0, []
+    files, grouped = _group_file_families(con, files, dataset_directory)
+    made += grouped
+    names = _unique_table_names(files)
     for path in files:
         name = names[path]
         rel = os.path.relpath(path, dataset_directory)
@@ -208,6 +210,8 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 made += 1
             elif ext in (".xlsx", ".xls"):
                 made += _load_workbook(con, path, name)  # one table per sheet; sheet 1 is often a README
+            elif ext in (".html", ".htm"):
+                made += _load_html_tables(con, path, name)
             else:
                 skipped.append(rel)
         except Exception as e:  # noqa: BLE001 — a load failure is also a finding
@@ -217,6 +221,104 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
     for s in skipped[:50]:
         print("   skip:", s)
     return out_path
+
+
+FAMILY_MIN_FILES = 3
+
+
+def _family_key(path: str, dataset_directory: str) -> tuple[str, str, str]:
+    """(directory, shape, extension) for a file, where shape drops dates and ids.
+
+    'Sat_Density/swarma-wu113-20141230_to_20150102.csv' and its 714 siblings share a
+    shape; 'water-body-testing-2002.csv' and its 21 siblings do too.
+    """
+    relative = os.path.relpath(path, dataset_directory)
+    directory = os.path.dirname(relative)
+    stem = pathlib.Path(relative).stem
+    shape = re.sub(r"\d{4}-\d{2}-\d{2}", "<date>", stem)
+    shape = re.sub(r"\d{8}", "<date>", shape)
+    shape = re.sub(r"\d{4,}", "<num>", shape)
+    shape = re.sub(r"(?<=[A-Za-z_])\d{2,3}\b", "<id>", shape)
+    return directory, shape, pathlib.Path(relative).suffix.lower()
+
+
+def _family_table_name(directory: str, shape: str) -> str:
+    """Readable table name for a family: the shape without placeholders, folder-qualified."""
+    base = re.sub(r"<[a-z]+>", " ", shape)
+    base = _safe_ident(" ".join(base.split()).strip(" _-")) or "files"
+    folder = os.path.basename(directory)
+    if folder and folder.lower() not in ("", ".", "input"):
+        return f"{_safe_ident(folder)}__{base}"
+    return base
+
+
+def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple[list[str], int]:
+    """Union same-shaped files into one table each; return the files left to ingest singly.
+
+    A lake often ships one logical table cut into shards — 715 `swarma-*` files for one
+    satellite series, 104 `State_MSA_*` files one per state, 22 `water-body-testing-<year>`
+    files. One table per file makes the obvious question ("average density in 2015") a
+    walk over hundreds of tables, which is how an astronomy run spent 40 queries and hit
+    the run timeout without reaching any analysis.
+
+    Only files that share a directory, a name shape and an exact column signature are
+    merged (`union_by_name=false` makes DuckDB refuse a mismatch, and the family then
+    falls back to one table per file). Each row keeps its `source_file`.
+    """
+    # A subdirectory usually holds one dataset cut into pieces, whatever the pieces are
+    # called ('State MSA Fraud and Other data/Alabama.csv'), so files there group by
+    # directory. At the top level, where unrelated datasets sit side by side, only files
+    # that share a name shape group ('water-body-testing-<year>.csv').
+    by_directory: dict[tuple[str, str], list[str]] = {}
+    for path in files:
+        directory, _, extension = _family_key(path, dataset_directory)
+        by_directory.setdefault((directory, extension), []).append(path)
+
+    groups: dict[tuple[str, str, str], list[str]] = {}
+    for (directory, extension), members in by_directory.items():
+        if directory and len(members) >= FAMILY_MIN_FILES:
+            groups[(directory, os.path.basename(directory), extension)] = members
+            continue
+        for path in members:
+            groups.setdefault(_family_key(path, dataset_directory), []).append(path)
+
+    remaining, made = [], 0
+    for (directory, shape, extension), members in groups.items():
+        if len(members) < FAMILY_MIN_FILES or extension not in (".csv", ".tsv", ".txt", ".parquet", ".pq"):
+            remaining.extend(members)
+            continue
+        table = _family_table_name(directory, shape)
+        reader = "read_parquet" if extension in (".parquet", ".pq") else "read_csv_auto"
+        options = "filename = true, union_by_name = false" + ("" if reader == "read_parquet" else ", sample_size = -1")
+        listed = ", ".join("'" + member.replace("'", "''") + "'" for member in sorted(members))
+        try:
+            con.execute(f'CREATE OR REPLACE TABLE "{table}" AS '
+                        f"SELECT * FROM {reader}([{listed}], {options})")
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN filename TO source_file')
+            rows = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+            print(f"[ingest] {table}: {len(members)} files unioned into one table ({rows} rows)")
+            made += 1
+        except Exception as error:  # noqa: BLE001 — mixed schemas stay one table per file
+            print(f"[ingest] {table}: kept {len(members)} files separate ({str(error).splitlines()[0][:90]})")
+            remaining.extend(members)
+    return sorted(remaining), made
+
+
+def _load_html_tables(con, path: str, name: str) -> int:
+    """Load every table in an HTML page (legal's metropolitan_statistics.html, for example)."""
+    import pandas as pd
+
+    frames = [frame for frame in pd.read_html(path) if frame.shape[0] >= 5 and frame.shape[1] >= 2]
+    for index, frame in enumerate(frames):
+        frame.columns = [str(column) for column in frame.columns]
+        for column in frame.columns[frame.dtypes == object]:
+            frame[column] = frame[column].astype("string")
+        table = name if len(frames) == 1 else f"{name}__t{index + 1}"
+        con.register("_html", frame)
+        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _html')
+        con.unregister("_html")
+    print(f"[ingest] {name}: {len(frames)} HTML table(s)")
+    return len(frames)
 
 
 def _unique_table_names(files: list[str]) -> dict[str, str]:

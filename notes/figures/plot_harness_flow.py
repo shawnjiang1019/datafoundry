@@ -68,7 +68,7 @@ STAGES = [
 # wildfire-easy-9, keyed by (row, column). Row-1 notes sit above, row-2 notes below.
 CALLOUTS = {
     (1, 4): "R2 sets the formula: deaths − average baseline, a total minus a per-fire rate",
-    (2, 0): "No checks attached: grounder returned empty output (87% of runs)",
+    (2, 0): "Grounder failed: R1–R3 stay as unchecked text (87% of runs)",
     (2, 1): "SQL: SUM − AVG = 26 − 0.0182 = 25.98",
     (2, 2): "Checked only against R2's text (the wrong formula)",
     (2, 5): "+25.9818 vs −0.0059 expected: score 0",

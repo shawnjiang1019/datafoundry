@@ -105,7 +105,7 @@ Taken together, the two environment tasks show that one bad key can fail in both
 
 **Expected** 52. **Got** 55.
 
-The agent split the bibliography field on `;` and normalized only trailing periods. That still leaves spelling variants of one citation counted as separate sources. The three extra variants haven't been identified yet.
+The agent split the bibliography field on `;` and normalized only trailing periods (trace step 13: `TRIM(src, ' .')`). Its own audit at step 24 then listed five tokens that aren't distinct sources: `DGRG?`, `PECS?`, `PEC` (a typo of PECS), `Sear 2006PECS` (two sources with no semicolon between them) and an orphan year `1995`. At step 25 it counted them anyway, *"distinct strings as recorded"*. Merging the three spelling variants gives exactly 52, but 10 different combinations of three fixes from the five also reach 52, so the reference's exact rule isn't recoverable. The error is identified, but not uniquely reproduced.
 
 ---
 
@@ -164,7 +164,7 @@ Ask three questions in order and stop at the first one that fails:
 | `legal-hard-18` | population | **reproduced exactly** |
 | `legal-hard-22` | entity key | **reproduced exactly** |
 | `environment-hard-16` | entity key | error visible in the summary, direction fits |
-| `archeology-easy-8` | entity key | error visible in the summary |
+| `archeology-easy-8` | entity key | pinpointed in the trace (steps 13, 24, 25); 52 reachable, but not by a unique fix |
 | `wildfire-easy-9` | grain | **reproduced exactly** (with the reference's ≤ 30 boundary) |
 | `archeology-hard-2` | grain | error visible in the summary; competing explanation |
 | `environment-easy-3` | entity key | by analogy only |

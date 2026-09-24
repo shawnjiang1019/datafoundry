@@ -1,0 +1,48 @@
+task_id,domain,score,reason,owner,evidence
+legal-easy-19,legal,0.0,Grain & entity key,Agent analysis,verified
+legal-hard-18,legal,0.0,Grain & entity key,Agent analysis,verified
+legal-hard-22,legal,0.0,Grain & entity key,Agent analysis,verified
+biomedical-easy-2,biomedical,0.0,Grain & entity key,Agent analysis,verified
+biomedical-hard-1,biomedical,0.0,Grain & entity key,Agent analysis,verified
+biomedical-hard-5,biomedical,0.0,Grain & entity key,Agent analysis,verified
+environment-hard-16,environment,0.0,Grain & entity key,Agent analysis,verified
+archeology-easy-8,archeology,0.0,Grain & entity key,Agent analysis,verified
+archeology-hard-2,archeology,0.0,Grain & entity key,Agent analysis,verified
+wildfire-easy-9,wildfire,0.0,Grain & entity key,Agent analysis,reclassified
+wildfire-hard-17,wildfire,0.75,Grain & entity key,Agent analysis,reclassified
+archeology-hard-9,archeology,0.0,Grain & entity key,Agent analysis,reclassified
+environment-easy-3,environment,0.0,Grain & entity key,Agent analysis,reclassified
+wildfire-hard-5,wildfire,0.0,Source / column selection,Agent analysis,verified
+biomedical-easy-9,biomedical,0.0,Source / column selection,Agent analysis,verified
+wildfire-hard-10,wildfire,0.0,Source / column selection,Agent analysis,reclassified
+archeology-hard-5,archeology,0.0,Source / column selection,Agent analysis,reclassified
+legal-hard-24,legal,0.0,Output format,Agent analysis,verified
+wildfire-hard-16,wildfire,0.5,Output format,Agent analysis,verified
+wildfire-hard-18,wildfire,0.0,Output format,Agent analysis,verified
+astronomy-easy-4,astronomy,0.0,Output format,Agent analysis,verified
+wildfire-hard-14,wildfire,0.74,Measure definition,Agent analysis,verified
+environment-hard-20,environment,0.67,Measure definition,Agent analysis,verified
+legal-hard-17,legal,0.0,Precision / convention,Agent analysis,verified
+wildfire-hard-6,wildfire,0.97,Precision / convention,Agent analysis,verified
+legal-hard-1,legal,0.0,Instruction not followed,Agent analysis,verified
+archeology-hard-1,archeology,0.0,Units / reference frame,Agent analysis,verified
+astronomy-easy-5,astronomy,0.0,Source data unavailable,Eval harness,verified
+astronomy-hard-8,astronomy,0.0,Source data unavailable,Eval harness,verified
+astronomy-hard-9,astronomy,0.0,Source data unavailable,Eval harness,verified
+astronomy-hard-10,astronomy,0.0,Source data unavailable,Eval harness,verified
+astronomy-hard-11,astronomy,0.0,Source data unavailable,Eval harness,verified
+astronomy-hard-12,astronomy,0.0,Source data unavailable,Eval harness,verified
+wildfire-easy-2,wildfire,0.0,Source data unavailable,Eval harness,verified
+wildfire-easy-3,wildfire,0.31,Source data unavailable,Eval harness,verified
+wildfire-hard-19,wildfire,0.0,Source data unavailable,Eval harness,verified
+wildfire-hard-21,wildfire,0.67,Source data unavailable,Eval harness,verified
+archeology-hard-12,archeology,0.0,Spec ambiguity,Benchmark,verified
+astronomy-easy-6,astronomy,0.0,Provider rate limit,Infrastructure,verified
+astronomy-hard-7,astronomy,0.0,Provider rate limit,Infrastructure,verified
+legal-easy-11,legal,0.0,Pending rerun,Pending,verified
+legal-easy-21,legal,0.0,Pending rerun,Pending,verified
+legal-easy-26,legal,0.0,Pending rerun,Pending,verified
+legal-easy-27,legal,0.0,Pending rerun,Pending,verified
+legal-hard-6,legal,0.0,Pending rerun,Pending,verified
+legal-hard-23,legal,0.0,Pending rerun,Pending,verified
+legal-hard-29,legal,0.0,Pending rerun,Pending,verified

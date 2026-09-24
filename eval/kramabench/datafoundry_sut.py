@@ -15,6 +15,8 @@ Prereqs (env vars):
     DF_API=http://127.0.0.1:8787   DF_EMAIL=...   DF_PASSWORD=...
     DF_LLM_PROFILE=server-default  (must point at a reachable model)
     DF_RUN_TIMEOUT=180             (fail slow/un-runnable tasks fast)
+    DF_RETRY_ATTEMPTS=4            (retries for provider rate limits / unreachable API)
+    DF_RETRY_BASE_S=30             (first backoff delay; doubles each attempt)
 DataFoundry must be running (npm run start) with a verified account + working model profile.
 """
 
@@ -25,6 +27,7 @@ import glob
 import json
 import os
 import pathlib
+import random
 import re
 import sys
 import time
@@ -50,6 +53,37 @@ except Exception:
 API = os.environ.get("DF_API", "http://127.0.0.1:8787").rstrip("/")
 LLM_PROFILE = os.environ.get("DF_LLM_PROFILE", "server-default")
 RUN_TIMEOUT_S = int(os.environ.get("DF_RUN_TIMEOUT", "180"))
+RETRY_ATTEMPTS = int(os.environ.get("DF_RETRY_ATTEMPTS", "4"))
+RETRY_BASE_S = float(os.environ.get("DF_RETRY_BASE_S", "30"))
+RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
+
+# A failed run is reported as answer text, not raised, so retry decisions read the
+# text. Gate on these prefixes first: a task answer may legitimately contain the
+# word "rate limit", but only a failure report starts with one of these.
+FAILURE_PREFIXES = ("[DataFoundry run failed]", "[DataFoundry error]")
+
+# Provider-side faults that a later attempt can plausibly survive. Deliberately
+# excludes "terminated" (a 30-minute stream death) and model/SQL mistakes, which
+# repeat deterministically and would just burn the budget twice.
+TRANSIENT_MARKERS = (
+    ("rate limit", "rate limited"),
+    ("too many requests", "rate limited"),
+    ("getaddrinfo", "provider unreachable"),
+    ("cannot connect to api", "provider unreachable"),
+    ("econnreset", "connection reset"),
+    ("socket hang up", "connection dropped"),
+)
+
+
+def transient_failure_reason(text: str) -> str | None:
+    """Return why `text` is a retryable provider failure, or None if it is an answer."""
+    if not text.startswith(FAILURE_PREFIXES):
+        return None
+    lowered = text.lower()
+    for marker, reason in TRANSIENT_MARKERS:
+        if marker in lowered:
+            return reason
+    return None
 
 
 def _unwrap(resp):
@@ -246,9 +280,9 @@ def _family_table_name(directory: str, shape: str) -> str:
     """Readable table name for a family: the shape without placeholders, folder-qualified."""
     base = re.sub(r"<[a-z]+>", " ", shape)
     base = _safe_ident(" ".join(base.split()).strip(" _-")) or "files"
-    folder = os.path.basename(directory)
-    if folder and folder.lower() not in ("", ".", "input"):
-        return f"{_safe_ident(folder)}__{base}"
+    folder = _safe_ident(os.path.basename(directory))
+    if folder and folder.lower() not in ("", ".", "input") and folder.lower() != base.lower():
+        return f"{folder}__{base}"
     return base
 
 
@@ -407,9 +441,13 @@ def _fix_csv_header(con, name: str, path: str) -> None:
     # A file of pure data (e.g. the SILSO sunspot series) has no header-like row at all;
     # reading one anyway would consume a data row and name the columns after its values.
     headed = _header_row_score(rows[skip]) > 0 if skip < len(rows) else False
-    con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM '
-                "read_csv_auto(?, sample_size=-1, delim=?, skip=?, header=?)",
-                [path, delimiter, skip if headed else 0, headed])
+    try:
+        con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM '
+                    "read_csv_auto(?, sample_size=-1, delim=?, skip=?, header=?)",
+                    [path, delimiter, skip if headed else 0, headed])
+    except Exception as error:  # noqa: BLE001 — keep whatever the first read produced
+        print(f"[ingest] {name}: kept the sniffed layout ({str(error).splitlines()[0][:80]})")
+        return
     print(f"[ingest] {name}: re-read with delimiter {delimiter!r}"
           + (f", skipping {skip} preamble row(s)" if headed and skip else "")
           + ("" if headed else ", no header row (columns named positionally)"))
@@ -545,14 +583,40 @@ class DataFoundrySUT(System):
         self._ds_id = client.register_duckdb_datasource(f"kb-{tag}", f"KramaBench {tag}", duckdb_path)
         self.dataset_directory = dataset_directory
 
-    def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
+    def _run_with_backoff(self, question: str) -> str:
+        """Run one task, retrying provider rate limits with exponential backoff.
+
+        Without this a single 429 cascades: the limiter stays tripped, KramaBench
+        immediately starts the next task into it, and a whole domain dies in
+        seconds (8 astronomy tasks were lost in 8s this way). Retrying in place
+        spends wall time instead of tasks.
+        """
         client = self._ensure_client()
+        assert self._ds_id is not None
+        full_text = ""
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                full_text = client.run(question, self._ds_id)
+            except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
+                full_text = f"[DataFoundry error] {e}"
+            reason = transient_failure_reason(full_text)
+            if reason is None or attempt == RETRY_ATTEMPTS:
+                break
+            # Equal jitter: half the delay is fixed so a tripped limiter always gets
+            # real recovery time, half is random so parallel domains do not retry in
+            # lockstep and re-trip it together.
+            ceiling = min(RETRY_MAX_DELAY_S, RETRY_BASE_S * 2 ** (attempt - 1))
+            delay = ceiling / 2 + random.uniform(0, ceiling / 2)
+            print(f"[retry] {reason} (attempt {attempt}/{RETRY_ATTEMPTS}); "
+                  f"sleeping {delay:.0f}s", file=sys.stderr, flush=True)
+            time.sleep(delay)
+        return full_text
+
+    def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
+        self._ensure_client()
         if self._ds_id is None:
             raise RuntimeError("process_dataset must run before serve_query")
-        try:
-            full_text = client.run(query + ANSWER_FORMAT_INSTRUCTION, self._ds_id)
-        except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
-            full_text = f"[DataFoundry error] {e}"
+        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION)
         answer = extract_final_answer(full_text)
         if self.verbose:
             print(f"DataFoundrySUT: {query_id} -> {answer!r}")

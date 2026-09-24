@@ -19,7 +19,9 @@ For each domain (`process_dataset`):
 
    | Transformation | Why |
    | --- | --- |
+   | **Family grouping**: files that share a subdirectory (or, at the top level, a name shape with dates/ids stripped) and an **exact column signature** are unioned into one table with a `source_file` column | A lake ships one logical table cut into shards. Astronomy is 715 `swarma-*` and 715 `omni2-*` files of one series each; legal has 52+52 `State_MSA_*` files, one per state. One table per file makes "average density in 2015" a walk over hundreds of tables — a run spent 40 queries on it and hit the timeout. Merging needs 3+ files and an identical signature (`union_by_name=false`); a mismatch falls back to one table per file |
    | Header-row detection (first 25 rows, picking the widest row that is textual and has distinct values) | Several files carry title, note or unit rows first. `climateMeasurements.xlsx` has its header on row 5; reading row 0 yields `Unnamed: 7`-style columns and hides `Age_ky`, `Al`, `K` |
+   | HTML tables loaded (needs `lxml`) | `metropolitan_statistics.html` holds the 387-MSA population table that legal-hard-1 needs |
    | Delimiter re-detection by field-count consistency | `nifc_wildfires.csv` is tab separated but its numbers contain thousands separators, so a frequency sniffer picks `,` and shreds every row (losing the 2024 row into the header) |
    | Preamble skipping for CSVs | `noaa_wildfires_monthly_stats.csv` starts with `Title:`/`Missing:` lines; the Boston beach datasheets carry a title row and a station row |
    | Windows-1252 transcoding | DuckDB's latin-1 reader rejects curly quotes and en dashes in 0x80–0x9F |
@@ -27,6 +29,8 @@ For each domain (`process_dataset`):
    | Parent folder prefixed on table-name collisions | `Fraud data/Alabama.csv` and `Identity Theft data/Alabama.csv` would otherwise overwrite each other |
 
    Duplicate column names get pandas/DuckDB suffixes (`Age_ky.1`, `Enterococcus_1`), which match the names the reference pipelines use.
+
+   Resulting catalogs: astronomy 13 tables (from 1,538 files), legal 33 (from 131), environment 16 (37), wildfire 19, biomedical 30, archeology 5. Ingest takes seconds per domain except biomedical, whose large workbooks take about 15 minutes.
 2. That database is registered as a read-only DataFoundry datasource `kb-<domain>` and introspected.
 
 For each task (`serve_query`):

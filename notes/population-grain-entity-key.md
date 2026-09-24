@@ -1,6 +1,6 @@
 # Population, grain and entity key: KramaBench examples
 
-This is the largest failure class in the KramaBench run: 13 tasks, 12.25 of the 42.4 missing points. It holds three related mistakes. In each one the SQL runs, the arithmetic is right, and the agent validates its own work and commits with confidence. The answer is still wrong, because one row, one entity or the included set was defined wrong before the query ran.
+This is the largest failure class in the KramaBench run: 13 tasks filed here, 12.25 of the 42.4 missing points (12 tasks and 11.25 points once `archeology-hard-2` moves out; see section 3). It holds three related mistakes. In each one the SQL runs, the arithmetic is right, and the agent validates its own work and commits with confidence. The answer is still wrong, because one row, one entity or the included set was defined wrong before the query ran.
 
 | | the question it gets wrong | typical sign in the answer |
 |---|---|---|
@@ -130,15 +130,20 @@ difference                      = −0.0053   (expected −0.0059)
 
 Comparing per-fire rates gets −0.0053. The rest of the gap is the humidity boundary: the reference counts fires at exactly 30% (27 deaths across 2,201 fires), which gives −0.0059 exactly. A per-day grain gives −0.0240 and is ruled out. Full walkthrough: [`example-grain-wildfire-easy-9.md`](example-grain-wildfire-easy-9.md).
 
-### `archeology-hard-2`: sample step treated as a year
+### `archeology-hard-2`: grain slip in wording, but not the cause (unexplained)
 
 > Across the years, what percent of years was the wet-dry index increasing?
 
 **Expected** 38.42%. **Got** 50.25%.
 
-The agent compared 5,993 consecutive values spaced 0.5 thousand years apart (4–3000 ky) and counted how often each was higher than the one before. That measures the percent of *samples* that increased, which is a different quantity from the percent of *years*.
+The agent compared 5,993 consecutive values spaced 0.5 thousand years apart (4–3000 ky) and called each one a "year" (trace step 8: *"5993 years … in 0.5 ky steps"*). That is a grain slip in wording, but **testing the data shows it does not explain the gap**:
 
-**Caveat:** the column the agent used was `Age_ky.3`. The `.3` suffix means the sheet has several `Age_ky` columns, one per measurement, so the agent may also have paired the index with the wrong age column. Not reproduced.
+- **The column pairing is correct.** The sheet's header row puts `ODP 967 wet-dry index` next to its own `Age_ky` column, the one the agent used (`Age_ky.3`). The competing column-mix-up explanation is ruled out.
+- **Every grain gives about 50%.** Grouping by whole thousand years (floor or round, mean per group), keeping only whole-ky rows, or reversing the time direction all give 49.4–50.6%.
+- **Other readings of "years" don't match either.** Using the dates in `radiocarbon_database_regional.xlsx`, the task's second declared source, gives 79%, 21%, 47% or under 1%, depending on deduplication and interpolation.
+- **No contiguous time window of the series (20 or more comparisons, either direction) gives 38.42%.**
+
+So no way of comparing consecutive values of this series reproduces the expected answer. The reference must compute something else, and the cause is **unexplained**. This task should leave the grain category. It is not drawn as a grain example.
 
 ---
 
@@ -166,7 +171,7 @@ Ask three questions in order and stop at the first one that fails:
 | `environment-hard-16` | entity key | error visible in the summary, direction fits |
 | `archeology-easy-8` | entity key | pinpointed in the trace (steps 13, 24, 25); 52 reachable, but not by a unique fix |
 | `wildfire-easy-9` | grain | **reproduced exactly** (with the reference's ≤ 30 boundary) |
-| `archeology-hard-2` | grain | error visible in the summary; competing explanation |
+| `archeology-hard-2` | ~~grain~~ unexplained | grain slip in wording only; no grain, window or source reading reproduces 38.42 |
 | `environment-easy-3` | entity key | by analogy only |
 | `biomedical-easy-2` | population | hypothesis |
 | `biomedical-hard-1` | population | hypothesis |
@@ -174,7 +179,7 @@ Ask three questions in order and stop at the first one that fails:
 | `archeology-hard-9` | population | hypothesis; competing explanation |
 | `wildfire-hard-17` | population | inferred from the size of the gap |
 
-4 reproduced, 3 with the error visible in the agent's own summary, 6 hypotheses. Each sub-type has one reproduced, step-by-step walkthrough: [population](example-population-legal-easy-19.md), [entity key](example-entity-key-legal-hard-22.md), [grain](example-grain-wildfire-easy-9.md). The hypotheses cluster in biomedical, and a single check on the case-exclusion flag would confirm or rule out three of them.
+4 reproduced, 2 with the error pinpointed in the trace, 6 hypotheses, and 1 (`archeology-hard-2`) moved out as unexplained. Each sub-type has one reproduced, step-by-step walkthrough: [population](example-population-legal-easy-19.md), [entity key](example-entity-key-legal-hard-22.md), [grain](example-grain-wildfire-easy-9.md). The hypotheses cluster in biomedical, and a single check on the case-exclusion flag would confirm or rule out three of them.
 
 ---
 

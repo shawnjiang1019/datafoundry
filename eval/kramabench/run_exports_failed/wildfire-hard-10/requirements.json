@@ -1,0 +1,152 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "分别统计民主党州与共和党州两组的火灾数量，度量口径为火灾记录的计数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "基于两组火灾计数比较，判定哪一方的火灾数量更多。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "分别统计民主党州与共和党州两组的火灾数量，度量口径为火灾记录的计数。",
+      "acceptanceCriteria": [
+        "火灾按所属州的政治党派划分为 Democratic（民主党州）与 Republican（共和党州）两个互斥组别",
+        "每组火灾数量为记录条数（count），而非面积、损失金额或其他度量",
+        "两组计数完整覆盖全部相关火灾记录，无重复计数或遗漏",
+        "每组计数结果为明确的非负整数"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "分别统计民主党州与共和党州两组的火灾数量，度量口径为火灾记录的计数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E9",
+        "E10",
+        "E12",
+        "E13",
+        "E14",
+        "E16"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "基于两组火灾计数比较，判定哪一方的火灾数量更多。",
+      "acceptanceCriteria": [
+        "结论明确指出计数更大的一方",
+        "最终答案值必须严格为 'Democratic' 或 'Republican' 之一",
+        "结论必须与两组计数的大小关系一致，不允许与计数结果矛盾"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "基于两组火灾计数比较，判定哪一方的火灾数量更多。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q9",
+        "Q10",
+        "Q13",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E8",
+        "E11",
+        "E15",
+        "E17"
+      ],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 1772 (line 1 column 1773)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 1772 (line 1 column 1773)"
+    }
+  ]
+}

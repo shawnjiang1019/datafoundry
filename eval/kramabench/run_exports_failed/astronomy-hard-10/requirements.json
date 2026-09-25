@@ -1,0 +1,457 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "Analysis scope is restricted to the STORM-AI Warmup dataset (version 2) over the 10-day window 2018-10-01 to 2018-10-10.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "The target series is Swarm-A's hourly altitude change per hour, derived from POD SP3 data using an Earth radius of 6371.0.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "The candidate variable set must cover all available variables from the two specified sources: OMNI2 embedded metrics (solar wind parameters, IMF measurements, geomagnetic indices, proton flux metrics) and Sat_Density (mean atmospheric density near Swarm-A orbit).",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "Pearson correlation is computed between each candidate variable and Swarm-A's hourly altitude change, and the strongest correlation is selected by absolute magnitude, allowing either sign.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "decision",
+      "description": "Identify the single variable with the strongest Pearson correlation against hourly altitude change and report its name together with its correlation value.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "Analysis scope is restricted to the STORM-AI Warmup dataset (version 2) over the 10-day window 2018-10-01 to 2018-10-10.",
+      "acceptanceCriteria": [
+        "All analyzed data comes from the STORM-AI Warmup dataset, version 2.",
+        "Only records with timestamps within the 10-day period 2018-10-01 through 2018-10-10 inclusive are used; records outside this window are excluded."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Analysis scope is restricted to the STORM-AI Warmup dataset (version 2) over the 10-day window 2018-10-01 to 2018-10-10.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q13",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E5",
+        "E7",
+        "E9",
+        "E11",
+        "E13",
+        "E21",
+        "E24",
+        "E27",
+        "E30",
+        "E35",
+        "E41",
+        "E46",
+        "E51",
+        "E56",
+        "E63",
+        "E67",
+        "E71",
+        "E76"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "The target series is Swarm-A's hourly altitude change per hour, derived from POD SP3 data using an Earth radius of 6371.0.",
+      "acceptanceCriteria": [
+        "The target series is the hourly change of altitude for the Swarm-A satellite computed from POD SP3 data.",
+        "Earth radius value 6371.0 is used in the altitude derivation."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "The target series is Swarm-A's hourly altitude change per hour, derived from POD SP3 data using an Earth radius of 6371.0.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q5",
+        "Q10",
+        "Q13",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q32",
+        "Q33",
+        "Q34"
+      ],
+      "evidenceBindingIds": [
+        "E31",
+        "E36",
+        "E42",
+        "E47",
+        "E52",
+        "E57",
+        "E64",
+        "E68",
+        "E72"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "The candidate variable set must cover all available variables from the two specified sources: OMNI2 embedded metrics (solar wind parameters, IMF measurements, geomagnetic indices, proton flux metrics) and Sat_Density (mean atmospheric density near Swarm-A orbit).",
+      "acceptanceCriteria": [
+        "Every available OMNI2 variable covering solar wind parameters, IMF measurements, geomagnetic indices, and proton flux metrics is included as a candidate for correlation.",
+        "Sat_Density, the mean atmospheric density near the Swarm-A orbit, is included as a candidate variable.",
+        "No candidate variable from the two specified sources is silently dropped from the correlation computation."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "The candidate variable set must cover all available variables from the two specified sources: OMNI2 embedded metrics (solar wind parameters, IMF measurements, geomagnetic indices, proton flux metrics) and Sat_Density (mean atmospheric density near Swarm-A orbit).",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35"
+      ],
+      "evidenceBindingIds": [
+        "E4",
+        "E6",
+        "E8",
+        "E10",
+        "E12",
+        "E14",
+        "E15",
+        "E16",
+        "E17",
+        "E18",
+        "E19",
+        "E20",
+        "E22",
+        "E25",
+        "E28",
+        "E32",
+        "E37",
+        "E39",
+        "E43",
+        "E48",
+        "E53",
+        "E58",
+        "E61",
+        "E65",
+        "E69",
+        "E73",
+        "E77"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "Pearson correlation is computed between each candidate variable and Swarm-A's hourly altitude change, and the strongest correlation is selected by absolute magnitude, allowing either sign.",
+      "acceptanceCriteria": [
+        "A Pearson correlation coefficient is computed between each candidate variable and the hourly altitude change.",
+        "The strongest correlation is chosen by largest absolute correlation value, so a negative correlation wins if its magnitude exceeds all positive ones."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "Pearson correlation is computed between each candidate variable and Swarm-A's hourly altitude change, and the strongest correlation is selected by absolute magnitude, allowing either sign.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q13",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35"
+      ],
+      "evidenceBindingIds": [
+        "E23",
+        "E26",
+        "E29",
+        "E33",
+        "E38",
+        "E40",
+        "E44",
+        "E49",
+        "E54",
+        "E59",
+        "E62",
+        "E66",
+        "E70",
+        "E74",
+        "E78"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "decision",
+      "description": "Identify the single variable with the strongest Pearson correlation against hourly altitude change and report its name together with its correlation value.",
+      "acceptanceCriteria": [
+        "Exactly one winning variable is identified and reported.",
+        "The reported correlation value is rounded to 3 decimal places with its sign preserved.",
+        "The reported winning variable and correlation value are consistent with the Pearson correlations computed over the scoped data."
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "Identify the single variable with the strongest Pearson correlation against hourly altitude change and report its name together with its correlation value.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q13",
+        "Q20",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q32",
+        "Q34",
+        "Q35"
+      ],
+      "evidenceBindingIds": [
+        "E34",
+        "E45",
+        "E50",
+        "E55",
+        "E60",
+        "E75",
+        "E79"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    }
+  ]
+}

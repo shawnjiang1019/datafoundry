@@ -1,0 +1,237 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算2002年至2023年（含两端）期间从未发生任何违规（全程保持可游泳安全）的海滩数量",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "计数对象仅限海洋海滩",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "缺失年份按安全处理，不得因数据缺失排除海滩",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "任何一次违规即取消资格",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算2002年至2023年（含两端）期间从未发生任何违规（全程保持可游泳安全）的海滩数量",
+      "acceptanceCriteria": [
+        "结果为单一非负整数，表示符合条件海滩的总数",
+        "统计窗口覆盖2002年至2023年（含2002年和2023年）的全部年份及季节记录",
+        "仅在期间所有季节均无任何违规记录的海滩才被计入该计数"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算2002年至2023年（含两端）期间从未发生任何违规（全程保持可游泳安全）的海滩数量",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "计数对象仅限海洋海滩",
+      "acceptanceCriteria": [
+        "计数仅包含属于海洋类别的海滩",
+        "非海洋类海滩不得计入结果"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "计数对象仅限海洋海滩",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E4",
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "缺失年份按安全处理，不得因数据缺失排除海滩",
+      "acceptanceCriteria": [
+        "某海滩在某一年份没有任何数据记录时，该年份必须视为安全",
+        "仅凭某年份数据缺失不得将海滩排除出计数；只有实际存在违规记录才导致排除"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "缺失年份按安全处理，不得因数据缺失排除海滩",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E8"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "任何一次违规即取消资格",
+      "acceptanceCriteria": [
+        "2002年至2023年期间任意年份、任意季节出现至少一次违规的海滩不得计入最终计数",
+        "被计入的海滩集合与因违规被排除的海滩集合必须互斥且共同完备地划分期间内的全部海洋海滩"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "任何一次违规即取消资格",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E9"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 1110 (line 1 column 1111)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 1110 (line 1 column 1111)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unterminated string in JSON at position 1110 (line 1 column 1111)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unterminated string in JSON at position 1110 (line 1 column 1111)"
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算所有年份中湿干指数（wet-dry index）逐年上升的年份所占百分比：分子为湿干指数值高于上一年值的年份数，分母为数据中可进行相邻年份比较的年份对总数，结果换算为百分比。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "最终答案须为该百分比数值并按标准四舍五入保留 2 位小数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算所有年份中湿干指数（wet-dry index）逐年上升的年份所占百分比：分子为湿干指数值高于上一年值的年份数，分母为数据中可进行相邻年份比较的年份对总数，结果换算为百分比。",
+      "acceptanceCriteria": [
+        "逐年比较相邻年份的湿干指数值，覆盖数据中全部年份，不得遗漏任何年份。",
+        "分子只统计湿干指数值严格大于上一年值的年份数量；相等或下降的年份不计入分子。",
+        "分母为全部相邻年份比较的数量，并须明确与分子口径一致；若采用其他分母口径（如全部年份数），须在证据中说明且前后一致。",
+        "结果为单一数值，等于 分子 / 分母 × 100。",
+        "结果数值必须落在 0 到 100 之间（含边界）。"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算所有年份中湿干指数（wet-dry index）逐年上升的年份所占百分比：分子为湿干指数值高于上一年值的年份数，分母为数据中可进行相邻年份比较的年份对总数，结果换算为百分比。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E4",
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "最终答案须为该百分比数值并按标准四舍五入保留 2 位小数。",
+      "acceptanceCriteria": [
+        "最终数值使用标准四舍五入规则保留恰好 2 位小数。",
+        "提交的答案值必须与计算得到的舍入后数值完全一致，且为一个单一数值。"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "最终答案须为该百分比数值并按标准四舍五入保留 2 位小数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.2.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.3.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.3.sqlConstraints.2.value: Invalid input; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.resultChecks.1.kind: Invalid discriminator value. Expected 'non_empty' | 'row_count' | 'not_null' | 'unique' | 'equals' | 'sum' | 'comparison' | 'budget_conservation' | 'ratio'; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.2.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.3.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.3.sqlConstraints.2.value: Invalid input; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.resultChecks.1.kind: Invalid discriminator value. Expected 'non_empty' | 'row_count' | 'not_null' | 'unique' | 'equals' | 'sum' | 'comparison' | 'budget_conservation' | 'ratio'; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

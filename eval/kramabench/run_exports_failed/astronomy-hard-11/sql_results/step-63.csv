@@ -1,0 +1,2 @@
+n_model_days,min_ts,max_ts,n_null_ts_dummy
+365,2024-01-01T00:00:00.000Z,2024-12-30T00:00:00.000Z,0

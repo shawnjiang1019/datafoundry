@@ -1,0 +1,2 @@
+n_rows,n_distinct_year_incident,n_dup_keys,max_dup_count,n_identical_dup_rows,n_rain_notnull,min_rh,p25_rh,med_rh,p75_rh,min_wind,p25_wind,med_wind,p75_wind,max_wind,min_erc,p25_erc,med_erc,p75_erc,max_erc
+6658,6658,0,,,6658,3,28,36,47,0,5,7,10,38,0,14,25,64,317

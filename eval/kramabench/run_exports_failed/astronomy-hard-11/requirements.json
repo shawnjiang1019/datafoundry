@@ -1,0 +1,501 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "OMNI2 数据必须按照其发布的格式规范(omni2.text)进行解析，以正确读取所需的空间天气参数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "NRLMSISE-00 的全部输入量(F10.7、F10.7A、每日 Ap、3 小时 Ap 向量)必须直接由 OMNI2 数据集派生，禁止使用任何外部空间天气数据源。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "3 小时 Ap 向量必须按照 NRLMSISE-00 模型参考定义(MathWorks NRLMSISE-00 Atmospheric Model 文档)构建。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "NRLMSISE-00 中性密度预测必须覆盖 Swarm-B 整个 2024 日历年。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "comparison",
+      "description": "模型预测中性密度必须与来自 Swarm-B POD 文件的实测中性密度进行逐点比较。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "metric",
+      "description": "在整个 2024 年范围内，计算 NRLMSISE-00 预测与 Swarm-B 实测中性密度之间的 RMSE，并作为最终结果报告。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "OMNI2 数据必须按照其发布的格式规范(omni2.text)进行解析，以正确读取所需的空间天气参数。",
+      "acceptanceCriteria": [
+        "OMNI2 记录按照 omni2.text 中记载的格式规范进行解析",
+        "每个派生的模型输入值都能追溯到对应时刻解析出的 OMNI2 记录"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "OMNI2 数据必须按照其发布的格式规范(omni2.text)进行解析，以正确读取所需的空间天气参数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q20",
+        "Q21"
+      ],
+      "evidenceBindingIds": [
+        "E19",
+        "E20",
+        "E24",
+        "E25"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "NRLMSISE-00 的全部输入量(F10.7、F10.7A、每日 Ap、3 小时 Ap 向量)必须直接由 OMNI2 数据集派生，禁止使用任何外部空间天气数据源。",
+      "acceptanceCriteria": [
+        "F10.7、F10.7A、每日 Ap 与 3 小时 Ap 向量全部来源于 OMNI2 数据集",
+        "没有任何外部空间天气数据源对模型输入值产生贡献"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "NRLMSISE-00 的全部输入量(F10.7、F10.7A、每日 Ap、3 小时 Ap 向量)必须直接由 OMNI2 数据集派生，禁止使用任何外部空间天气数据源。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q18",
+        "Q19",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q44",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q49",
+        "Q50",
+        "Q51",
+        "Q52",
+        "Q53",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57",
+        "Q58",
+        "Q59",
+        "Q60",
+        "Q61",
+        "Q62",
+        "Q63",
+        "Q64",
+        "Q65",
+        "Q66"
+      ],
+      "evidenceBindingIds": [
+        "E21",
+        "E23",
+        "E26",
+        "E27",
+        "E28",
+        "E29",
+        "E30",
+        "E31",
+        "E32",
+        "E33",
+        "E40",
+        "E41",
+        "E42",
+        "E43",
+        "E45",
+        "E47",
+        "E49",
+        "E51",
+        "E53",
+        "E55",
+        "E57",
+        "E59",
+        "E61",
+        "E63",
+        "E65",
+        "E67",
+        "E69",
+        "E71",
+        "E73",
+        "E75",
+        "E77",
+        "E79"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "3 小时 Ap 向量必须按照 NRLMSISE-00 模型参考定义(MathWorks NRLMSISE-00 Atmospheric Model 文档)构建。",
+      "acceptanceCriteria": [
+        "每天八个 3 小时段的 Ap 取值按 MathWorks NRLMSISE-00 定义分配",
+        "每日 Ap 为与同一参考定义一致的 OMNI2 Ap 派生日值"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "3 小时 Ap 向量必须按照 NRLMSISE-00 模型参考定义(MathWorks NRLMSISE-00 Atmospheric Model 文档)构建。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q18",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q44",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q49",
+        "Q50",
+        "Q51",
+        "Q52",
+        "Q53",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57",
+        "Q58",
+        "Q59",
+        "Q60",
+        "Q61",
+        "Q62",
+        "Q63",
+        "Q64",
+        "Q65",
+        "Q66"
+      ],
+      "evidenceBindingIds": [
+        "E22",
+        "E44",
+        "E46",
+        "E48",
+        "E50",
+        "E52",
+        "E54",
+        "E56",
+        "E58",
+        "E60",
+        "E62",
+        "E64",
+        "E66",
+        "E68",
+        "E70",
+        "E72",
+        "E74",
+        "E76",
+        "E78",
+        "E80"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "NRLMSISE-00 中性密度预测必须覆盖 Swarm-B 整个 2024 日历年。",
+      "acceptanceCriteria": [
+        "预测覆盖 Swarm-B 自 2024-01-01 至 2024-12-31 的完整时段",
+        "预测时刻与基于 OMNI2 派生输入的模型运行时刻对齐"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "NRLMSISE-00 中性密度预测必须覆盖 Swarm-B 整个 2024 日历年。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q31"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E5",
+        "E7",
+        "E9",
+        "E11",
+        "E13",
+        "E34"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "comparison",
+      "description": "模型预测中性密度必须与来自 Swarm-B POD 文件的实测中性密度进行逐点比较。",
+      "acceptanceCriteria": [
+        "预测值与实测中性密度在匹配的 Swarm-B 时刻成对关联",
+        "实测中性密度仅来自 Swarm-B POD 文件"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "模型预测中性密度必须与来自 Swarm-B POD 文件的实测中性密度进行逐点比较。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E6",
+        "E8",
+        "E10",
+        "E12",
+        "E14",
+        "E15",
+        "E16",
+        "E17",
+        "E18",
+        "E35",
+        "E36",
+        "E37",
+        "E38",
+        "E39"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "metric",
+      "description": "在整个 2024 年范围内，计算 NRLMSISE-00 预测与 Swarm-B 实测中性密度之间的 RMSE，并作为最终结果报告。",
+      "acceptanceCriteria": [
+        "RMSE 基于覆盖全年 2024 的全部预测-实测配对点计算",
+        "最终产出一个表征全年比较结果的单一 RMSE 数值"
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "在整个 2024 年范围内，计算 NRLMSISE-00 预测与 Swarm-B 实测中性密度之间的 RMSE，并作为最终结果报告。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "pending",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.3.value: Invalid input; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.0.sqlConstraints.4.value: Invalid input; contracts.5.assertions.0.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.5.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.5.assertions.0.sqlConstraints.4.value: Invalid input"
+    }
+  ]
+}

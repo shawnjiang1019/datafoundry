@@ -1,0 +1,300 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "确定 2007 年身份盗用（identity theft）报告的总数，作为反事实推算的基数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "确定 2024 年身份盗用报告按年龄分组的分布，重点是 40 岁或以上人群所占的比例。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "counterfactual",
+      "description": "在『2007 年报告的年龄分布与 2024 年完全相同』的假设下，计算 2007 年涉及 40 岁或以上人群的身份盗用报告数量。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "对反事实推算结果按四舍五入取整到最接近的千位。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "确保两个年份的数据均限于身份盗用报告且年龄信息可比，使 2024 年的分布可合法套用于 2007 年总数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "确定 2007 年身份盗用（identity theft）报告的总数，作为反事实推算的基数。",
+      "acceptanceCriteria": [
+        "统计口径仅限 2007 年的身份盗用报告数量",
+        "该总数与 2024 年分布所基于的报告口径可比",
+        "总数为非负数值，可直接作为比例推算的乘法基数"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "确定 2007 年身份盗用（identity theft）报告的总数，作为反事实推算的基数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E1"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "确定 2024 年身份盗用报告按年龄分组的分布，重点是 40 岁或以上人群所占的比例。",
+      "acceptanceCriteria": [
+        "分布基于 2024 年身份盗用报告按年龄分组计算占比",
+        "40 岁或以上的占比按含 40 岁的口径界定，或由相应年龄组占比汇总得到",
+        "各年龄组占比合计为 1（或 100%），缺失年龄记录的处理不破坏占比口径的一致性"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "确定 2024 年身份盗用报告按年龄分组的分布，重点是 40 岁或以上人群所占的比例。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E2"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "counterfactual",
+      "description": "在『2007 年报告的年龄分布与 2024 年完全相同』的假设下，计算 2007 年涉及 40 岁或以上人群的身份盗用报告数量。",
+      "acceptanceCriteria": [
+        "反事实数量等于 2007 年身份盗用报告总数乘以 2024 年 40 岁或以上的占比",
+        "推算仅使用 2007 年总数与 2024 年年龄分布，不引入其他年份的分布或数量",
+        "结果表示的是报告数量，而非人口数、比例或其他指标"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "在『2007 年报告的年龄分布与 2024 年完全相同』的假设下，计算 2007 年涉及 40 岁或以上人群的身份盗用报告数量。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E3"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "对反事实推算结果按四舍五入取整到最接近的千位。",
+      "acceptanceCriteria": [
+        "最终数值按四舍五入规则精确到千位",
+        "答案为单一数值，不包含百分号或比例形式"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "对反事实推算结果按四舍五入取整到最接近的千位。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E4"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "确保两个年份的数据均限于身份盗用报告且年龄信息可比，使 2024 年的分布可合法套用于 2007 年总数。",
+      "acceptanceCriteria": [
+        "2007 年与 2024 年的数据均为身份盗用报告，排除其他欺诈或投诉类型",
+        "用于分布计算的 2024 年记录具有可用的年龄信息，缺失年龄的记录处理方式需明确且一致",
+        "两个年份的报告计数口径一致，不因记录去重或类型归属差异导致分布不可比"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "确保两个年份的数据均限于身份盗用报告且年龄信息可比，使 2024 年的分布可合法套用于 2007 年总数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    }
+  ]
+}

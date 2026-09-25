@@ -1,0 +1,68 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算所有身份盗窃报告中，Theft Type 为 'Back Account' 且 Theft Subtype 为 'New Accounts' 的报告所占的比例，并将结果四舍五入到 4 位小数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算所有身份盗窃报告中，Theft Type 为 'Back Account' 且 Theft Subtype 为 'New Accounts' 的报告所占的比例，并将结果四舍五入到 4 位小数。",
+      "acceptanceCriteria": [
+        "分子为同时满足 Theft Type 等于 'Back Account' 与 Theft Subtype 等于 'New Accounts' 这两个条件的报告数量",
+        "分母为全部身份盗窃报告的总数量，作为比例的基准总体",
+        "结果为分子除以分母得到的单一比例值",
+        "该比例值必须四舍五入保留 4 位小数",
+        "结果可通过 SQL 查询结果与审计证据进行数值复核验证"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算所有身份盗窃报告中，Theft Type 为 'Back Account' 且 Theft Subtype 为 'New Accounts' 的报告所占的比例，并将结果四舍五入到 4 位小数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2"
+      ],
+      "evidenceBindingIds": [
+        "E1"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters"
+    }
+  ]
+}

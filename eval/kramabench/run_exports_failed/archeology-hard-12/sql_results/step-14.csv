@@ -1,0 +1,150 @@
+actor1,actor2,n
+France,England,12
+Russia,Lithuania,9
+England,France,8
+Scotland,England,8
+England,Wales,6
+Germany,Italy,5
+Russia,Sweden,5
+Russia,Polovcians,5
+Austria,Italy,4
+Bulgaria,Byzantium,4
+Germany,Pope,4
+Normans,Byzantium,4
+England,Scotland,3
+Hungary,Venice,3
+Normans,[Byzantium Venice],3
+Turkey,Byzantium,3
+Venice,Genoa,3
+Aragon,Almohads,2
+Byzantium,Muslim pirates,2
+Byzantium,Hungary,2
+Byzantium,Muslims,2
+Danish Vikings,England,2
+England,Ireland,2
+England,Danish Vikings,2
+Magyars,France,2
+Portugal,Moors,2
+Switzerland,Austria,2
+Teutonic Knights,Prussia,2
+Venice,Hungary,2
+Almohad,Castile,1
+Aragon,[Genoa Pisa],1
+Aragon,Two Sicilies,1
+Aragon,France,1
+Aragon,Castile,1
+Aragon,Moors,1
+Austria,Third Crusade,1
+Austria,Switzerland,1
+Austria,[Germany Bohemia],1
+Austria,Second Crusade,1
+Austria,South Germany,1
+Austria,Naples,1
+Austria,Saxons,1
+Austria,[Sicily Henry],1
+Austria,Fifth Crusade,1
+Bohemia,Hapsburg,1
+Bohemia,Hungary,1
+Bohemia,Germany,1
+Bulgaria,Serbia,1
+Bulgaria,Nicaea,1
+Byzantium,Venice,1
+Byzantium,Pechenegs,1
+Byzantium,Bulgaria,1
+Byzantium,[Venice Normans],1
+Byzantium,[Seljuks Trebizond Nicaea],1
+Byzantium,Normans,1
+Byzantium,Russia,1
+Castile,[Portugal England],1
+Celts,Vikings,1
+Christians,Muslims,1
+Danish Vikings,Scotland,1
+Danish and Norwegian Vikings,England,1
+Denmark,Sweden,1
+Denmark,Hanseatic League,1
+Denmark,Estonia,1
+Denmark,[Sweden Norway],1
+Denmark,Pomerania,1
+Denmark,Rugens,1
+Denmark,England,1
+Edward I,Wales,1
+England,Byzantium,1
+England,[Scotland Ireland Wales],1
+England,[Norse Picts Scots],1
+England,Muslims,1
+Estonia,[Denmark Germany Teutonic Knights],1
+Florence,Pisa,1
+France,Fourth Crusade,1
+France,Aragon,1
+France,[Flanders England],1
+France,First Crusade,1
+France,Second Crusade,1
+France,Third Crusade,1
+France,Flanders,1
+France,Seventh Crusade,1
+France,[England Flanders Germany],1
+France,[England Flanders],1
+Germans,Slavic Wends,1
+Germany,Denmark,1
+Germany,Hungary,1
+Germany,Normans,1
+Germany,Lombards,1
+Germany,Lombardy,1
+Germany,[Lombard League Milan],1
+Germany,[Pope Lombards],1
+Germany,[South Italy Byzantium],1
+Germany,Byzantium,1
+Germany,Sicily,1
+Germany,Wends,1
+Germany,Bohemia,1
+Hungary,Naples,1
+Khanate of Golden Horde,[Poland Teutonic Knights],1
+Khanate of Golden Horde,Russia,1
+Lithuania,Russia,1
+Lucca,Florence,1
+Magyars,[France Burgundy Bavaria Italy Drava and Danube],1
+Magyars,Germans,1
+Magyars,Bavaria,1
+Magyars,Moravia,1
+Milan,Florence,1
+Mongols,[Poland Germany Teutonic Knights],1
+Mongols,Russia,1
+Moroccan Almohads,Muslim Spain,1
+Moroccan Almoravids,Valencia,1
+Moroccan Almoravids,Spanish Muslims,1
+Naples,Milan,1
+Nicaea,[Constantinople Bulgaria Epirus],1
+Normans,Muslims,1
+Normans,[southern Italy Sicily],1
+Normans,Ireland,1
+Normans,Muslims in Tunisia and Algeria,1
+Norway,Scotland,1
+Norwegian Vikings,England,1
+Ottomans,Byzantium,1
+Pecheneg,Byzantium,1
+Pechenegs,Russia,1
+Poland,Germany,1
+Pomerania,[Teutonic Knights Masovia],1
+Russia,[Black Hats Torks Berendei],1
+Russia,Bulgaria,1
+Russia,[Chudi Templars],1
+Russia,Galicia province,1
+Russia,Finland,1
+Scotland,Ireland,1
+Seljuks,Nicaea,1
+Serbia,[Macedonia Albania Bulgaria Thessaly Epirus],1
+Silesia,Poland,1
+Turkey,Bulgaria,1
+Turkey,Wallachia,1
+Wales,England,1
+Wessex,York,1
+Wessex,[East Anglia Mercia],1
+[Aragon Catalan Venice],Genoa,1
+[Byzantium Genoa],Bulgaria,1
+[Byzantium Normans],Muslims,1
+[Byzantium Russia],Bulgaria,1
+[England Denmark],Norway,1
+[Florence Milan],Pope,1
+[France and Henri de Trastamare],[England Castile],1
+[Hanseatic League Mecklenburg Holstein Sweden],Denmark,1
+[Nicaea Bulgaria],[Constantinople Venice Achaia],1

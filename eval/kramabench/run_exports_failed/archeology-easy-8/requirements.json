@@ -1,0 +1,132 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "确定罗马城市数据集中使用的唯一来源数量，作为一个去重计数指标回答。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "验证唯一来源计数的正确性与稳健性，确保结果可由 SQL 结果和审计证据支撑。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "确定罗马城市数据集中使用的唯一来源数量，作为一个去重计数指标回答。",
+      "acceptanceCriteria": [
+        "查询结果必须返回单一标量数值，表示罗马城市数据集中不同来源的总数。",
+        "计数范围必须仅限于罗马城市数据集内的记录，不得包含数据集范围之外的记录。",
+        "每个不同的来源在计数中只能出现一次，必须按来源去重后统计。",
+        "结果必须为非负整数；若数据集中不存在任何来源信息，结果应为 0，而不是空值或缺失。"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "确定罗马城市数据集中使用的唯一来源数量，作为一个去重计数指标回答。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "验证唯一来源计数的正确性与稳健性，确保结果可由 SQL 结果和审计证据支撑。",
+      "acceptanceCriteria": [
+        "去重计数不得将来源信息中的空值或空白记录计为唯一来源。",
+        "该计数值必须可由审计证据复现，重复执行应得到一致且相同的结果。"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "验证唯一来源计数的正确性与稳健性，确保结果可由 SQL 结果和审计证据支撑。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.resultChecks.2.kind: Invalid discriminator value. Expected 'non_empty' | 'row_count' | 'not_null' | 'unique' | 'equals' | 'sum' | 'comparison' | 'budget_conservation' | 'ratio'; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.3.resultChecks.2.kind: Invalid discriminator value. Expected 'non_empty' | 'row_count' | 'not_null' | 'unique' | 'equals' | 'sum' | 'comparison' | 'budget_conservation' | 'ratio'; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

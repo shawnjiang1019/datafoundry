@@ -1,0 +1,242 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "将分析范围限定为该研究在 Maltese 地区记录到人的记录，并从中确定最早与最晚两个记录时间点。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "计算最早与最晚两个记录时间点处的 Potassium（ppm）值，按时间上相邻样本点线性插值得到。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "对两个端点时间点的 Potassium 值求算术平均，并将结果四舍五入到 4 位小数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "验证端点识别与插值前提的可核性，确保结论不依赖被排除或越界的记录。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "将分析范围限定为该研究在 Maltese 地区记录到人的记录，并从中确定最早与最晚两个记录时间点。",
+      "acceptanceCriteria": [
+        "分析范围必须仅包含研究在 Maltese 地区记录到人的记录",
+        "最早与最晚记录时间点必须在该范围内唯一确定，二者来源须为同一记录集合"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "将分析范围限定为该研究在 Maltese 地区记录到人的记录，并从中确定最早与最晚两个记录时间点。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q6"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E9"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "计算最早与最晚两个记录时间点处的 Potassium（ppm）值，按时间上相邻样本点线性插值得到。",
+      "acceptanceCriteria": [
+        "两个时间点上的 Potassium 值必须由相邻样本线性插值计算，而非因该时间点无直接样本而排除",
+        "Potassium 的度量单位为 ppm",
+        "若某端点时间恰好对应实际样本，则插值结果应等于该样本值"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "计算最早与最晚两个记录时间点处的 Potassium（ppm）值，按时间上相邻样本点线性插值得到。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E4",
+        "E6",
+        "E10"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "对两个端点时间点的 Potassium 值求算术平均，并将结果四舍五入到 4 位小数。",
+      "acceptanceCriteria": [
+        "最终结果为两个端点 Potassium 值的等权算术平均",
+        "最终数值必须四舍五入并精确保留 4 位小数",
+        "最终答案为单一数值"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "对两个端点时间点的 Potassium 值求算术平均，并将结果四舍五入到 4 位小数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "验证端点识别与插值前提的可核性，确保结论不依赖被排除或越界的记录。",
+      "acceptanceCriteria": [
+        "插值所用的相邻样本必须各自存在于对应端点时间的两侧，或端点本身即为样本",
+        "若数据中无法找到满足插值条件的样本对，该情况必须显式暴露而非以空值或零值替代"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "验证端点识别与插值前提的可核性，确保结论不依赖被排除或越界的记录。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q5",
+        "Q6"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E8",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 1859 (line 1 column 1860)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 1859 (line 1 column 1860)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unterminated string in JSON at position 1859 (line 1 column 1860)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unterminated string in JSON at position 1859 (line 1 column 1860)"
+    }
+  ]
+}

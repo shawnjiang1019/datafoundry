@@ -1,0 +1,404 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "Precise orbital data (SP3) for satellite Swarm-A must be available and resolvable to a geodetic position for every timepoint in the analysis window.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "Analysis is restricted to the exact time window September 2 to September 29, 2019 (inclusive) and to Swarm-A only.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "At each timepoint, geopotential energy per unit mass is computed by interpolating the mock geopotential field defined over latitude, longitude, and altitude at the satellite's geodetic position, expressed in J/kg.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "Physical constants are fixed by the request and must be used exactly as specified.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "The mean geopotential energy per unit mass is the arithmetic average of the per-timepoint values over all valid timepoints in the window.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "Precise orbital data (SP3) for satellite Swarm-A must be available and resolvable to a geodetic position for every timepoint in the analysis window.",
+      "acceptanceCriteria": [
+        "Orbital data source is SP3 precise orbit files for Swarm-A only",
+        "Every timepoint used yields a complete geodetic position (latitude, longitude, altitude)",
+        "Timepoints with unresolvable or missing position are excluded and do not silently enter the mean"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Precise orbital data (SP3) for satellite Swarm-A must be available and resolvable to a geodetic position for every timepoint in the analysis window.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q35",
+        "Q43",
+        "Q44",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q49",
+        "Q50",
+        "Q51",
+        "Q52",
+        "Q53",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E5",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E14",
+        "E15",
+        "E16",
+        "E17",
+        "E28",
+        "E29",
+        "E33",
+        "E40",
+        "E41",
+        "E43"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "Analysis is restricted to the exact time window September 2 to September 29, 2019 (inclusive) and to Swarm-A only.",
+      "acceptanceCriteria": [
+        "All timepoints fall within 2019-09-02 through 2019-09-29 inclusive",
+        "No timepoints outside the window are included in any computation or aggregation",
+        "Satellite identity is fixed to Swarm-A; other satellites' data are excluded"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "Analysis is restricted to the exact time window September 2 to September 29, 2019 (inclusive) and to Swarm-A only.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q9",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q18",
+        "Q32",
+        "Q43",
+        "Q44",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q51",
+        "Q52",
+        "Q53",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57",
+        "Q58"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E6",
+        "E11",
+        "E12",
+        "E13",
+        "E18",
+        "E30",
+        "E42",
+        "E44"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "At each timepoint, geopotential energy per unit mass is computed by interpolating the mock geopotential field defined over latitude, longitude, and altitude at the satellite's geodetic position, expressed in J/kg.",
+      "acceptanceCriteria": [
+        "Potential energy per unit mass at each timepoint is obtained by interpolating the given mock geopotential field at the satellite's latitude, longitude, and altitude",
+        "Each per-timepoint value is expressed in J/kg",
+        "Interpolation uses the field's definition over latitude, longitude, and altitude without substituting a different potential model"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "At each timepoint, geopotential energy per unit mass is computed by interpolating the mock geopotential field defined over latitude, longitude, and altitude at the satellite's geodetic position, expressed in J/kg.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41",
+        "Q42",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57"
+      ],
+      "evidenceBindingIds": [
+        "E19",
+        "E20",
+        "E21",
+        "E22",
+        "E23",
+        "E24",
+        "E25",
+        "E31",
+        "E32",
+        "E34",
+        "E35",
+        "E36",
+        "E37",
+        "E38",
+        "E39",
+        "E45"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "Physical constants are fixed by the request and must be used exactly as specified.",
+      "acceptanceCriteria": [
+        "Earth radius is taken as 6371.0 km in any position/altitude conversion",
+        "Gravitational acceleration is taken as g = 9.80665 m/s^2",
+        "No alternative values of these constants are substituted anywhere in the computation"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "Physical constants are fixed by the request and must be used exactly as specified.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57"
+      ],
+      "evidenceBindingIds": [
+        "E46"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "The mean geopotential energy per unit mass is the arithmetic average of the per-timepoint values over all valid timepoints in the window.",
+      "acceptanceCriteria": [
+        "Mean is computed as the arithmetic average across all valid timepoints in the Sep 2–29, 2019 window",
+        "No timepoint subset or reweighting is applied beyond excluding invalid points",
+        "Result is expressed in J/kg"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "The mean geopotential energy per unit mass is the arithmetic average of the per-timepoint values over all valid timepoints in the window.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q54",
+        "Q55",
+        "Q56",
+        "Q57"
+      ],
+      "evidenceBindingIds": [
+        "E26",
+        "E27",
+        "E47"
+      ],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.description: Too big: expected string to have <=500 characters"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.description: Too big: expected string to have <=500 characters"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.description: Too big: expected string to have <=500 characters"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.description: Too big: expected string to have <=500 characters"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: contracts.0.assertions.0.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.description: Too big: expected string to have <=500 characters"
+    }
+  ]
+}

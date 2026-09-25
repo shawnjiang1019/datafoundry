@@ -1,0 +1,289 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Quantify the monotonic association between the abundance of protein PLK1 and the abundance of CHEK2-S163 in tumor samples using the Spearman rank correlation coefficient.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The analysis population is restricted to tumor samples that belong to the study.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "Samples with missing abundance values for either PLK1 or CHEK2-S163 must be excluded before computing the correlation.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The final reported Spearman correlation must be presented as a single numeric value rounded to 4 decimal places.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Quantify the monotonic association between the abundance of protein PLK1 and the abundance of CHEK2-S163 in tumor samples using the Spearman rank correlation coefficient.",
+      "acceptanceCriteria": [
+        "The reported number is the Spearman rank correlation coefficient between PLK1 abundance and CHEK2-S163 abundance.",
+        "The correlation is computed on paired observations where both abundance values are present (pairwise complete observations).",
+        "Exactly one correlation value is produced for the specified sample population."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Quantify the monotonic association between the abundance of protein PLK1 and the abundance of CHEK2-S163 in tumor samples using the Spearman rank correlation coefficient.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q26"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E3",
+        "E6",
+        "E8",
+        "E10",
+        "E12",
+        "E13",
+        "E14",
+        "E18",
+        "E20",
+        "E21",
+        "E25"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The analysis population is restricted to tumor samples that belong to the study.",
+      "acceptanceCriteria": [
+        "Only tumor samples are included in the correlation computation.",
+        "Samples not belonging to the study are excluded from the analysis."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "The analysis population is restricted to tumor samples that belong to the study.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q6",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q24",
+        "Q25",
+        "Q27"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E4",
+        "E16",
+        "E17",
+        "E19",
+        "E22",
+        "E23",
+        "E28"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "Samples with missing abundance values for either PLK1 or CHEK2-S163 must be excluded before computing the correlation.",
+      "acceptanceCriteria": [
+        "Any sample lacking a PLK1 abundance value or a CHEK2-S163 abundance value is dropped from the computation.",
+        "The correlation denominator/observation set contains only samples with both abundance values present."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Samples with missing abundance values for either PLK1 or CHEK2-S163 must be excluded before computing the correlation.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q12",
+        "Q25",
+        "Q26"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E7",
+        "E9",
+        "E11",
+        "E15",
+        "E24",
+        "E26"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The final reported Spearman correlation must be presented as a single numeric value rounded to 4 decimal places.",
+      "acceptanceCriteria": [
+        "The reported value equals the computed Spearman correlation rounded to exactly 4 decimal places.",
+        "The reported value is a bare number with no additional formatting."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "The final reported Spearman correlation must be presented as a single numeric value rounded to 4 decimal places.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q26"
+      ],
+      "evidenceBindingIds": [
+        "E27"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 669 (line 1 column 670)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 669 (line 1 column 670)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unterminated string in JSON at position 669 (line 1 column 670)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unterminated string in JSON at position 669 (line 1 column 670)"
+    }
+  ]
+}

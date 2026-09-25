@@ -1,0 +1,401 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "For each US state, determine the number of distinct NIFC Geographic Areas that the state falls into.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "States must be identified using full official US state names, not abbreviations or codes.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "Only NIFC Geographic Areas count toward the measurement; other area or region definitions must be excluded.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "Identify the state(s) with the highest number of NIFC Geographic Areas among all US states.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "counterfactual",
+      "description": "Verify maximality by confirming that removing the reported state(s) leaves no other state with the same top count unless it is also reported.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "For each US state, determine the number of distinct NIFC Geographic Areas that the state falls into.",
+      "acceptanceCriteria": [
+        "Each state has a computed count of NIFC Geographic Areas it belongs to",
+        "The count is over distinct Geographic Areas, so a state is counted at most once per Geographic Area"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "For each US state, determine the number of distinct NIFC Geographic Areas that the state falls into.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q14",
+        "Q15",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40"
+      ],
+      "evidenceBindingIds": [
+        "E11",
+        "E14",
+        "E20",
+        "E22",
+        "E24",
+        "E26",
+        "E28",
+        "E30",
+        "E32",
+        "E35",
+        "E39",
+        "E42",
+        "E45",
+        "E48"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "States must be identified using full official US state names, not abbreviations or codes.",
+      "acceptanceCriteria": [
+        "Every state label used in the result is a full official US state name",
+        "No state appears as a two-letter code, partial name, or non-state label"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "States must be identified using full official US state names, not abbreviations or codes.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q14",
+        "Q15",
+        "Q23",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E4",
+        "E12",
+        "E15",
+        "E33",
+        "E36",
+        "E40",
+        "E43",
+        "E46",
+        "E49"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "Only NIFC Geographic Areas count toward the measurement; other area or region definitions must be excluded.",
+      "acceptanceCriteria": [
+        "The area entities being counted are the NIFC Geographic Areas as defined in the dataset",
+        "No non-NIFC area definitions are included in the per-state counts"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Only NIFC Geographic Areas count toward the measurement; other area or region definitions must be excluded.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E13",
+        "E18",
+        "E19",
+        "E21",
+        "E23",
+        "E25",
+        "E27",
+        "E29",
+        "E31",
+        "E34",
+        "E41",
+        "E44",
+        "E47",
+        "E50"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "Identify the state(s) with the highest number of NIFC Geographic Areas among all US states.",
+      "acceptanceCriteria": [
+        "The reported state(s) have a Geographic Area count equal to the maximum across all states",
+        "No excluded state has a count greater than any reported state"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "Identify the state(s) with the highest number of NIFC Geographic Areas among all US states.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q15",
+        "Q31"
+      ],
+      "evidenceBindingIds": [
+        "E16",
+        "E37"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "counterfactual",
+      "description": "Verify maximality by confirming that removing the reported state(s) leaves no other state with the same top count unless it is also reported.",
+      "acceptanceCriteria": [
+        "All states tied at the maximum count are reported, not just one of them",
+        "No state tied at the maximum is omitted from the answer"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "Verify maximality by confirming that removing the reported state(s) leaves no other state with the same top count unless it is also reported.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q15",
+        "Q31"
+      ],
+      "evidenceBindingIds": [
+        "E17",
+        "E38"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    }
+  ]
+}

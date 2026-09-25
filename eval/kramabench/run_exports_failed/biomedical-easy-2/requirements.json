@@ -1,0 +1,69 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "validation",
+      "description": "What is the average age of patients with serous tumor samples analyzed in the study?\n\nWhen you are done, end your response with one final line exactly of the form\nFINAL_ANSWER: <answer>\nwhere <answer> is only the value: a bare number (no units, no % sign, no thousands separators), a short string, or a JSON list such as [\"a\", \"b\"].",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "validation",
+      "description": "What is the average age of patients with serous tumor samples analyzed in the study?\n\nWhen you are done, end your response with one final line exactly of the form\nFINAL_ANSWER: <answer>\nwhere <answer> is only the value: a bare number (no units, no % sign, no thousands separators), a short string, or a JSON list such as [\"a\", \"b\"].",
+      "acceptanceCriteria": [
+        "回答请求中的全部可量化问题，并为结论绑定审计证据"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "What is the average age of patients with serous tumor samples analyzed in the study?\n\nWhen you are done, end your response with one final line exactly of the form\nFINAL_ANSWER: <answer>\nwhere <answer> is only the value: a bare number (no units, no % sign, no thousands separators), a short string, or a JSON list such as [\"a\", \"b\"].",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\""
+    }
+  ]
+}

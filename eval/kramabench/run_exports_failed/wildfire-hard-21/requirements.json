@@ -1,0 +1,249 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute, from NOAA data, the loss in residential property value for each state over the period 2005 through 2010, with both endpoint years (2005 and 2010) included in the measurement.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "Segment the residential property value loss by state and rank the states by magnitude of loss.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "Identify exactly the top 3 states with the greatest residential property value loss between 2005 and 2010.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "Rows with missing values must not be discarded unnecessarily; missing values must be preserved or handled without arbitrary row removal.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute, from NOAA data, the loss in residential property value for each state over the period 2005 through 2010, with both endpoint years (2005 and 2010) included in the measurement.",
+      "acceptanceCriteria": [
+        "The underlying data is NOAA-sourced.",
+        "The measured period is inclusive of both 2005 and 2010 endpoints.",
+        "The computed measure represents a decline (loss) in residential property value, not an increase or a level.",
+        "The measure is attributable to residential property, not other property categories."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Compute, from NOAA data, the loss in residential property value for each state over the period 2005 through 2010, with both endpoint years (2005 and 2010) included in the measurement.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E9"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "Segment the residential property value loss by state and rank the states by magnitude of loss.",
+      "acceptanceCriteria": [
+        "Segmentation is performed at the state level.",
+        "Ranking is ordered by the magnitude of value loss, greatest loss first."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "Segment the residential property value loss by state and rank the states by magnitude of loss.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E4",
+        "E7",
+        "E10"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "Identify exactly the top 3 states with the greatest residential property value loss between 2005 and 2010.",
+      "acceptanceCriteria": [
+        "Exactly 3 states are selected.",
+        "The selected states are those ranked highest by loss magnitude.",
+        "The direction of comparison favors the largest decline in value."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Identify exactly the top 3 states with the greatest residential property value loss between 2005 and 2010.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E8",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "Rows with missing values must not be discarded unnecessarily; missing values must be preserved or handled without arbitrary row removal.",
+      "acceptanceCriteria": [
+        "No row filtering is applied solely because of missing values.",
+        "Missing values are retained or handled in a way that does not silently drop records from the computation."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "Rows with missing values must not be discarded unnecessarily; missing values must be preserved or handled without arbitrary row removal.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q4",
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E6",
+        "E12"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

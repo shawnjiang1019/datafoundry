@@ -1,0 +1,12 @@
+ord,name1,pop1,rank1,region1,name2,pop2,rank2,region2,c10
+1,New York,19940274,1,Northeast,Boston,5025517,11,Northeast,Chicago Dallas–Fort Worth
+2,Los Angeles,12927614,2,West,Riverside–San Bernardino,4744214,12,West,Chicago Dallas–Fort Worth
+3,Chicago,9408576,3,Midwest,San Francisco,4648486,13,West,Chicago Dallas–Fort Worth
+4,Dallas–Fort Worth,8344032,4,South,Detroit,4400578,14,Midwest,Chicago Dallas–Fort Worth
+5,Houston,7796182,5,South,Seattle,4145494,15,West,Chicago Dallas–Fort Worth
+6,Miami,6457988,6,South,Minneapolis–Saint Paul,3757952,16,Midwest,Chicago Dallas–Fort Worth
+7,"Washington, D.C.",6436489,7,South,Tampa–St. Petersburg,3424560,17,South,Chicago Dallas–Fort Worth
+8,Atlanta,6411149,8,South,San Diego,3298799,18,West,Chicago Dallas–Fort Worth
+9,Philadelphia,6330422,9,Northeast,Denver,3052498,19,West,Chicago Dallas–Fort Worth
+10,Phoenix,5186958,10,West,Orlando,2940513,20,South,Chicago Dallas–Fort Worth
+11,,,Chicago Dallas–Fort Worth,,,,,,

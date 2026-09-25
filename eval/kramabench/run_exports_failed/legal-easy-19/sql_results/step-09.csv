@@ -1,0 +1,23 @@
+row_label,reports_count,range_group
+$301 - $400,44982,numerator_in_1_500
+$401 - $500,46752,numerator_in_1_500
+$201 - $300,67064,numerator_in_1_500
+$101 - $200,114336,numerator_in_1_500
+$1 - $100,243174,numerator_in_1_500
+"$8,001 - $9,000",6372,outside_1_500
+"$7,001 - $8,000",8770,outside_1_500
+"$6,001 - $7,000",9348,outside_1_500
+"$5,001 - $6,000",12607,outside_1_500
+"$9,001 - $10,000",12828,outside_1_500
+$801 - $900,14019,outside_1_500
+$601 - $700,19271,outside_1_500
+$701 - $800,19664,outside_1_500
+"$4,001 - $5,000",22667,outside_1_500
+"$3,001 - $4,000",25466,outside_1_500
+$501 - $600,26702,outside_1_500
+"$901 - $1,000",28146,outside_1_500
+"$2,001 - $3,000",42845,outside_1_500
+"$1,001 - $2,000",97799,outside_1_500
+"More than $10,000",124708,outside_1_500
+Reports with $ Loss,987520,outside_1_500
+Number of Fraud Reports,2600678,outside_1_500

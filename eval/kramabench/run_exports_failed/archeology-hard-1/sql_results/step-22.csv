@@ -1,0 +1,3 @@
+earliest_bp,latest_bp,n_records,t_age,label,age_below,k_below,age_above,k_above,straddles_valid,k_interp_ppm
+6005,6412,14,6.005,last_recorded,5.97258,8095.80259847541,6.02331,8302.86581563865,true,8228.1304
+6005,6412,14,6.412,first_recorded,6.30197,8386.52236322501,6.43779,8484.93363939211,true,8466.2469

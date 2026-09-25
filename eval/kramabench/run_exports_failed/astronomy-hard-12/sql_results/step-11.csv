@@ -1,0 +1,14 @@
+table_schema,table_name
+main,0309geomag_forecast
+main,0310geomag_forecast
+main,0311geomag_forecast
+main,0312geomag_forecast
+main,0313geomag_forecast
+main,OMNI2
+main,SN_y_tot_V2_0
+main,Sat_Density
+main,goes_wu334_20160824_to_20161023
+main,goes_wu335_20160827_to_20161026
+main,space_track
+main,swarmb
+main,wu001_to_wu715_initial_states

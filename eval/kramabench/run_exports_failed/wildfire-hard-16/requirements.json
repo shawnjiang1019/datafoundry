@@ -1,0 +1,258 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "Produce a breakdown of fire causes by geographical region, restricted to fires whose start month is January, February, or March.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "Exclude fires with unknown, missing, or undetermined causes; only fires with known causes may enter the breakdown and the statistical test.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "Compute a chi-square statistic from the contingency table of geographical region versus fire cause category for January–March fires with known causes.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "Compute the p-value corresponding to the chi-square test on the same region-by-cause contingency table.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "Produce a breakdown of fire causes by geographical region, restricted to fires whose start month is January, February, or March.",
+      "acceptanceCriteria": [
+        "The breakdown is organized by geographical region, with cause categories distinguished within each region.",
+        "Only fires starting in January, February, or March are included in the breakdown.",
+        "All geographical regions with qualifying fires in the dataset are represented in the breakdown.",
+        "Cause counts in the breakdown are non-negative and their total equals the number of qualifying fires."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Produce a breakdown of fire causes by geographical region, restricted to fires whose start month is January, February, or March.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E5",
+        "E9"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "Exclude fires with unknown, missing, or undetermined causes; only fires with known causes may enter the breakdown and the statistical test.",
+      "acceptanceCriteria": [
+        "Records with unknown, missing, null, or undetermined cause values are excluded from the region-cause breakdown.",
+        "The same known-cause restriction applies to the contingency table used in the statistical test.",
+        "No excluded-cause records contribute to any reported count or statistic."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "Exclude fires with unknown, missing, or undetermined causes; only fires with known causes may enter the breakdown and the statistical test.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E6",
+        "E10",
+        "E13"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "Compute a chi-square statistic from the contingency table of geographical region versus fire cause category for January–March fires with known causes.",
+      "acceptanceCriteria": [
+        "The chi-square statistic is computed on the region-by-cause contingency table built from the filtered fires.",
+        "The reported statistic is a single non-negative finite number.",
+        "The statistic is consistent with the reported contingency table (same cells, same expected-frequency computation)."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Compute a chi-square statistic from the contingency table of geographical region versus fire cause category for January–March fires with known causes.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E7",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "Compute the p-value corresponding to the chi-square test on the same region-by-cause contingency table.",
+      "acceptanceCriteria": [
+        "The p-value is derived from the same chi-square test as the reported statistic, with matching degrees of freedom.",
+        "The p-value is a single number in the range 0 to 1 inclusive."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "Compute the p-value corresponding to the chi-square test on the same region-by-cause contingency table.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E8",
+        "E12"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.2.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.2.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.2.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.2.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.2.sqlConstraints.2.value: Invalid input; contracts.0.assertions.3.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.4.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.2.value: Invalid input; contracts.1.assertions.2.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.2.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+Histologic_type,n_rows,avg_age,n_age_nonnull,n_case_excluded
+Carcinosarcoma,3,73,1,3
+Clear cell,1,60,1,1
+Endometrioid,86,62.907,86,3
+Serous,14,68.0769,13,2
+,49,,0,0

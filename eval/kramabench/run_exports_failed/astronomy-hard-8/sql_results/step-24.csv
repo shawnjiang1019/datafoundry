@@ -1,0 +1,35 @@
+c
+#
+# Thermosphere neutral density and crosswind data (c) by
+#
+#   Delft University of Technology
+"#   Delft, The Netherlands"
+#
+#   Contact: Christian Siemes
+#   Email: c.siemes@tudelft.nl
+#
+# Thermosphere neutral density and crosswind data are licensed under
+# the Creative Commons Attribution 4.0 International (CC BY 4.0) License.
+#
+# A copy of the license is provided in the same directory as
+# the data files. The license text can also be found here:
+#   https://creativecommons.org/licenses/by/4.0/
+#   https://creativecommons.org/licenses/by/4.0/legalcode
+#
+# More information on the data is provided on the webpage:
+#   http://thermosphere.tudelft.nl
+#
+############################################################################
+#
+# Column  1:         Date (yyyy-mm-dd)
+# Column  2:         Time (hh:mm:ss.sss)
+# Column  3:         Time system: UTC or GPS (differs per mission)
+"# Column  4:  f10.3  Altitude (m), GRS80"
+"# Column  5:  f13.8  Geodetic longitude (deg), GRS80"
+"# Column  6:  f13.8  Geodetic latitude (deg), GRS80"
+# Column  7:   f6.3  Local solar time (h)
+# Column  8:  f13.8  Argument of latitude (deg)
+# Column  9:  e15.8  Density derived from GPS accelerations (kg/m3)
+"# Fortran style format string: (a27,1x,f10.3,1X,f13.8,1X,f13.8,1X,f6.3,1X,f13.8,1X,e15.8)"
+# Date/time                 alt        lon           lat           lst    arglat        dens_x         
+#                           m          deg           deg           h      deg           kg/m3          

@@ -1,0 +1,344 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "必须将分析范围内的火灾事件按扑救激进度划分为至少两组（更激进 vs 较不激进），作为后续组间比较的基础。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "counterfactual",
+      "description": "在比较不同扑救激进度分组的结局时，必须控制天气条件，使组间差异可归因于扑救激进度而非天气差异。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "比较更激进扑救组与较不激进组的火灾持续时间，回答'更激进扑救是否让火灾更快结束'。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "比较更激进扑救组与较不激进组受影响的建筑物数量，回答'更激进扑救是否使受影响建筑物更少'。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "基于 NOAA 数据集的分析样本应限于具备回答问题所需关键信息的火灾记录，缺失数据的处理方式必须明确。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "decision",
+      "description": "对两个研究问题各给出一个控制天气条件后的明确结论。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "必须将分析范围内的火灾事件按扑救激进度划分为至少两组（更激进 vs 较不激进），作为后续组间比较的基础。",
+      "acceptanceCriteria": [
+        "给出扑救激进度的可量化操作定义（业务层面，例如按扑救投入或行动强度分级），且该定义在结果中可见",
+        "每个纳入分析的火灾均被归入某一激进度分组，不存在未分组记录参与结论"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "必须将分析范围内的火灾事件按扑救激进度划分为至少两组（更激进 vs 较不激进），作为后续组间比较的基础。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E10"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R2",
+      "kind": "counterfactual",
+      "description": "在比较不同扑救激进度分组的结局时，必须控制天气条件，使组间差异可归因于扑救激进度而非天气差异。",
+      "acceptanceCriteria": [
+        "分析包含对天气条件的显式控制（如分层、匹配或协变量调整），控制方式在证据中可追溯",
+        "报告控制天气后的调整效应（方向与幅度）为数值形式，而非仅依据原始组间差异下结论"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "在比较不同扑救激进度分组的结局时，必须控制天气条件，使组间差异可归因于扑救激进度而非天气差异。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E4",
+        "E7",
+        "E11"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "比较更激进扑救组与较不激进组的火灾持续时间，回答'更激进扑救是否让火灾更快结束'。",
+      "acceptanceCriteria": [
+        "报告各组火灾持续时间（或等效时长指标）的对比数值（差值或比率）",
+        "给出方向性结论：更激进扑救是否对应更短的火灾持续时间",
+        "该对比基于控制天气后的调整结果"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "比较更激进扑救组与较不激进组的火灾持续时间，回答'更激进扑救是否让火灾更快结束'。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E8",
+        "E12"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "比较更激进扑救组与较不激进组受影响的建筑物数量，回答'更激进扑救是否使受影响建筑物更少'。",
+      "acceptanceCriteria": [
+        "报告各组受影响建筑物数量（或等效建筑物损失指标）的对比数值（差值或比率）",
+        "给出方向性结论：更激进扑救是否对应更少的受影响建筑物",
+        "该对比基于控制天气后的调整结果"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "比较更激进扑救组与较不激进组受影响的建筑物数量，回答'更激进扑救是否使受影响建筑物更少'。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E6",
+        "E9",
+        "E13"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "基于 NOAA 数据集的分析样本应限于具备回答问题所需关键信息的火灾记录，缺失数据的处理方式必须明确。",
+      "acceptanceCriteria": [
+        "纳入分析的火灾记录在扑救信息、天气信息、持续时间与建筑物影响方面具备可用数据，缺失处理规则有说明",
+        "有效分析样本量以数值报告"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "基于 NOAA 数据集的分析样本应限于具备回答问题所需关键信息的火灾记录，缺失数据的处理方式必须明确。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E3"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R6",
+      "kind": "decision",
+      "description": "对两个研究问题各给出一个控制天气条件后的明确结论。",
+      "acceptanceCriteria": [
+        "针对'更激进扑救是否使火灾更快结束'给出明确的是/否或方向性结论",
+        "针对'更激进扑救是否使受影响建筑物更少'给出明确的是/否或方向性结论"
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "对两个研究问题各给出一个控制天气条件后的明确结论。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "pending",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: Unexpected end of JSON input"
+    }
+  ]
+}

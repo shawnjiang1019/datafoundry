@@ -1,0 +1,14 @@
+yr,beach_type,violation,n
+2002,Fresh,false,446
+2002,Fresh,true,17
+2002,Marine,false,176
+2002,Marine,true,11
+2003,Fresh,no,5426
+2003,Fresh,yes,301
+2003,Marine,n/a,7
+2003,Marine,no,6605
+2003,Marine,yes,275
+2023,Fresh,false,7334
+2023,Fresh,true,433
+2023,Marine,false,7811
+2023,Marine,true,680

@@ -1,0 +1,15 @@
+idx,Histologic_type,Log2_variant_per_Mbp,Proteomics_Tumor_Normal
+S006,Serous,1.634715536,Tumor
+S009,Serous,1.691133088,Tumor
+S016,Serous,2.066555769,Tumor
+S041,Serous,1.277478143,Tumor
+S042,Serous,1.530342916,Tumor
+S043,Serous,0.580489024,Tumor
+S058,Serous,1.162461482,Tumor
+S071,Serous,1.121990524,Tumor
+S072,Serous,1.277478143,Tumor
+S096,Serous,1.258934249,Tumor
+S097,Serous,2.066555769,Tumor
+S102,Serous,1.576001633,Tumor
+S103,Serous,1.05907234,Tumor
+S104,Serous,,Tumor

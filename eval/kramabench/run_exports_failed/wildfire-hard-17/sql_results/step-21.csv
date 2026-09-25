@@ -1,0 +1,5 @@
+station_status,rows_cnt,distinct_stations,null_elev_rows,min_elev,max_elev
+A,2392,2353,1,-229,12120
+AU,1,0,0,5213,5213
+D,521,517,15,-45,11484
+R,51,46,0,2,9923

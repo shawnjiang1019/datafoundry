@@ -1,0 +1,2 @@
+min_fire_id,max_fire_id,min_station_id,max_station_id,min_wx_id,max_wx_id,min_elev,max_elev,null_elev,distinct_station_id
+20107,482106,16777528,19891205,16777533,19907847,-229,12120,16,2916

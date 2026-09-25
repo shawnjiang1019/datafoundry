@@ -1,0 +1,6 @@
+source_file,n,min_ts,max_ts,mean_density
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu570-20181001_to_20181004.csv,433,2018-10-01T00:00:00.000Z,2018-10-04T00:00:00.000Z,4.8450346420323345e+31
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu569-20180928_to_20181001.csv,1,2018-10-01T00:00:00.000Z,2018-10-01T00:00:00.000Z,1.443131112342187e-13
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu571-20181004_to_20181007.csv,433,2018-10-04T00:00:00.000Z,2018-10-07T00:00:00.000Z,3.4607390300230955e+31
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu572-20181007_to_20181010.csv,433,2018-10-07T00:00:00.000Z,2018-10-10T00:00:00.000Z,4.614318706697459e+30
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu573-20181010_to_20181013.csv,144,2018-10-10T00:00:00.000Z,2018-10-10T23:50:00.000Z,9.712500000000001e+31

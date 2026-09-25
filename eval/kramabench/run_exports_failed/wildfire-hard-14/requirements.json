@@ -1,0 +1,167 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算 2024 年内『按 EPA 标准判定为 generally unsafe 的空气质量天数占比』与『受火灾影响的土地面积』之间的相关系数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "『generally unsafe 空气质量天数』的判定依据必须符合 EPA 标准口径，且两个变量的度量口径与期间需一致、可由审计证据追溯。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算 2024 年内『按 EPA 标准判定为 generally unsafe 的空气质量天数占比』与『受火灾影响的土地面积』之间的相关系数。",
+      "acceptanceCriteria": [
+        "输出为单一相关系数值，反映两个变量之间的相关方向与强度",
+        "两个变量均基于 2024 年的业务时间范围",
+        "最终相关系数四舍五入保留 2 位小数"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算 2024 年内『按 EPA 标准判定为 generally unsafe 的空气质量天数占比』与『受火灾影响的土地面积』之间的相关系数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q5",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E6",
+        "E7",
+        "E10",
+        "E12",
+        "E14",
+        "E16",
+        "E18"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "『generally unsafe 空气质量天数』的判定依据必须符合 EPA 标准口径，且两个变量的度量口径与期间需一致、可由审计证据追溯。",
+      "acceptanceCriteria": [
+        "不安全空气质量天数的判定依据 EPA 标准/类别定义，而非任意自定义阈值",
+        "天数占比的分母口径为相应期间的天数总量，口径可在证据中验证",
+        "空气质量占比与受火灾影响土地面积使用相同的期间（2024 年）数据，口径一致"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "『generally unsafe 空气质量天数』的判定依据必须符合 EPA 标准口径，且两个变量的度量口径与期间需一致、可由审计证据追溯。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q19"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E5",
+        "E8",
+        "E9",
+        "E11",
+        "E13",
+        "E15",
+        "E17",
+        "E19"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    }
+  ]
+}

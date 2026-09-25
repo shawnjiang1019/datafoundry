@@ -1,0 +1,240 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute the average elevation of the weather stations in the NOAA dataset, expressed in feet.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The average covers only the weather stations used for fire site monitoring.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "Elevation inputs to the average must be valid and consistently handled.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The final answer must resolve the question as a reproducible single-value result in feet for the fire-monitoring station population.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute the average elevation of the weather stations in the NOAA dataset, expressed in feet.",
+      "acceptanceCriteria": [
+        "The result is a single numeric value equal to the arithmetic mean of the elevation values of the in-scope weather stations.",
+        "Elevation is expressed in feet; if source elevation is recorded in another unit (e.g., meters), values are converted to feet before averaging."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Compute the average elevation of the weather stations in the NOAA dataset, expressed in feet.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E2"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The average covers only the weather stations used for fire site monitoring.",
+      "acceptanceCriteria": [
+        "Only weather stations associated with fire site monitoring are included in the population being averaged.",
+        "Weather stations not used for fire site monitoring are excluded from the calculation."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "The average covers only the weather stations used for fire site monitoring.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E4",
+        "E6",
+        "E8"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "Elevation inputs to the average must be valid and consistently handled.",
+      "acceptanceCriteria": [
+        "Stations with missing or null elevation are excluded from the average, or handled by one explicitly stated and consistent rule.",
+        "Included elevation values fall within a physically plausible range for weather station elevations when expressed in feet."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Elevation inputs to the average must be valid and consistently handled.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E5",
+        "E7",
+        "E9"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The final answer must resolve the question as a reproducible single-value result in feet for the fire-monitoring station population.",
+      "acceptanceCriteria": [
+        "The answer reports exactly one average elevation value in feet for the fire site monitoring stations.",
+        "The reported value is reproducible when the same in-scope station set and averaging rule are reapplied."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "The final answer must resolve the question as a reproducible single-value result in feet for the fire-monitoring station population.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "queried",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q7"
+      ],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.value: Invalid input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.value: Invalid input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.value: Invalid input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.value: Invalid input; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.7.value: Invalid input"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+﻿step,created_at,status,rows,elapsed_ms,error,sql,audit_log_id
+5,2026-09-21T08:35:42.660Z,blocked,,0,Dangerous keyword blocked: REPLACE.,"WITH t AS (
+  SELECT
+    ""Identity Theft Reports by Type"" AS theft_type,
+    ""column1"" AS theft_subtype,
+    TRY_CAST(REPLACE(""column2"", ',', '') AS BIGINT) AS reports
+  FROM ""2024_CSN_Identity_Theft_Reports_by_Type""
+  WHERE ""Identity Theft Reports by Type"" IS NOT NULL
+    AND ""Identity Theft Reports by Type"" <> 'Theft Type'
+    AND ""column2"" IS NOT NULL
+    AND TRY_CAST(REPLACE(""column2"", ',', '') AS BIGINT) IS NOT NULL
+)
+SELECT
+  SUM(reports) AS total_reports,
+  SUM(CASE WHEN theft_type = 'Bank Account' AND theft_subtype = 'New Accounts' THEN reports ELSE 0 END) AS bank_new_accounts,
+  SUM(CASE WHEN theft_type = 'Back Account' THEN 1 ELSE 0 END) AS rows_literal_back_account,
+  ROUND(SUM(CASE WHEN theft_type = 'Bank Account' AND theft_subtype = 'New Accounts' THEN reports ELSE 0 END) * 1.0 / SUM(reports), 4) AS proportion_4dp
+FROM t",5afa82aa-5f2d-4483-b7d1-bd99b6af7231
+6,2026-09-21T08:35:49.038Z,succeeded,1,20,,"WITH t AS ( SELECT ""Identity Theft Reports by Type"" AS theft_type, ""column1"" AS theft_subtype, TRY_CAST(translate(""column2"", ',', '') AS BIGINT) AS reports FROM ""2024_CSN_Identity_Theft_Reports_by_Type"" WHERE ""Identity Theft Reports by Type"" IS NOT NULL AND ""Identity Theft Reports by Type"" <> 'Theft Type' AND ""column2"" IS NOT NULL ) SELECT SUM(reports) AS total_reports, SUM(CASE WHEN theft_type = 'Bank Account' AND theft_subtype = 'New Accounts' THEN reports ELSE 0 END) AS bank_new_accounts, ROUND(SUM(CASE WHEN theft_type = 'Bank Account' AND theft_subtype = 'New Accounts' THEN reports ELSE 0 END) * 1.0 / SUM(reports), 4) AS proportion_4dp FROM t",3846a505-2639-4f89-be32-cc0ddf540a18

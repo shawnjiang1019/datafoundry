@@ -1,0 +1,176 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "将分析范围内的基因划分为两个互斥组：CBX3 基因组，以及不属于 CBX3 的其余基因组。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "分别计算 CBX3 基因组的平均 FDR 与其余基因组的平均 FDR。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "计算两组平均 FDR 之间的差值作为最终答案：CBX3 组平均 FDR 与其余组平均 FDR 的差。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "将分析范围内的基因划分为两个互斥组：CBX3 基因组，以及不属于 CBX3 的其余基因组。",
+      "acceptanceCriteria": [
+        "每个基因被且仅被归入两组之一：属于 CBX3 的基因，或不属于 CBX3 的其余基因",
+        "「其余基因」组必须完整排除所有 CBX3 基因，两组之间不得重叠，且覆盖范围内全部基因，无遗漏"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "将分析范围内的基因划分为两个互斥组：CBX3 基因组，以及不属于 CBX3 的其余基因组。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3"
+      ],
+      "evidenceBindingIds": [
+        "E1"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "分别计算 CBX3 基因组的平均 FDR 与其余基因组的平均 FDR。",
+      "acceptanceCriteria": [
+        "每组平均 FDR 为该组内基因 FDR 值的均值（average），需分别得到 CBX3 组与其余组各自的平均 FDR 以供核对",
+        "均值的计算范围必须覆盖对应组内的全部基因（FDR 非空的记录），不得遗漏或重复计入"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "分别计算 CBX3 基因组的平均 FDR 与其余基因组的平均 FDR。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E2"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "计算两组平均 FDR 之间的差值作为最终答案：CBX3 组平均 FDR 与其余组平均 FDR 的差。",
+      "acceptanceCriteria": [
+        "最终答案必须等于两个组平均 FDR 相减的结果（按题意顺序为 CBX3 组减去其余组），且可由前一步得到的两个平均 FDR 值独立复核",
+        "答案表述的是差值（difference）本身，而非比值、比率或其他派生量"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "计算两组平均 FDR 之间的差值作为最终答案：CBX3 组平均 FDR 与其余组平均 FDR 的差。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E3"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 2039 (line 1 column 2040)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 2039 (line 1 column 2040)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unterminated string in JSON at position 2039 (line 1 column 2040)"
+    }
+  ]
+}

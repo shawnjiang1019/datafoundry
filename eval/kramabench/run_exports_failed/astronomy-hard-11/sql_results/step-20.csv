@@ -1,0 +1,41 @@
+rownum,c0
+1,#
+2,# Thermosphere neutral density and crosswind data (c) by
+3,#
+4,#   Delft University of Technology
+5,"#   Delft, The Netherlands"
+6,#
+7,#   Contact: Christian Siemes
+8,#   Email: c.siemes@tudelft.nl
+9,#
+10,# Thermosphere neutral density and crosswind data are licensed under
+11,# the Creative Commons Attribution 4.0 International (CC BY 4.0) License.
+12,#
+13,# A copy of the license is provided in the same directory as
+14,# the data files. The license text can also be found here:
+15,#   https://creativecommons.org/licenses/by/4.0/
+16,#   https://creativecommons.org/licenses/by/4.0/legalcode
+17,#
+18,# More information on the data is provided on the webpage:
+19,#   http://thermosphere.tudelft.nl
+20,#
+21,############################################################################
+22,#
+23,# Column  1:         Date (yyyy-mm-dd)
+24,# Column  2:         Time (hh:mm:ss.sss)
+25,# Column  3:         Time system: UTC or GPS (differs per mission)
+26,"# Column  4:  f10.3  Altitude (m), GRS80"
+27,"# Column  5:  f13.8  Geodetic longitude (deg), GRS80"
+28,"# Column  6:  f13.8  Geodetic latitude (deg), GRS80"
+29,# Column  7:   f6.3  Local solar time (h)
+30,# Column  8:  f13.8  Argument of latitude (deg)
+31,# Column  9:  e15.8  Density derived from GPS accelerations (kg/m3)
+32,"# Fortran style format string: (a27,1x,f10.3,1X,f13.8,1X,f13.8,1X,f6.3,1X,f13.8,1X,e15.8)"
+33,# Date/time                 alt        lon           lat           lst    arglat        dens_x         
+34,#                           m          deg           deg           h      deg           kg/m3          
+35,2024-01-01 00:00:00.000 UTC 511948.313  -27.86526919   10.83974851 22.091  169.25941017  0.30634757E-12
+36,2024-01-01 00:00:30.000 UTC 512048.665  -27.91387525    8.93183000 22.096  171.15770342  0.30168190E-12
+37,2024-01-01 00:01:00.000 UTC 512188.565  -27.96327772    7.02381509 22.101  173.05583761  0.30073713E-12
+38,2024-01-01 00:01:30.000 UTC 512368.395  -28.01330003    5.11576023 22.106  174.95381028  0.29980991E-12
+39,2024-01-01 00:02:00.000 UTC 512588.365  -28.06377121    3.20772258 22.111  176.85161901  0.29900512E-12
+40,2024-01-01 00:02:30.000 UTC 512848.513  -28.11452429    1.29975966 22.116  178.74926152  0.29831791E-12

@@ -1,0 +1,12 @@
+source_file,n,min_ts,max_ts
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu680-20190830_to_20190902.csv,1,2019-09-02T00:00:00.000Z,2019-09-02T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu681-20190902_to_20190905.csv,433,2019-09-02T00:00:00.000Z,2019-09-05T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu682-20190905_to_20190908.csv,433,2019-09-05T00:00:00.000Z,2019-09-08T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu683-20190908_to_20190911.csv,433,2019-09-08T00:00:00.000Z,2019-09-11T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu684-20190911_to_20190914.csv,433,2019-09-11T00:00:00.000Z,2019-09-14T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu685-20190914_to_20190917.csv,433,2019-09-14T00:00:00.000Z,2019-09-17T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu686-20190917_to_20190920.csv,433,2019-09-17T00:00:00.000Z,2019-09-20T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu687-20190920_to_20190923.csv,433,2019-09-20T00:00:00.000Z,2019-09-23T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu688-20190923_to_20190926.csv,433,2019-09-23T00:00:00.000Z,2019-09-26T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu689-20190926_to_20190929.csv,433,2019-09-26T00:00:00.000Z,2019-09-29T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu690-20190929_to_20191002.csv,144,2019-09-29T00:00:00.000Z,2019-09-29T23:50:00.000Z

@@ -257,6 +257,48 @@ def render_full_event(kind: str, payload: dict) -> str:
     return f"{head}\n\n<details><summary>raw event</summary>\n\n{fenced(raw, 'json')}\n\n</details>"
 
 
+def agent_steps(events) -> tuple[list[dict], list[dict]]:
+    """The agent's steps in order, numbered exactly as render_trace numbers them.
+
+    Returns (steps, requirements). A step is an assistant message or a tool call;
+    protocol events are not steps, and empty messages are skipped, as in the trace.
+    Tool steps carry the raw argument string and the raw result content.
+    """
+    args_by_id: dict[str, str] = defaultdict(str)
+    result_by_id: dict[str, object] = {}
+    for _, kind, payload in events:
+        if kind == "TOOL_CALL_ARGS":
+            args_by_id[payload.get("toolCallId")] += payload.get("delta", "")
+        elif kind == "TOOL_CALL_RESULT":
+            result_by_id[payload.get("toolCallId")] = payload.get("content")
+    order, messages, first_seq, requirements = [], defaultdict(str), {}, []
+    for seq, kind, payload in events:
+        if kind == "TEXT_MESSAGE_CHUNK" and payload.get("role", "assistant") == "assistant":
+            mid = payload.get("messageId", "")
+            if mid not in messages:
+                order.append(("message", mid))
+                first_seq[mid] = seq
+            messages[mid] += payload.get("delta", "")
+        elif kind == "TOOL_CALL_START":
+            order.append(("call", payload["toolCallId"], payload.get("toolCallName"), seq))
+        elif kind == "CUSTOM" and payload.get("name") == "analysis.requirements.extracted":
+            requirements = ((payload.get("value") or {}).get("payload") or {}).get("requirements", [])
+    steps, number = [], 0
+    for item in order:
+        if item[0] == "message":
+            text = messages[item[1]].strip()
+            if not text:
+                continue
+            number += 1
+            steps.append({"step": number, "kind": "agent", "seq": first_seq[item[1]], "message": text})
+        else:
+            _, call_id, name, seq = item
+            number += 1
+            steps.append({"step": number, "kind": "tool", "seq": seq, "tool": name, "call_id": call_id,
+                          "args": args_by_id.get(call_id, ""), "result": result_by_id.get(call_id)})
+    return steps, requirements
+
+
 def render_trace(db, task: dict, reason: dict, cache_path, cached, run, events, how) -> tuple[str, dict]:
     run_id, session_id, status, started, finished, model, error_message = run
     requirements, items = [], []

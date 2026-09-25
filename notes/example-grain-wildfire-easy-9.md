@@ -68,7 +68,7 @@ R1 defines the quantity as a *number of deaths*, which is a total. R2 then compa
 - Step 6: 6,658 fire records, humidity from 3 to 86, years 2002–2016.
 - Step 7: `retrieve_knowledge` fails because no knowledge base is enabled.
 - Step 8: deaths by cause add up to 121 in total.
-- Steps 4–5 and 9–12 fail with `Do not know how to serialize a BigInt` and `Connection was already closed`. These are infrastructure defects that have since been fixed.
+- Steps 4–5 and 9–12 fail with `Do not know how to serialize a BigInt` and `Connection was already closed`. Both are infrastructure defects. The closed-connection one has since been fixed. The BigInt one is still open: `preview_table` skips the gateway's BigInt conversion, which `run_sql_readonly` applies.
 - Step 14: `list_data_sources` is not allowed in the execution phase.
 
 None of these failures affected the answer.

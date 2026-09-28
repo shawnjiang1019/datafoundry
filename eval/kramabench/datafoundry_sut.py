@@ -40,6 +40,18 @@ try:
 except ImportError:
     duckdb = None
 
+# The ingest package ships alongside this SUT file (eval/kramabench/ds_ingest,
+# and copied to KramaBench/systems/ with the SUT). Make it importable from the
+# direct smoke path and from inside the harness.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from ds_ingest import load_by_extension
+    from ds_ingest.registry import DEFAULT_TABLE_NAME, SUPPORTED_EXTENSIONS
+except ImportError:  # the SUT still imports standalone for --smoke without the package
+    load_by_extension = None
+    DEFAULT_TABLE_NAME = {}
+    SUPPORTED_EXTENSIONS = frozenset()
+
 # KramaBench's base class when run inside the harness; a shim for standalone --smoke.
 try:
     from benchmark.benchmark_api import System
@@ -246,6 +258,12 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 made += _load_workbook(con, path, name)  # one table per sheet; sheet 1 is often a README
             elif ext in (".html", ".htm"):
                 made += _load_html_tables(con, path, name)
+            elif load_by_extension is not None and ext in SUPPORTED_EXTENSIONS:
+                outcome = _load_special(con, path, rel)
+                if outcome < 0:
+                    skipped.append(f"{rel} (no data rows parsed)")
+                else:
+                    made += outcome
             else:
                 skipped.append(rel)
         except Exception as e:  # noqa: BLE001 — a load failure is also a finding
@@ -255,6 +273,44 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
     for s in skipped[:50]:
         print("   skip:", s)
     return out_path
+
+
+def _load_special(con, path: str, rel: str) -> int:
+    """Ingest a file type with no native DuckDB reader (tle/sp3/lst/dat/npz/cdf).
+
+    Same-family files (OMNI2 .dat, TLE, POD .sp3) append to one table keyed by
+    the extension's default name; ``source_file`` is stamped with the relative
+    path so SQL can isolate a specific year/satellite.  Files that parse to no
+    rows (e.g. a non-OMNI .dat) return -1 and are recorded as skipped rather
+    than creating an empty table.
+    """
+    suffix = pathlib.Path(path).suffix.lower()
+    rows = load_by_extension(path)
+    if not rows:
+        return -1
+    table = _special_table_name(suffix, rel)
+    for row in rows:
+        row["source_file"] = rel
+    import pandas as pd
+
+    frame = pd.DataFrame(rows)
+    con.register("_special", frame)
+    identifier = f'"{_safe_ident(table)}"'
+    existing = {t[0].lower() for t in con.execute(
+        "select table_name from information_schema.tables where table_schema='main'").fetchall()}
+    if table.lower() in existing:
+        con.execute(f"INSERT INTO {identifier} SELECT * FROM _special")
+    else:
+        con.execute(f"CREATE TABLE {identifier} AS SELECT * FROM _special")
+    con.unregister("_special")
+    return 1
+
+
+def _special_table_name(suffix: str, rel: str) -> str:
+    """Table name for a ds_ingest file: stem for one-offs, fixed family name otherwise."""
+    if suffix in (".npz", ".cdf"):
+        return _safe_ident(pathlib.Path(rel).stem)
+    return DEFAULT_TABLE_NAME.get(suffix, "special")
 
 
 FAMILY_MIN_FILES = 3

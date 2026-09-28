@@ -7,6 +7,7 @@ KramaBench runs the loop and does the scoring. DataFoundry answers each task thr
 | File | Purpose |
 | --- | --- |
 | `datafoundry_sut.py` | KramaBench `System` implementation backed by DataFoundry (copied into KramaBench) |
+| `ds_ingest/` | Parsers for file types DuckDB can't read natively: TLE, SP3, OMNI2 `.lst`/`.dat`, NASA `.cdf`, numpy `.npz` (copied into KramaBench with the SUT) |
 | `grade_cached.py` | Offline grader for saved answers. Needs no DataFoundry calls and no API key. |
 
 ## How the harness works
@@ -27,6 +28,7 @@ For each domain (`process_dataset`):
    | Windows-1252 transcoding | DuckDB's latin-1 reader rejects curly quotes and en dashes in 0x80–0x9F |
    | Single-column sheets read as headerless lists | Otherwise the first value becomes the column name and leaves the data |
    | Parent folder prefixed on table-name collisions | `Fraud data/Alabama.csv` and `Identity Theft data/Alabama.csv` would otherwise overwrite each other |
+   | **Special file-type loaders (`ds_ingest/`)** | `.tle` → TLE table (satellite + epoch + orbital elements per TLE); `.sp3` → `pod_sp3` (sat, epoch, x/y/z km, clock per position record); OMNI2 `.lst`/`.dat` → `omni_lst` (parameter series) and `omni2` (55 named fixed-width columns, incl. `Kp`, `ap`, `f10.7`, `flow_pressure`); `.npz` → long geopotential grid table; `.cdf` → timestamp + value columns (needs `cdflib`). Each family keeps a `source_file` column and same-family files union into one table | Without these, the astronomy tasks that depend on TLE/SP3/CDF/OMNI-2024 sources scored 0 because the required table never existed in the lake |
 
    Duplicate column names get pandas/DuckDB suffixes (`Age_ky.1`, `Enterococcus_1`), which match the names the reference pipelines use.
 
@@ -102,8 +104,9 @@ conda activate kbench
 Don't run `pip install .`. KramaBench's `pyproject.toml` fails on a setuptools layout error, and the harness runs in place anyway. Install the dependencies directly:
 
 ```powershell
-pip install "pandas>=2.2.3,<3" "numpy>=1.26,<2.2" "huggingface-hub>=0.29.0" requests rich python-dotenv pillow jinja2 pyyaml typeguard rouge-score beautifulsoup4 wikipedia-api youtube-transcript-api "openai==1.72.0" untruncate-json duckdb openpyxl
+pip install "pandas>=2.2.3,<3" "numpy>=1.26,<2.2" "huggingface-hub>=0.29.0" requests rich python-dotenv pillow jinja2 pyyaml typeguard rouge-score beautifulsoup4 wikipedia-api youtube-transcript-api "openai==1.72.0" untruncate-json duckdb openpyxl cdflib
 ```
+`cdflib` is only needed to ingest NASA `.cdf` files (astronomy-hard-8); the other new loaders (TLE/SP3/OMNI/`.npz`) are stdlib + pandas.
 
 Download the data (about 650 MB for all six domains; astronomy alone is about 490 MB). To download selected domains only, add an `allow_patterns` argument to `snapshot_download`.
 
@@ -117,7 +120,9 @@ The harness expects the files at `data/<domain>/input/`.
 
 ```powershell
 copy <datafoundry>\eval\kramabench\datafoundry_sut.py systems\datafoundry_sut.py
+copy <datafoundry>\eval\kramabench\ds_ingest systems\ds_ingest /Recurse
 ```
+(`ds_ingest` must sit next to the SUT — `datafoundry_sut.py` imports it from its own directory.)
 
 Replace the baseline imports in `systems/__init__.py` with the following. This registers the SUT and makes the bundled baselines optional, because they need `anthropic`, `smolagents`, and an OpenAI key just to be imported:
 
@@ -272,9 +277,10 @@ Get-ChildItem tasks\<domain>_task_* | Group-Object { $_.Name -replace '_\d{8}_\d
 
 ## Known limitations
 
-- **File types not ingested:** `.html`, `.gpkg` (geospatial), `.py`, `.sp3`, `.HDR`, `.tle`. Tasks that depend only on these can't be answered. Some domains are also missing source files that their tasks need (wildfire has no `ZHVI.csv` or `WeatherEvents_*.csv`).
+- **File types not ingested:** `.html`, `.gpkg` (geospatial), `.py`, `.HDR`. `.sp3`, `.tle`, `.lst`, `.dat`, `.npz`, and `.cdf` are now handled by `ds_ingest/` (`.cdf` only with `cdflib` installed). Some domains are still missing source files their tasks need (wildfire has no `ZHVI.csv` or `WeatherEvents_*.csv`).
+- **Columns-per-table truncation:** `inspect_schema` caps at `DATAFOUNDRY_SCHEMA_MAX_COLUMNS_PER_TABLE` (default 250; was 50) columns per table — a wide abundance matrix (`idx + S001..S153`) whose tail columns fall outside the cap is invisible to the agent, so raise it for wide lakes or check whether a late-column-only query is needed.
 - **Multi-level headers are flattened:** only the header row itself is used, so a qualifying row above it (e.g. the station names over each `Enterococcus` column in the beach datasheets) is dropped.
-- **SQL only:** these runs had Python execution off (`command_execution_enabled: false`), so statistics had to be computed in SQL.
+- **SQL only:** these runs had Python execution off (`command_execution_enabled: false`), so statistics had to be computed in SQL. Note astronomy-hard-11 additionally needs NRLMSISE-00 *model* execution — ingesting its OMNI 2023/2024 sources is necessary but not sufficient for that task.
 - **One skill:** only the built-in `data-analysis` skill is available.
 - **Full-lake mode only:** the SUT ignores KramaBench's `subset_files` and registers the whole lake, so `--use_truth_subset` has no effect yet.
 - **Schema truncation:** on large lakes (legal has 131 tables), DataFoundry's context budget omits tables from `inspect_schema`, and the agent has to search for them itself.

@@ -5,7 +5,7 @@
 Writes kramabench-failure-impact.png next to the CSV. Where plot_failure_reasons.py
 counts tasks, this counts points, which reorders the picture: partial credit means
 "Measure definition" holds 2 tasks but costs 0.59 points, while "Grain & entity key"
-holds 13 and costs 12.25.
+holds 14 and costs 13.25.
 
 The right panel is an upper bound, not a forecast: it shows the score if a whole
 class were resolved perfectly, in the order the classes are cheapest to attack.
@@ -26,7 +26,7 @@ from matplotlib.patches import Patch  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 TOTAL_TASKS = 104
-SCORE = 61.60
+SCORE = 67.60  # 64.60 scored locally + 3 LLM-judge answers hand-graded correct (astronomy easy-4, easy-6, hard-8)
 
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
@@ -41,10 +41,10 @@ OWNER_COLOUR = {
     "Agent analysis": "#2a78d6",
     "Eval harness": "#f2913f",
     "Benchmark": "#0e7a57",
-    "Infrastructure": "#4a3aa7",
+    "Platform & infrastructure": "#4a3aa7",
     "Pending": "#a8a6a0",
 }
-OWNER_ORDER = ["Agent analysis", "Eval harness", "Benchmark", "Infrastructure", "Pending"]
+OWNER_ORDER = ["Agent analysis", "Eval harness", "Benchmark", "Platform & infrastructure", "Pending"]
 
 
 def style_axes(axes) -> None:
@@ -142,7 +142,8 @@ def main() -> None:
                 fontsize=17, color=INK, fontweight="semibold")
     figure.text(0.018, 0.903,
                 f"DataFoundry with glm-5.3-flash, scoring {SCORE:.2f}/{TOTAL_TASKS} ({100 * SCORE / TOTAL_TASKS:.1f}%). "
-                "All 47 shortfalls diagnosed from their traces. Counted in points, not tasks, because",
+                f"{len(rows)} shortfalls, {sum(1 for r in rows if r['owner'] != 'Pending')} diagnosed from their traces. "
+                "Counted in points, not tasks, because",
                 fontsize=9.5, color=INK_SECOND)
     figure.text(0.018, 0.867,
                 "partial credit means a near-miss costs a fraction of a point. Right panel is an upper bound, not a forecast.",

@@ -143,6 +143,7 @@ const DATASOURCE_UPLOAD_EXTENSIONS = new Set([
   ".xlsx"
 ]);
 const DEFAULT_DATALINK_API_TIMEOUT_MS = 30_000;
+const DEFAULT_DTRAIL_API_TIMEOUT_MS = 30_000;
 
 /** Handle one configuration REST request, or return undefined for a non-config path. */
 export const handleConfigApiRequest = async (
@@ -182,6 +183,9 @@ const routeConfigRequest = async (
   }
   if (root === "datalink" || root === "datagraph") {
     return handleDatalinkRequest(request, segments.slice(1), context);
+  }
+  if (root === "dtrail") {
+    return handleDtrailRequest(request, segments.slice(1), context);
   }
   if (root === "workspace-config") {
     if (request.method === "GET") {
@@ -990,6 +994,225 @@ const normalizeDatalinkGraph = (result: DatalinkApiCallResult): Record<string, u
     throw new Error("DATALINK_GRAPH_INVALID");
   }
   return { nodes, edges };
+};
+
+const handleDtrailRequest = async (
+  request: IncomingMessage,
+  segments: string[],
+  context: Required<ConfigApiContext>
+): Promise<ConfigApiResponse> => {
+  const target = segments[0];
+  const action = segments[1];
+  if (target === "servers" && request.method === "GET") {
+    return ok({ servers: listDtrailServers(context) });
+  }
+  if (!target) {
+    return methodNotAllowed();
+  }
+
+  const serverId = decodeURIComponent(target);
+  const resource = getDtrailServer(context, serverId);
+  if (action === "healthz" && request.method === "GET") {
+    const result = await callDtrailApi(resource, context, "/healthz");
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  if (action === "config" && request.method === "GET") {
+    const result = await callDtrailApi(resource, context, "/config");
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  if (action === "runs" && request.method === "POST") {
+    const body = await readJsonBody(request);
+    const result = await callDtrailApi(resource, context, "/runs", body);
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  if (action === "runs" && request.method === "GET" && !segments[3]) {
+    const runId = segments[2] ? decodeURIComponent(segments[2]) : "";
+    if (!runId) {
+      throw new Error("DTRAIL_RUN_ID_REQUIRED");
+    }
+    const result = await callDtrailApi(resource, context, `/runs/${encodeURIComponent(runId)}`);
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  if (action === "runs" && segments[3] === "trail" && request.method === "GET") {
+    const runId = segments[2] ? decodeURIComponent(segments[2]) : "";
+    if (!runId) {
+      throw new Error("DTRAIL_RUN_ID_REQUIRED");
+    }
+    const trailPath = segments[4] === "validate"
+      ? `/runs/${encodeURIComponent(runId)}/trail/validate`
+      : `/runs/${encodeURIComponent(runId)}/trail`;
+    const result = await callDtrailApi(resource, context, trailPath);
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  if (action === "runs" && segments[3] === "artifacts" && request.method === "GET") {
+    const runId = segments[2] ? decodeURIComponent(segments[2]) : "";
+    const artifactName = segments[4] ? decodeURIComponent(segments[4]) : "";
+    if (!runId) {
+      throw new Error("DTRAIL_RUN_ID_REQUIRED");
+    }
+    if (!artifactName) {
+      throw new Error("DTRAIL_ARTIFACT_NAME_REQUIRED");
+    }
+    const result = await callDtrailApi(
+      resource,
+      context,
+      `/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifactName)}`
+    );
+    return ok({ result: result.data, server: dtrailServerDto(resource) });
+  }
+  return methodNotAllowed();
+};
+
+type DtrailApiCallResult = {
+  data: unknown;
+  text: string;
+};
+
+const listDtrailServers = (context: Required<ConfigApiContext>): Record<string, unknown>[] =>
+  context.metadataStore.configResources.list({
+    workspace_id: context.workspaceId,
+    user_id: context.userId,
+    kind: "mcp-server"
+  }).filter(isDtrailServer).map(dtrailServerDto);
+
+const getDtrailServer = (
+  context: Required<ConfigApiContext>,
+  serverId: string
+): ConfigResourceRecord => {
+  const resource = context.metadataStore.configResources.get({
+    id: serverId,
+    workspace_id: context.workspaceId,
+    user_id: context.userId,
+    kind: "mcp-server"
+  });
+  if (!isDtrailServer(resource)) {
+    throw new Error(`DTRAIL_SERVER_NOT_FOUND:${serverId}`);
+  }
+  return resource;
+};
+
+const isDtrailServer = (resource: ConfigResourceRecord): boolean => {
+  const tools = dtrailToolManifest(resource);
+  if (tools.some((tool) => isDtrailManifestToolName(tool.name))) {
+    return true;
+  }
+  const name = resource.name.toLowerCase();
+  const id = resource.id.toLowerCase();
+  return name.includes("dtrail") || id.includes("dtrail");
+};
+
+const isDtrailManifestToolName = (toolName: string): boolean =>
+  toolName.startsWith("dtrail_");
+
+const dtrailServerDto = (resource: ConfigResourceRecord): Record<string, unknown> => {
+  const tools = dtrailToolManifest(resource);
+  return {
+    id: resource.id,
+    name: resource.name,
+    description: resource.description ?? "",
+    healthStatus: resource.status,
+    serverUrl: stringValue(resource.payload.serverUrl) ?? stringValue(resource.payload.url) ?? "",
+    apiUrl: stringValue(resource.payload.apiUrl) ?? "",
+    transport: stringValue(resource.payload.transport) ?? "streamable-http",
+    toolCount: tools.length,
+    toolNames: tools.map((tool) => tool.name),
+    updatedAt: resource.updated_at
+  };
+};
+
+const dtrailToolManifest = (resource: ConfigResourceRecord): Array<{ name: string }> => {
+  const manifest = arrayValue(resource.payload.toolManifest);
+  if (!manifest) {
+    return [];
+  }
+  return manifest.flatMap((tool) => {
+    const name = isRecord(tool) ? stringValue(tool.name) : undefined;
+    return name ? [{ name }] : [];
+  });
+};
+
+const callDtrailApi = async (
+  resource: ConfigResourceRecord,
+  context: Required<ConfigApiContext>,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<DtrailApiCallResult> => {
+  const url = dtrailApiEndpoint(resource, path);
+  const headers = new Headers(dtrailMcpHeaders(resource, context));
+  headers.set("Accept", "application/json");
+  if (body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+  const timeoutMs = numberValue(resource.payload.timeoutMs) ?? DEFAULT_DTRAIL_API_TIMEOUT_MS;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+  } catch (error) {
+    throw new Error(`DTRAIL_API_REQUEST_FAILED:${error instanceof Error ? error.message : String(error)}`);
+  }
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`DTRAIL_API_FAILED:${response.status}:${text}`);
+  }
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    return { data: text, text };
+  }
+  try {
+    const data = text ? JSON.parse(text) : {};
+    return { data, text: dtrailApiResponseText(data) };
+  } catch {
+    throw new Error("DTRAIL_API_INVALID_RESPONSE");
+  }
+};
+
+const dtrailApiEndpoint = (resource: ConfigResourceRecord, path: string): string => {
+  const rawUrl = stringValue(resource.payload.apiUrl);
+  if (!rawUrl) {
+    throw new Error("DTRAIL_API_URL_REQUIRED");
+  }
+  let baseUrl: URL;
+  try {
+    baseUrl = new URL(rawUrl);
+  } catch {
+    throw new Error("DTRAIL_API_URL_INVALID");
+  }
+  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+    throw new Error("DTRAIL_API_URL_INVALID");
+  }
+  const normalizedBase = baseUrl.href.endsWith("/") ? baseUrl.href : `${baseUrl.href}/`;
+  return new URL(path.replace(/^\/+/, ""), normalizedBase).toString();
+};
+
+const dtrailMcpHeaders = (
+  resource: ConfigResourceRecord,
+  context: Required<ConfigApiContext>
+): Record<string, string> | undefined => {
+  const secret = resource.secret_ref
+    ? context.metadataStore.secrets.get({
+        ref: resource.secret_ref,
+        workspace_id: context.workspaceId,
+        user_id: context.userId
+      })
+    : {};
+  const configured = recordStringMapValue(resource.payload.headers) ?? recordStringMapValue(secret.headers);
+  const token = stringValue(secret.token) ?? stringValue(secret.apiKey);
+  if ((stringValue(resource.payload.authType) ?? "none") === "bearer" && token) {
+    return { ...configured, Authorization: `Bearer ${token}` };
+  }
+  return configured;
+};
+
+const dtrailApiResponseText = (data: unknown): string => {
+  if (typeof data === "string") {
+    return data;
+  }
+  const result = stringValue(recordValue(data)?.result);
+  return result ?? JSON.stringify(data);
 };
 
 const saveDatasource = async (
@@ -4150,6 +4373,13 @@ const mcpToolAllowlistCandidates = (toolName: string): string[] => {
   }
   if (toolName === "datalink_explore" || toolName === "datagraph_explore") {
     return ["datalink_explore", "datagraph_explore"];
+  }
+  if (
+    toolName === "dtrail_plan_verify"
+    || toolName === "dtrail_trail_read"
+    || toolName === "dtrail_candidate_list"
+  ) {
+    return ["dtrail_plan_verify", "dtrail_trail_read", "dtrail_candidate_list"];
   }
   return [toolName];
 };

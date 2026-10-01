@@ -40,6 +40,7 @@ import { Observable } from "rxjs";
 import { handleConfigApiRequest } from "./config-api.js";
 import { createAsyncMemoByKey, createStartupTimer } from "./async-memo.js";
 import { ensureBuiltinDtcGrowthDatasource } from "./builtin-dtc-growth-datasource.js";
+import { ensureBuiltinDtrailServer } from "./builtin-dtrail-server.js";
 import { reclaimOrphanedQueuedAndRunningRuns } from "./stale-active-runs.js";
 import { loadPasswordAuthConfig } from "./auth/config.js";
 import { AuthService, type AuthIdentity } from "./auth/service.js";
@@ -1252,6 +1253,12 @@ const ensureBuiltinConfigResources = async (
     });
   }
   ensureBuiltinDtcGrowthDatasource({
+    metadataStore,
+    userId,
+    workspaceId
+  });
+
+  ensureBuiltinDtrailServer({
     metadataStore,
     userId,
     workspaceId

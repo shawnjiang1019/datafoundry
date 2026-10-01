@@ -141,7 +141,36 @@ except Exception as e:  # noqa: BLE001
     print(f"[systems] smolagents baselines unavailable: {e}")
 ```
 
-Re-copy `datafoundry_sut.py` whenever you change it.
+Re-copy `datafoundry_sut.py` (and `ds_ingest`) whenever you change them.
+
+### Enable the new ingestors on the next run
+
+The special-file loaders run inside the SUT's `build_domain_duckdb`, which only
+runs **once** per domain: `process_dataset` skips it if the cached
+`system_scratch/DataFoundrySUT/<domain>.duckdb` already exists. So after copying
+the new SUT + `ds_ingest`, a rerun would reuse the old lake and the `.tle`/`.sp3`/
+`.cdf`/`.lst`/`.dat`/`.npz` tables would still be missing. To force a rebuild:
+
+```powershell
+cd <KramaBench>
+Remove-Item system_scratch\DataFoundrySUT\astronomy.duckdb      # delete the stale lake
+python -c "import pathlib,sys; sys.path.insert(0,'systems'); from datafoundry_sut import build_domain_duckdb; build_domain_duckdb('data/astronomy/input','astronomy_staging.duckdb')"
+```
+The dry rebuild prints the per-file skip list; it should now show no
+`.tle`/`.sp3`/`.cdf`/`.lst`/`.dat`/`.npz` skips, and rows like `[ingest] omni2:
+…`, `tle`, `pod_sp3` built from those files. `cdflib` must be installed for
+`.cdf` (astronomy-hard-8):
+
+```powershell
+pip install cdflib
+```
+
+Then re-run the domain (moving aside cached answers for just the tasks you
+re-run, and using `--use_system_cache`):
+
+```powershell
+python evaluate.py --sut DataFoundrySUT --workload astronomy --no_pipeline_eval --num_workers 2 --use_system_cache
+```
 
 ## 3. Configure each terminal
 

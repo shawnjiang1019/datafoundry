@@ -16,6 +16,7 @@
  *   GET  /runs/{task_id}            -> {task_id, status, verification, metrics, error}
  *   GET  /runs/{task_id}/trail      -> event list
  *   GET  /runs/{task_id}/trail/validate -> {integrity, event_count, head_hash}
+ *   GET  /runs/{task_id}/assumptions -> assumption receipt (404 when not classified)
  */
 import type { MetadataStore } from "@datafoundry/metadata";
 import type { WorkspaceAttachment } from "@datafoundry/agent-runtime";
@@ -36,6 +37,7 @@ export type DtrailSourceSpecInput = {
 export type DtrailRunArgs = {
   text: string;
   sources: DtrailSourceSpecInput[];
+  assume?: boolean;
   grounder?: string;
   workspace_id?: string;
   budget?: {
@@ -81,6 +83,31 @@ export type DtrailTrailValidation = {
   integrity: string;
   event_count: number;
   head_hash: string;
+};
+
+export type DtrailAssumptionsTree = {
+  claim: string;
+  status: string;
+  evidence: unknown;
+  probe_count?: number;
+  scalar?: unknown;
+};
+
+export type DtrailAssumptionsSummary = {
+  total: number;
+  confirmed: number;
+  refuted: number;
+  assumed: number;
+};
+
+export type DtrailAssumptions = {
+  task_id: string;
+  assumptions: unknown[];
+  trees: DtrailAssumptionsTree[];
+  probes: number;
+  summary: DtrailAssumptionsSummary;
+  policy?: string;
+  error?: string;
 };
 
 export type DtrailBridgeOptions = {
@@ -288,6 +315,44 @@ export const validateDtrailTrail = async (
   };
 };
 
+/**
+ * Fetch the assumptions receipt for a run (best-effort): the classifier is
+ * optional, so a missing receipt (404 or any non-ok) resolves to undefined.
+ */
+export const fetchDtrailAssumptions = async (
+  options: DtrailBridgeOptions,
+  taskId: string
+): Promise<DtrailAssumptions | undefined> => {
+  const resource = findDtrailServer(options);
+  const url = resource ? dtrailApiUrl(resource) : undefined;
+  if (!url) {
+    return undefined;
+  }
+  const response = await dtrailFetch(options, url, `/runs/${encodeURIComponent(taskId)}/assumptions`);
+  const text = await readResponseText(response);
+  const data = parseJson(text);
+  if (!response.ok) {
+    return undefined;
+  }
+  const record = recordValue(data) ?? {};
+  const result: DtrailAssumptions = {
+    task_id: stringValue(record.task_id) ?? taskId,
+    assumptions: Array.isArray(record.assumptions) ? record.assumptions : [],
+    trees: Array.isArray(record.trees) ? record.trees as DtrailAssumptions["trees"] : [],
+    probes: numberValue(record.probes) ?? 0,
+    summary: summaryValue(record.summary)
+  };
+  const policy = stringValue(record.policy);
+  if (policy) {
+    result.policy = policy;
+  }
+  const errorValue = stringValue(record.error);
+  if (errorValue) {
+    result.error = errorValue;
+  }
+  return result;
+};
+
 // ---- WAITING_HUMAN round-trip (t4) --------------------------------------------
 
 /**
@@ -383,6 +448,14 @@ export const handoffDtrailRun = async (
   } catch {
     // Trail audit is best-effort for the pilot; the verification receipt stands alone.
   }
+  try {
+    const assumptions = await fetchDtrailAssumptions(options, submitted.task_id);
+    if (assumptions) {
+      evidence.assumptions = assumptions;
+    }
+  } catch {
+    // Assumption classification is optional; the outcome still stands without the receipt.
+  }
   return { status: "completed", evidence };
 };
 
@@ -394,6 +467,7 @@ export type DtrailRunEvidence = {
   dtrail_status: string;
   verification: unknown | null;
   trail_validation?: DtrailTrailValidation;
+  assumptions?: DtrailAssumptions;
   clarifying?: DtrailClarification;
 };
 
@@ -447,6 +521,16 @@ const stringValue = (value: unknown): string | undefined =>
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+const summaryValue = (value: unknown): DtrailAssumptionsSummary => {
+  const record = recordValue(value) ?? {};
+  return {
+    total: numberValue(record.total) ?? 0,
+    confirmed: numberValue(record.confirmed) ?? 0,
+    refuted: numberValue(record.refuted) ?? 0,
+    assumed: numberValue(record.assumed) ?? 0
+  };
+};
 
 const recordValue = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)

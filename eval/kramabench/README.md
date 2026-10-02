@@ -193,6 +193,8 @@ $env:OPENAI_API_KEY="placeholder"             # or a real key; see Grading
 | `DF_LLM_PROFILE` | Model profile the agent runs with |
 | `DF_RUN_TIMEOUT` | How long the SUT waits for the event stream, in seconds |
 | `OPENAI_API_KEY` | Required to exist: KramaBench builds its judge client at startup even with `--no_pipeline_eval` |
+| `DTRAIL_API_URL`, `DTRAIL_TOKEN` | Optional d-trail REST API + bearer token; required for assumption readback |
+| `DTRAIL_ASSUME` | `1` to ask d-trail to classify assumptions (`assumeVerification` in run config) and surface the receipt under `explanation.assumptions`. Off by default. The classifier's model key lives on the d-trail service; DataFoundry and this SUT never see it |
 
 Three timeouts must agree: `DATAFOUNDRY_MAX_RUN_TIMEOUT_MS` (the ceiling), the profile's timeout (the actual per-run limit), and `DF_RUN_TIMEOUT`. Whichever is shortest cuts the run off.
 

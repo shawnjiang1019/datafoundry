@@ -12,6 +12,7 @@ import {
   dtrailClarificationToInteraction,
   dtrailSourceKind,
   DtrailBridgeError,
+  fetchDtrailAssumptions,
   fetchDtrailRunStatus,
   findDtrailServer,
   handoffDtrailRun,
@@ -273,5 +274,123 @@ describe("dtrailBridge", () => {
       sources: [{ name: "sales", kind: "csv", path: "/tmp/sales.csv" }]
     });
     expect(result).toMatchObject({ kind: "rejected", code: "DTRAIL_API_URL_REQUIRED" });
+  });
+
+  it("carries assume in the POST body when set and omits it when not", async () => {
+    const captured: Array<string> = [];
+    const submit = (assume?: boolean) => submitDtrailRun({
+      ...options(),
+      fetchImpl: async (_url, init) => {
+        captured.push(init?.body as string);
+        return runResponse(200, { task_id: "task-1", status: "COMPLETED", workspace: "/runs/task-1" });
+      }
+    }, {
+      text: "hello",
+      sources: [{ name: "sales", kind: "csv", path: "/tmp/sales.csv" }],
+      ...(assume === undefined ? {} : { assume })
+    });
+    await submit(true);
+    await submit();
+    expect(JSON.parse(captured[0]!).assume).toBe(true);
+    expect(Object.hasOwn(JSON.parse(captured[1]!), "assume")).toBe(false);
+  });
+
+  it("maps the assumptions receipt", async () => {
+    const assumptions = await fetchDtrailAssumptions({ ...options(), fetchImpl: async () =>
+      runResponse(200, {
+        task_id: "task-1",
+        assumptions: [{ clause: "sources resolve" }],
+        trees: [{ claim: "p1", status: "confirmed", evidence: null, probe_count: 3 }],
+        probes: 4,
+        summary: { total: 4, confirmed: 2, refuted: 1, assumed: 1 },
+        policy: "strict"
+      })
+    }, "task-1");
+    expect(assumptions?.task_id).toBe("task-1");
+    expect(assumptions?.summary).toEqual({ total: 4, confirmed: 2, refuted: 1, assumed: 1 });
+    expect(assumptions?.trees).toEqual([
+      { claim: "p1", status: "confirmed", evidence: null, probe_count: 3 }
+    ]);
+  });
+
+  it("resolves undefined when the assumptions endpoint has no receipt", async () => {
+    const missing = await fetchDtrailAssumptions({ ...options(), fetchImpl: async () =>
+      runResponse(404, { code: "NOT_FOUND", message: "no assumptions" })
+    }, "task-1");
+    const failed = await fetchDtrailAssumptions({ ...options(), fetchImpl: async () =>
+      runResponse(500, { code: "DTRAIL_ERROR", message: "boom" })
+    }, "task-1");
+    expect(missing).toBeUndefined();
+    expect(failed).toBeUndefined();
+  });
+
+  it("records evidence.assumptions on a completed hand-off", async () => {
+    const decision = await handoffDtrailRun({
+      ...options(),
+      fetchImpl: async (url) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/runs") || path.endsWith("/runs/")) {
+          return runResponse(200, { task_id: "task-a", status: "COMPLETED", workspace: "/runs/task-a" });
+        }
+        if (path.endsWith("/assumptions")) {
+          return runResponse(200, {
+            task_id: "task-a",
+            assumptions: [],
+            trees: [],
+            probes: 0,
+            summary: { total: 0, confirmed: 0, refuted: 1, assumed: 0 }
+          });
+        }
+        if (path.endsWith("/trail/validate")) {
+          return runResponse(200, { integrity: "pass", event_count: 2, head_hash: "h" });
+        }
+        return runResponse(200, {
+          task_id: "task-a",
+          status: "COMPLETED",
+          verification: { status: "pass" },
+          metrics: {},
+          error: null
+        });
+      }
+    }, {
+      text: "sum",
+      sources: [{ name: "sales", kind: "csv", path: "/tmp/sales.csv" }],
+      assume: true
+    });
+    expect(decision.status).toBe("completed");
+    if (decision.status === "completed") {
+      expect(decision.evidence.dtrail_task_id).toBe("task-a");
+      expect(decision.evidence.assumptions?.summary.refuted).toBe(1);
+    }
+  });
+
+  it("still completes when the assumptions fetch fails", async () => {
+    const decision = await handoffDtrailRun({
+      ...options(),
+      fetchImpl: async (url) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/runs") || path.endsWith("/runs/")) {
+          return runResponse(200, { task_id: "task-b", status: "COMPLETED", workspace: "/runs/task-b" });
+        }
+        if (path.endsWith("/assumptions")) {
+          throw new Error("ECONNREFUSED");
+        }
+        return runResponse(200, {
+          task_id: "task-b",
+          status: "COMPLETED",
+          verification: { status: "pass" },
+          metrics: {},
+          error: null
+        });
+      }
+    }, {
+      text: "sum",
+      sources: [{ name: "sales", kind: "csv", path: "/tmp/sales.csv" }],
+      assume: true
+    });
+    expect(decision.status).toBe("completed");
+    if (decision.status === "completed") {
+      expect(decision.evidence.assumptions).toBeUndefined();
+    }
   });
 });

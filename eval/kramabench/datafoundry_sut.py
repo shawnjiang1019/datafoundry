@@ -68,6 +68,9 @@ RUN_TIMEOUT_S = int(os.environ.get("DF_RUN_TIMEOUT", "180"))
 RETRY_ATTEMPTS = int(os.environ.get("DF_RETRY_ATTEMPTS", "4"))
 RETRY_BASE_S = float(os.environ.get("DF_RETRY_BASE_S", "30"))
 RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
+DTRAIL_API_URL = os.environ.get("DTRAIL_API_URL", "").rstrip("/")
+DTRAIL_TOKEN = os.environ.get("DTRAIL_TOKEN", "")
+DTRAIL_ASSUME = os.environ.get("DTRAIL_ASSUME", "0") == "1"
 
 # A failed run is reported as answer text, not raised, so retry decisions read the
 # text. Gate on these prefixes first: a task answer may legitimately contain the
@@ -114,6 +117,7 @@ class DataFoundryClient:
     def __init__(self, api_base: str, email: str, password: str):
         self.api = api_base.rstrip("/")
         self.s = requests.Session()
+        self._last_thread_id: str | None = None
         self._login(email, password)
 
     def _login(self, email: str, password: str) -> None:
@@ -158,6 +162,16 @@ class DataFoundryClient:
 
     def run(self, question: str, datasource_id: str) -> str:
         thread_id = f"kb-{uuid.uuid4().hex[:8]}"
+        run_config = {
+            "activeDatasourceId": datasource_id,
+            "enabledDatasourceIds": [datasource_id],
+            "activeLlmProfileId": LLM_PROFILE,
+            "enabledKnowledgeIds": [],
+            "enabledMcpServerIds": [],
+            "enabledSkillIds": [],
+        }
+        if DTRAIL_ASSUME:
+            run_config["assumeVerification"] = True
         payload = {
             "method": "agent/run",
             "params": {"agentId": "dataFoundry"},
@@ -168,16 +182,10 @@ class DataFoundryClient:
                 "messages": [{"id": f"m-{uuid.uuid4().hex[:8]}", "role": "user", "content": question}],
                 "tools": [],
                 "context": [],
-                "forwardedProps": {"run_config": {
-                    "activeDatasourceId": datasource_id,
-                    "enabledDatasourceIds": [datasource_id],
-                    "activeLlmProfileId": LLM_PROFILE,
-                    "enabledKnowledgeIds": [],
-                    "enabledMcpServerIds": [],
-                    "enabledSkillIds": [],
-                }},
+                "forwardedProps": {"run_config": run_config},
             },
         }
+        self._last_thread_id = thread_id
         headers = {**self._mutate_headers(), "accept": "text/event-stream"}
         with self.s.post(f"{self.api}/api/copilotkit", json=payload,
                          headers=headers, stream=True, timeout=RUN_TIMEOUT_S) as resp:
@@ -186,10 +194,13 @@ class DataFoundryClient:
                 pass  # drain the AG-UI SSE stream to completion
         return self._final_answer(thread_id)
 
-    def _final_answer(self, thread_id: str) -> str:
+    def _conversation(self, thread_id: str) -> dict:
         r = self.s.get(f"{self.api}/api/v1/sessions/{thread_id}/conversation")
         r.raise_for_status()
-        conv = _unwrap(r)
+        return _unwrap(r)
+
+    def _final_answer(self, thread_id: str) -> str:
+        conv = self._conversation(thread_id)
         msgs = conv.get("messages", conv) if isinstance(conv, dict) else conv
         texts: list[str] = []
         for m in msgs if isinstance(msgs, list) else []:
@@ -205,6 +216,42 @@ class DataFoundryClient:
         failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
                   if cp.get("status") == "failed"]
         return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}" if failed else "[DataFoundry] no answer"
+
+    def read_assumptions(self) -> dict | None:
+        """Best-effort readback of the d-trail assumptions receipt for the last run.
+
+        The receipt is advisory and only present when d-trail classified assumptions
+        (`DTRAIL_ASSUME=1` with a configured service); missing metadata yields None.
+        """
+        if not (DTRAIL_ASSUME and DTRAIL_API_URL) or not self._last_thread_id:
+            return None
+        task_id = self._find_dtrail_task_id(self._conversation(self._last_thread_id))
+        if not task_id:
+            return None
+        headers = {"Accept": "application/json"}
+        if DTRAIL_TOKEN:
+            headers["Authorization"] = f"Bearer {DTRAIL_TOKEN}"
+        r = requests.get(f"{DTRAIL_API_URL}/runs/{task_id}/assumptions", headers=headers, timeout=30)
+        return r.json() if r.status_code == 200 else None
+
+    @staticmethod
+    def _find_dtrail_task_id(conv: dict) -> str | None:
+        candidates = []
+        for cp in conv.get("checkpoints") or []:
+            md = cp.get("metadata") if isinstance(cp, dict) else None
+            if isinstance(md, dict):
+                candidates.append(md.get("dtrail_task_id"))
+        for m in conv.get("messages") or [] if isinstance(conv, dict) else []:
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                continue
+            found = re.search(r'"dtrail_task_id"\s*:\s*"([^"]+)"', content)
+            if found:
+                candidates.append(found.group(1))
+        for c in candidates:
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+        return None
 
 
 # ── Domain-lake ingestion ─────────────────────────────────────────────────────
@@ -674,10 +721,14 @@ class DataFoundrySUT(System):
             raise RuntimeError("process_dataset must run before serve_query")
         full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION)
         answer = extract_final_answer(full_text)
+        explanation = {"answer": answer, "id": query_id, "full_response": full_text}
+        assumptions = self.client.read_assumptions()
+        if assumptions is not None:
+            explanation["assumptions"] = assumptions
         if self.verbose:
             print(f"DataFoundrySUT: {query_id} -> {answer!r}")
         return {
-            "explanation": {"answer": answer, "id": query_id, "full_response": full_text},
+            "explanation": explanation,
             "pipeline_code": "",   # DataFoundry emits SQL+artifacts, not a Python pipeline (use --no_pipeline_eval)
             "token_usage": 0, "token_usage_input": 0, "token_usage_output": 0,
         }

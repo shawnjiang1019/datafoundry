@@ -2,6 +2,8 @@
 
 d-trail is an optional provenance and plan-verification service for DataFoundry. It runs plans, records a trace trail of the decisions taken, and validates that trail end-to-end. The service lives in its own repository (Python, FastAPI) and runs as a separate process.
 
+The run-management API (request/response shapes, workspaces, grounders, launchers, env config) is defined once in the d-trail repository: **`docs/datafoundry-connection.md`** is the single source of truth for the contract. This guide covers DataFoundry-specific wiring only; when the contract changes, update that document first.
+
 ## Runtime topology
 
 | Process | Default endpoint | Purpose |
@@ -13,14 +15,14 @@ DataFoundry's Web and API processes remain unchanged. d-trail is not started by 
 
 ## Install and start
 
-The d-trail service is developed in its own repository. Install Python 3.10+ and the project's dependencies (see the d-trail README), then start both processes in separate terminals:
+d-trail is developed in its own repository. Install Python 3.10+ and the project's dependencies (see the d-trail README), then start both processes in separate terminals. The launchers, environment variables, and REST contract are pinned in [d-trail docs/datafoundry-connection.md](https://github.com/ddsm-lab/d-trail/blob/feat/groundingMCP/docs/datafoundry-connection.md):
 
 ```bash
-uv run dtrail-serve --port 8060 --transport streamable-http
-uv run dtrail-api --port 8061
+uvicorn dtrail_service.api:create_app --factory --port 8061
+python -m dtrail_service.mcp_server          # streamable-http on :8060/mcp
 ```
 
-The two ports correspond to the MCP (`:8060/mcp`) and REST (`:8061`) endpoints in the table above. The d-trail README contains provider examples and CLI commands for running and validating trails.
+The two ports match the MCP (`:8060/mcp`) and REST (`:8061`) endpoints in the table above.
 
 ## Connect it in DataFoundry
 

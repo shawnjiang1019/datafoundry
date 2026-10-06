@@ -194,7 +194,9 @@ $env:OPENAI_API_KEY="placeholder"             # or a real key; see Grading
 | `DF_RUN_TIMEOUT` | How long the SUT waits for the event stream, in seconds |
 | `OPENAI_API_KEY` | Required to exist: KramaBench builds its judge client at startup even with `--no_pipeline_eval` |
 | `DTRAIL_API_URL`, `DTRAIL_TOKEN` | Optional d-trail REST API + bearer token; required for assumption readback |
-| `DTRAIL_ASSUME` | `1` to ask d-trail to classify assumptions (`assumeVerification` in run config) and surface the receipt under `explanation.assumptions`. Off by default. The classifier's model key lives on the d-trail service; DataFoundry and this SUT never see it |
+| `DTRAIL_ASSUME` | `1` to also submit each question to d-trail (`POST /runs`, `assume: true`) with the domain's tables as CSV sources, then read `GET /runs/<task_id>/assumptions` into `explanation.assumptions` (`task_id`, `run_status`, `receipt`, `error`). Advisory: it never changes the answer, and d-trail failures are recorded, not raised. Needs the CSV export first: `python eval/kramabench/export_duckdb_tables.py --format csv <domain>`. Off by default. The classifier's model key lives on the d-trail service; DataFoundry and this SUT never see it |
+| `DTRAIL_ASSUME_ONLY` | `1` (default) sends `assume_only: true`: d-trail compiles the question and classifies its assumptions against the sources without grounding or executing it. Needed for multi-table domains, because d-trail's grounder refuses several sources without explicit joins (409 at grounding). `0` asks for the full d-trail run |
+| `DTRAIL_SOURCES_DIR`, `DTRAIL_WORKSPACE`, `DTRAIL_TIMEOUT`, `DTRAIL_READ_TIMEOUT` | CSV export root (default `system_scratch/dtrail_sources`), d-trail workspace id (`kramabench`), seconds to wait for the d-trail run (900), per-source read timeout passed in the run budget (120) |
 
 Three timeouts must agree: `DATAFOUNDRY_MAX_RUN_TIMEOUT_MS` (the ceiling), the profile's timeout (the actual per-run limit), and `DF_RUN_TIMEOUT`. Whichever is shortest cuts the run off.
 

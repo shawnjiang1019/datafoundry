@@ -18,9 +18,11 @@ Prereqs (env vars):
     DF_RETRY_ATTEMPTS=4            (retries for provider rate limits / unreachable API)
     DF_RETRY_BASE_S=30             (first backoff delay; doubles each attempt)
     DTRAIL_ASSUME=1 + DTRAIL_API_URL=http://127.0.0.1:8061 (+ DTRAIL_TOKEN)
-                                   (also submit each question to d-trail with assume=true and the
-                                    CSV tables the run's SQL read, export_duckdb_tables.py --format csv;
-                                    the receipt lands in explanation.assumptions, never the answer)
+                                   (submit each question to d-trail with assume=true and the domain's
+                                    CSV tables, export_duckdb_tables.py --format csv, BEFORE the
+                                    DataFoundry run; the receipt lands in explanation.assumptions)
+    DTRAIL_TO_AGENT=1              (default; also pass the receipt to the agent as run_config
+                                    assumptionReceipt, its "assumption ledger"; 0 = A/B baseline)
     DF_MCP_SERVER_IDS=             (comma-separated MCP server ids to enable per run, e.g. the
                                     DataLink server; empty = none, the semantic step falls back
                                     to the physical schema)
@@ -91,6 +93,8 @@ DTRAIL_SOURCES_DIR = os.environ.get(
 DTRAIL_WORKSPACE = os.environ.get("DTRAIL_WORKSPACE", "kramabench")
 DTRAIL_TIMEOUT_S = float(os.environ.get("DTRAIL_TIMEOUT", "900"))
 DTRAIL_READ_TIMEOUT_S = float(os.environ.get("DTRAIL_READ_TIMEOUT", "120"))
+# Hand the pre-run receipt to the agent (run_config.assumptionReceipt); 0 keeps it out for A/B runs.
+DTRAIL_TO_AGENT = os.environ.get("DTRAIL_TO_AGENT", "1") == "1"
 
 # A failed run is reported as answer text, not raised, so retry decisions read the
 # text. Gate on these prefixes first: a task answer may legitimately contain the
@@ -180,7 +184,7 @@ class DataFoundryClient:
         print(f"[warn] schema for {ds_id} not confirmed; continuing", file=sys.stderr)
         return ds_id
 
-    def run(self, question: str, datasource_id: str) -> str:
+    def run(self, question: str, datasource_id: str, assumption_receipt: dict | None = None) -> str:
         thread_id = f"kb-{uuid.uuid4().hex[:8]}"
         run_config = {
             "activeDatasourceId": datasource_id,
@@ -192,6 +196,8 @@ class DataFoundryClient:
         }
         if DTRAIL_ASSUME:
             run_config["assumeVerification"] = True
+        if assumption_receipt:
+            run_config["assumptionReceipt"] = assumption_receipt
         payload = {
             "method": "agent/run",
             "params": {"agentId": "dataFoundry"},
@@ -722,14 +728,11 @@ def _safe_ident(name: str) -> str:
 class DtrailAssumptionClient:
     """Submit a benchmark question to d-trail with `assume: true` and read the receipt back.
 
-    Runs alongside the DataFoundry run, not inside it: DataFoundry does not yet hand runs
-    to d-trail, so this is how the assumption classifier is exercised on KramaBench.
-    d-trail gets, as CSV sources, only the tables the DataFoundry run's SQL read (the
-    whole domain when none can be identified) and classifies the premises its own
-    grounding of the question relies on. Sending the whole domain makes d-trail's
-    grounder stop at "multiple sources without a join" before any assumption is checked.
-    The receipt is advisory: it is stored beside the answer and never changes it, and
-    every failure is returned as data so a d-trail problem cannot fail a benchmark task.
+    Runs before the DataFoundry run, outside it: the receipt is stored beside the answer
+    and (DTRAIL_TO_AGENT=1) handed to the agent as its assumption ledger. d-trail gets, as
+    CSV sources, the tables named by `executed_sql` when given, else the whole domain
+    (fine with assume_only; a full grounding run stops at "multiple sources without a join").
+    Every failure is returned as data so a d-trail problem cannot fail a benchmark task.
     """
 
     # d-trail's Budget defaults (dtrail/contracts.py); raised per request to fit the
@@ -802,6 +805,19 @@ class DtrailAssumptionClient:
         return result
 
 
+def agent_receipt(result: dict | None) -> dict | None:
+    """The classifier receipt to hand the agent, or None; drops the raw conditioner reply."""
+    receipt = (result or {}).get("receipt")
+    inner = receipt.get("assumptions") if isinstance(receipt, dict) else None
+    if not isinstance(inner, dict):  # GET /runs/{id}/assumptions wraps it as {task_id, assumptions}
+        return None
+    inner = {k: v for k, v in inner.items() if k != "conditioner_reply"}
+    if not inner.get("trees"):
+        return None
+    inner.setdefault("task_id", receipt.get("task_id"))
+    return inner
+
+
 # ── KramaBench System implementation ──────────────────────────────────────────
 
 class DataFoundrySUT(System):
@@ -835,7 +851,7 @@ class DataFoundrySUT(System):
         self._domain = tag
         self.dataset_directory = dataset_directory
 
-    def _run_with_backoff(self, question: str) -> str:
+    def _run_with_backoff(self, question: str, assumption_receipt: dict | None = None) -> str:
         """Run one task, retrying provider rate limits with exponential backoff.
 
         Without this a single 429 cascades: the limiter stays tripped, KramaBench
@@ -848,7 +864,7 @@ class DataFoundrySUT(System):
         full_text = ""
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
-                full_text = client.run(question, self._ds_id)
+                full_text = client.run(question, self._ds_id, assumption_receipt)
             except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
                 full_text = f"[DataFoundry error] {e}"
             reason = transient_failure_reason(full_text)
@@ -868,21 +884,21 @@ class DataFoundrySUT(System):
         self._ensure_client()
         if self._ds_id is None:
             raise RuntimeError("process_dataset must run before serve_query")
-        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION)
+        assumptions = None
+        if self.dtrail is not None and self._domain:
+            # Before the run, so the agent can plan around it. The bare question, without
+            # the FINAL_ANSWER formatting instruction; no SQL yet, so the whole domain.
+            assumptions = self.dtrail.check(query, self._domain)
+            if self.verbose:
+                summary = (agent_receipt(assumptions) or {}).get("summary")
+                print(f"DataFoundrySUT: {query_id} d-trail {assumptions.get('run_status')} "
+                      f"task={assumptions.get('task_id')} summary={summary} error={assumptions.get('error')}")
+        receipt = agent_receipt(assumptions) if DTRAIL_TO_AGENT else None
+        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION, receipt)
         answer = extract_final_answer(full_text)
         explanation = {"answer": answer, "id": query_id, "full_response": full_text}
-        if self.dtrail is not None and self._domain:
-            try:
-                executed_sql = self.client.executed_sql()
-            except Exception:  # noqa: BLE001 — advisory: fall back to the whole domain
-                executed_sql = []
-            # The bare question, without the FINAL_ANSWER formatting instruction.
-            explanation["assumptions"] = self.dtrail.check(query, self._domain, executed_sql)
-            if self.verbose:
-                a = explanation["assumptions"]
-                summary = (a.get("receipt") or {}).get("summary")
-                print(f"DataFoundrySUT: {query_id} d-trail {a.get('run_status')} "
-                      f"task={a.get('task_id')} summary={summary} error={a.get('error')}")
+        if assumptions is not None:
+            explanation["assumptions"] = assumptions
         else:
             assumptions = self.client.read_assumptions()  # receipt recorded by DataFoundry, if any
             if assumptions is not None:

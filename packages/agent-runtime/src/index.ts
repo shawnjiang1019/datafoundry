@@ -51,6 +51,10 @@ import {
 import { CONVERSATION_WORKING_MEMORY_CONFIG } from "./memory/conversation-memory-bridge.js";
 import type { RuntimeContextSource } from "./context/source/runtime-context-source.js";
 import {
+  AssumptionLedgerContextSource,
+  type AssumptionReceipt
+} from "./context/source/assumption-ledger-context-source.js";
+import {
   createContextItem,
   type ContextItem,
   type CreateContextItemInput
@@ -110,6 +114,11 @@ export type { AgentRunContext, AgentRunContextInput, AgUiEventEmitter } from "./
 export type { ContextPackage } from "./context/inventory/context-package.js";
 export type { ContextPlan } from "./context/inventory/context-plan.js";
 export type { ContextPackageRecorder } from "./context/protocol/mastra/mastra-context-budget-processor.js";
+export {
+  AssumptionLedgerContextSource,
+  createAssumptionLedgerText,
+  type AssumptionReceipt
+} from "./context/source/assumption-ledger-context-source.js";
 export type AgentContextItem = ContextItem;
 export type AgentContextSourceMetadata = ContextSourceMetadata;
 export type CreateAgentContextItemInput = CreateContextItemInput;
@@ -250,6 +259,8 @@ export type CreateDataFoundryInput = {
     maxChars?: number;
   };
   evidenceContextItems?: AgentContextItem[];
+  /** D-Trail receipt checked before the run; rendered as the always-present assumption ledger. */
+  assumptionReceipt?: AssumptionReceipt;
   messages: Message[];
   modelSettings?: {
     frequencyPenalty?: number;
@@ -348,6 +359,10 @@ export const createDataFoundry = async (
   });
   const workspaceAttachments = materializeWorkspaceAttachments(runWorkspace.runDir, input.workspaceAttachments ?? []);
   const evidenceRuntimeSource = createEvidenceFocusRuntimeSource(input.evidenceContextItems ?? []);
+  const additionalRuntimeSources: RuntimeContextSource[] = [
+    ...(evidenceRuntimeSource ? [evidenceRuntimeSource] : []),
+    ...(input.assumptionReceipt ? [new AssumptionLedgerContextSource({ receipt: input.assumptionReceipt })] : [])
+  ];
 
   const governedMessages = normalizeIngressMessages(input.messages);
 
@@ -386,7 +401,7 @@ export const createDataFoundry = async (
     dispatcher,
     eventSink: contextEventSink,
     ...(input.contextPackageRecorder ? { contextPackageRecorder: input.contextPackageRecorder } : {}),
-    ...(evidenceRuntimeSource ? { additionalRuntimeSources: [evidenceRuntimeSource] } : {}),
+    ...(additionalRuntimeSources.length ? { additionalRuntimeSources } : {}),
     ...(input.longTermMemory ? { longTermMemory: input.longTermMemory } : {}),
     ...(input.modelContextProfile ? { modelContextProfile: input.modelContextProfile } : {}),
     modelName: input.runContext.model_name,

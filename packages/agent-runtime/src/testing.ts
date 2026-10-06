@@ -97,6 +97,7 @@ export {
 export {
   createDefaultRuntimeContextSourceRegistry
 } from "./context/source/runtime-context-source-boundary.js";
+export { AssumptionLedgerContextSource } from "./context/source/assumption-ledger-context-source.js";
 export { LongTermMemoryContextSource } from "./context/source/long-term-memory-context-source.js";
 export { RuntimeContextSourceRegistry } from "./context/source/runtime-context-source-registry.js";
 export {

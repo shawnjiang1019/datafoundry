@@ -69,7 +69,7 @@ import { resolveCheckpointResumeSeed, type CheckpointResumeSeed } from "./run-ch
 import { resolveRunConfig } from "./run-config-resolver.js";
 import { resolveRunIdentity } from "./run-identity-orchestrator.js";
 import { createRunMemoryAssembly } from "./run-memory-assembly.js";
-import { extractLastUserText } from "./run-input.js";
+import { assumptionsLoadedPayload, extractLastUserText } from "./run-input.js";
 import {
   buildHitlSuspendBridgeEvents,
   extractInteractionResume,
@@ -996,6 +996,12 @@ class DataFoundryAgUiAgent extends AbstractAgent {
                   ? { unavailable_resources: effectiveRunConfig.unavailableResources }
                   : {})
               }));
+              if (effectiveRunConfig.assumptionReceipt) {
+                emit(createCustomEvent(
+                  "assumptions.loaded",
+                  assumptionsLoadedPayload(effectiveRunConfig.assumptionReceipt)
+                ));
+              }
               emit(createCustomEvent("skill.selection", {
                 audit: skillSelection.audit,
                 effective_tool_policy: skillSelection.effectiveToolPolicy,

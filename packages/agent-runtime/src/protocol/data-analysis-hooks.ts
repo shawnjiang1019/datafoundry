@@ -29,9 +29,36 @@ export const createDataAnalysisHooks = (context: ProtocolHookContext): ProtocolA
     if (actionName === "analysis.requirements.commit") {
       return projectCommitObservation(observation, domain as DataAnalysisState);
     }
+    if (actionName === "analysis.decision.record") {
+      return projectDecisionObservation(observation, domain as DataAnalysisState);
+    }
     return observation;
   }
 });
+
+/** What the record did and which decisions are still open, read from the post-record state. */
+export const projectDecisionObservation = (
+  observation: unknown,
+  state: DataAnalysisState
+): Record<string, unknown> => {
+  const decisions = state.decisions ?? [];
+  const requestedId = typeof observation === "object" && observation !== null
+    ? (observation as Record<string, unknown>).decision_id
+    : undefined;
+  const recorded = decisions.find((decision) => decision.id === requestedId) ?? decisions.at(-1);
+  const open = decisions.filter((decision) => decision.status === "open");
+  return {
+    decision_result: {
+      decision_id: recorded?.id,
+      status: recorded?.status,
+      choice: recorded?.choice,
+      open_decision_ids: open.map((decision) => decision.id),
+      instruction: open.length === 0
+        ? "Every decision is recorded. Do not record it again."
+        : `Recorded. Still open: ${open.map((decision) => decision.id).join(", ")}.`
+    }
+  };
+};
 
 /**
  * What the commit actually did, read from the post-commit state.
@@ -48,6 +75,9 @@ export const projectCommitObservation = (
   const userRequirements = (state.requirements ?? []).filter((requirement) => requirement.source === "user");
   const pending = userRequirements.filter((requirement) =>
     requirement.required && requirement.status !== "reported");
+  const openDecisionIds = (state.decisions ?? [])
+    .filter((decision) => decision.status === "open" && decision.impact === "high")
+    .map((decision) => decision.id);
   return {
     ...(typeof observation === "object" && observation !== null && !Array.isArray(observation)
       ? observation as Record<string, unknown>
@@ -61,10 +91,14 @@ export const projectCommitObservation = (
         reported_claim_ids: [...requirement.reportedClaimIds]
       })),
       pending_requirement_ids: pending.map((requirement) => requirement.id),
-      instruction: pending.length === 0
-        ? "Every required claim is committed. Do not commit again; write the final answer."
-        : `Committed. Still to commit: ${pending.map((requirement) => requirement.id).join(", ")}. `
+      open_decision_ids: openDecisionIds,
+      instruction: pending.length > 0
+        ? `Committed. Still to commit: ${pending.map((requirement) => requirement.id).join(", ")}. `
           + "Do not resubmit a claim whose requirement already shows status 'reported'."
+        : openDecisionIds.length > 0
+          ? `Every required claim is committed. Do not commit again; resolve open decisions `
+            + `${openDecisionIds.join(", ")} with analysis_decision_record, then write the final answer.`
+          : "Every required claim is committed. Do not commit again; write the final answer."
     }
   };
 };

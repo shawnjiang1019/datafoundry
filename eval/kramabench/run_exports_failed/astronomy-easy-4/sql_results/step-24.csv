@@ -1,0 +1,3 @@
+kind,list_years,n_extrema,min_pair_gap_years,mean_spacing_years,median_spacing_years,span_years,span_per_cycle_years
+max,"1968, 1979, 1989, 2000, 2014",5,10,11.5,11,46,11.5
+min,"1964, 1976, 1986, 1996, 2008",5,10,11,11,44,11

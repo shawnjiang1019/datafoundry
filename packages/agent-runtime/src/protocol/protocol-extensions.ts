@@ -1,5 +1,6 @@
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 import type { SemanticRequest, SemanticResolution } from "../semantic/types.js";
+import type { AnalysisDecision } from "./analysis-decisions.js";
 import type { AnalysisRequirement } from "./analysis-requirements.js";
 import { createDataAnalysisHooks } from "./data-analysis-hooks.js";
 import {
@@ -61,7 +62,11 @@ export type ProtocolRuntimeActionDefinition = {
 export type ProtocolExtension = {
   protocolId: string;
   protocolVersion: string;
-  createDefinition(actionNames: string[], requirements: AnalysisRequirement[]): AgentProtocolDefinition<any>;
+  createDefinition(
+    actionNames: string[],
+    requirements: AnalysisRequirement[],
+    decisions?: AnalysisDecision[]
+  ): AgentProtocolDefinition<any>;
   reduce(state: unknown, actionName: string, result: unknown): unknown;
   /** Whether routing to this protocol extracts user analysis requirements first. */
   extractsRequirements: boolean;
@@ -85,7 +90,8 @@ export const generalTaskExtension: ProtocolExtension = {
 export const dataAnalysisExtension: ProtocolExtension = {
   protocolId: "data-analysis",
   protocolVersion: "1",
-  createDefinition: (actionNames, requirements) => createDataAnalysisProtocol(actionNames, requirements),
+  createDefinition: (actionNames, requirements, decisions) =>
+    createDataAnalysisProtocol(actionNames, requirements, decisions),
   reduce: (state, actionName, result) => reduceDataAnalysisAction(state as DataAnalysisState, actionName, result),
   extractsRequirements: true,
   maxProtocolActions: AGENT_RUNTIME_LIMITS.dataAnalysisMaxProtocolActions,

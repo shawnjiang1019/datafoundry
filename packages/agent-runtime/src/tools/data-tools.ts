@@ -398,6 +398,7 @@ const createMastraDataTools = (executors: DataToolExecutors): ToolRegistry["mast
       sql: z.string(),
       assertion_ids: z.array(z.string().min(1)).max(32).optional(),
       requirement_ids: z.array(z.string().min(1)).max(16).optional(),
+      decision_ids: z.array(z.string().min(1)).max(16).optional(),
       expected_columns: z.array(z.string().min(1)).max(100).optional(),
       limit: z.number().int().positive().max(1000).optional(),
       timeout_ms: z.number().int().positive().max(30000).optional()

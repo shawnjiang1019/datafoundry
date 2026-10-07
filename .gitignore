@@ -31,3 +31,4 @@ __pycache__/
 # for analysis; the full export (and any other run_exports_* folder) is regenerable.
 eval/kramabench/run_exports*/
 !eval/kramabench/run_exports_failed/
+.claude/worktrees/

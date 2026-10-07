@@ -42,6 +42,8 @@ export type AnalysisQueryAttempt = {
   requirementIds: string[];
   assertionIds: string[];
   assertions: AnalysisAssertion[];
+  /** Analysis decisions whose choice this query applies. */
+  decisionIds?: string[];
   sql?: string;
   expectedColumns: string[];
   status: "planned" | "validated" | "executed" | "evidenced";

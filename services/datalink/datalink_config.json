@@ -1,0 +1,26 @@
+{
+  "llm": {
+    "model": "glm-5.3-flash",
+    "api_key": "e88a379f09f2451996e87a361c22e99b.HXROJWpjg9w7TE0M",
+    "base_url": "https://api.z.ai/api/coding/paas/v4",
+    "temperature": 0.7,
+    "max_tokens": 16384,
+    "timeout": 120.0
+  },
+  "embedding": {
+    "model": "nomic-embed-text",
+    "api_key": "ollama",
+    "base_url": "http://localhost:11434/v1",
+    "similarity_threshold": 0.75,
+    "timeout": 60.0
+  },
+  "merge_llm_temperature": 0.0,
+  "merge_batch_interval": 10,
+  "mapping_batch_size": 15,
+  "graph_db_path": "C:\\Users\\shawn\\KramaBench\\system_scratch\\datalink_graphs\\biomedical.db",
+  "sample_size": 1000,
+  "confidence_threshold": 0.3,
+  "joinable_overlap_threshold": 0.1,
+  "correlation_threshold": 0.5,
+  "mcp_tools": ""
+}

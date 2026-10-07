@@ -104,6 +104,11 @@ import {
   type AnalysisContractGrounder
 } from "./protocol/model-analysis-contract-grounder.js";
 import type { AnalysisRequirement } from "./protocol/analysis-requirements.js";
+import {
+  ANALYSIS_DECISION_BASIS_KINDS,
+  ANALYSIS_DECISION_KINDS,
+  createDecisionsFromReceipt
+} from "./protocol/analysis-decisions.js";
 import type { DataAnalysisState } from "./protocol/protocols/data-analysis.js";
 import { createDefaultSemanticProvider } from "./semantic/default-semantic-provider.js";
 import type { ProtocolEvent } from "./protocol/types.js";
@@ -517,6 +522,13 @@ export const createDataFoundry = async (
       reasons: ["source:protocol-runtime"]
     },
     {
+      name: "analysis_decision_record",
+      source: "protocol-runtime",
+      exposed: true,
+      availability: "available",
+      reasons: ["source:protocol-runtime"]
+    },
+    {
       name: "protocol_handoff",
       source: "protocol-runtime",
       exposed: true,
@@ -525,6 +537,7 @@ export const createDataFoundry = async (
     }
   ];
   const selectedTools = toolPlan.exposedTools;
+  const analysisDecisions = createDecisionsFromReceipt(input.assumptionReceipt);
   const selectedDatasourceId = input.runContext.selected_datasource_id;
   const deferredProtocolEvents: ProtocolEvent[] = [];
   let protocolEventsReady = false;
@@ -560,6 +573,7 @@ export const createDataFoundry = async (
       classifier: input.protocolClassifier ?? createModelProtocolClassifier(input.modelProvider),
       requirementExtractor: input.analysisRequirementExtractor
         ?? createModelAnalysisRequirementExtractor(input.modelProvider),
+      ...(analysisDecisions.length > 0 ? { analysisDecisions } : {}),
       analysisContractGrounder: input.analysisContractGrounder
         ?? createModelAnalysisContractGrounder(input.modelProvider),
       ...(input.protocolStateStore ? { stateStore: input.protocolStateStore } : {}),
@@ -647,9 +661,37 @@ export const createDataFoundry = async (
       })
     })
   };
+  const decisionRecordTools = {
+    analysis_decision_record: createTool({
+      id: "analysis_decision_record",
+      description: "Record the choice for an open analysis decision (decision_id), or record a choice the analysis "
+        + "made that no decision covers yet (omit decision_id; give question and options).",
+      inputSchema: z.object({
+        decision_id: z.string().min(1).optional(),
+        kind: z.enum(ANALYSIS_DECISION_KINDS).optional(),
+        question: z.string().min(1).optional(),
+        options: z.array(z.string().min(1)).max(8).optional(),
+        impact: z.enum(["low", "medium", "high"]).optional(),
+        choice: z.string().min(1),
+        basis: z.object({
+          kind: z.enum(ANALYSIS_DECISION_BASIS_KINDS),
+          detail: z.string().min(1)
+        }),
+        evidence_refs: z.array(z.string().min(1)).max(16).optional()
+      }),
+      execute: createProtocolBoundExecute({
+        actionName: "analysis.decision.record",
+        fallbackIdPrefix: "analysis-decision-record",
+        protocol,
+        runId: input.runContext.run_id,
+        toolName: "analysis_decision_record"
+      })
+    })
+  };
   const tools = {
     ...governedToolFactory.governTools(selectedTools),
     ...requirementsCommitTools,
+    ...decisionRecordTools,
     protocol_handoff: createTool({
       id: "protocol_handoff",
       description: "Propose switching this run to another authorized protocol when the current protocol is unsuitable.",

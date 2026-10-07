@@ -13,6 +13,13 @@ import {
   type AnalysisScalar,
   type AnalysisVerifiedValue
 } from "../analysis-contract.js";
+import {
+  linkDecisionsToAttempt,
+  openDecisionReasons,
+  recordDecision,
+  type AnalysisDecision,
+  type AnalysisDecisionRecordInput
+} from "../analysis-decisions.js";
 import { DATA_ACTIONS } from "../data-actions.js";
 import { validateSqlSemantics } from "../sql-semantic-validator.js";
 import type { AgentProtocolDefinition } from "../types.js";
@@ -36,6 +43,7 @@ export type DataAnalysisState = {
   currentEvidenceRefs: string[];
   evidenceRefs: string[];
   requirements: AnalysisRequirement[];
+  decisions: AnalysisDecision[];
   queryAttempts: AnalysisQueryAttempt[];
   currentQueryAttemptId?: string;
   evidenceBindings: AnalysisEvidenceBinding[];
@@ -45,11 +53,13 @@ export type DataAnalysisState = {
 
 export const createDataAnalysisProtocol = (
   availableActionNames: string[],
-  userRequirements: AnalysisRequirement[] = []
+  userRequirements: AnalysisRequirement[] = [],
+  decisions: AnalysisDecision[] = []
 ): AgentProtocolDefinition<DataAnalysisState> => {
   const commonActions = unique([
     ...availableActionNames.filter((actionName) => !DATA_ACTIONS.has(actionName)),
-    "protocol.handoff.propose"
+    "protocol.handoff.propose",
+    "analysis.decision.record"
   ]);
   return {
     id: "data-analysis",
@@ -155,13 +165,14 @@ export const createDataAnalysisProtocol = (
       currentEvidenceRefs: [],
       evidenceRefs: [],
       requirements: [...createCoreAnalysisRequirements(), ...cloneRequirements(userRequirements)],
+      decisions: structuredClone(decisions),
       queryAttempts: [],
       evidenceBindings: [],
       reportedClaims: [],
       taskRequirementLinks: []
     }),
     completionPolicy: ({ contextPackageRef, state }) => {
-      const requirementReasons = incompleteRequirementReasons(state);
+      const requirementReasons = [...incompleteRequirementReasons(state), ...openDecisionReasons(state.decisions ?? [])];
       if (
         state.semanticResolved
         && state.contractGrounded
@@ -284,11 +295,14 @@ export const reduceDataAnalysisAction = (
       ? resolveRequirementAssertions(normalizedRequirements(state), requirementIds, assertionIds)
       : selectedRequirements.flatMap((requirement) => requirement.assertions ?? [])
         .filter((assertion) => assertion.kind === "manual");
+    const decisionIds = recordStrings(result, "decision_ids");
+    const decisions = linkDecisionsToAttempt(state.decisions ?? [], decisionIds, attemptId);
     const attempt: AnalysisQueryAttempt = {
       id: attemptId,
       requirementIds,
       assertionIds,
       assertions,
+      ...(decisionIds.length > 0 ? { decisionIds } : {}),
       ...(sql ? { sql } : {}),
       expectedColumns: recordStrings(result, "expected_columns"),
       status: "planned",
@@ -306,7 +320,8 @@ export const reduceDataAnalysisAction = (
       validationPassed: false,
       currentEvidenceRefs: [],
       currentQueryAttemptId: attemptId,
-      queryAttempts: [...queryAttempts, attempt]
+      queryAttempts: [...queryAttempts, attempt],
+      decisions
     }, requirementIds, (requirement) => ({
       ...requirement,
       status: advanceStatus(requirement.status, "queried"),
@@ -416,6 +431,16 @@ export const reduceDataAnalysisAction = (
   if (actionName === "analysis.requirements.commit") {
     return commitReportedClaims(state, result);
   }
+  if (actionName === "analysis.decision.record") {
+    return {
+      ...state,
+      decisions: recordDecision(
+        state.decisions ?? [],
+        (typeof result === "object" && result !== null ? result : {}) as AnalysisDecisionRecordInput,
+        state.evidenceRefs ?? []
+      )
+    };
+  }
   if (actionName === "task_write" || actionName === "task_update" || actionName === "task_complete") {
     return linkTasksToRequirements(state, result);
   }
@@ -434,6 +459,7 @@ const allowedRecoveryActions = (state: DataAnalysisState): string[] => {
   if (!state.validationPassed) return ["analysis.result.validate", "run_sql_readonly"];
   if ((state.currentEvidenceRefs ?? []).length === 0) return ["analysis.evidence.bind"];
   if (incompleteRequirementReasons(state).length > 0) return ["data.query.plan", "analysis.requirements.commit"];
+  if (openDecisionReasons(state.decisions ?? []).length > 0) return ["analysis.decision.record"];
   return [];
 };
 

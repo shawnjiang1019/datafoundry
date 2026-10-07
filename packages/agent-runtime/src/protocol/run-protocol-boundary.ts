@@ -13,6 +13,7 @@ import type {
   AnalysisContractGrounder,
   AnalysisContractGroundingInput
 } from "./model-analysis-contract-grounder.js";
+import type { AnalysisDecision } from "./analysis-decisions.js";
 import type { AnalysisRequirement } from "./analysis-requirements.js";
 import {
   analysisContractGroundingEventResult,
@@ -75,6 +76,8 @@ export type CreateRunProtocolBoundaryInput = {
   semanticRequest?: Omit<SemanticRequest, "query">;
   requirementExtractor?: AnalysisRequirementExtractor;
   analysisContractGrounder?: AnalysisContractGrounder;
+  /** Open analysis decisions seeded into protocols that accept them (from the D-Trail receipt). */
+  analysisDecisions?: AnalysisDecision[];
   /** Authoritative session intent (persisted per session, resolved through branch
    * lineage by the caller). Weak continuation follow-ups such as "再次尝试" inherit
    * its protocol deterministically, and its intentText replaces the follow-up
@@ -141,7 +144,7 @@ export const createRunProtocolBoundary = async (
     .filter((extension) => input.authorizedProtocolIds.includes(extension.protocolId));
   const protocolRegistry = new ProtocolRegistry();
   for (const extension of extensions.list()) {
-    protocolRegistry.register(extension.createDefinition(actionNames, []));
+    protocolRegistry.register(extension.createDefinition(actionNames, [], input.analysisDecisions));
   }
   const router = new ProtocolRouter(protocolRegistry, {
     ...(input.classifier ? { classifier: input.classifier } : {}),
@@ -250,7 +253,7 @@ export const createRunProtocolBoundary = async (
     userRequirements = await input.requirementExtractor({ userText: intentText }) ?? [];
     if (userRequirements.length > 0) {
       for (const extension of requirementExtensions) {
-        protocolRegistry.replace(extension.createDefinition(actionNames, userRequirements));
+        protocolRegistry.replace(extension.createDefinition(actionNames, userRequirements, input.analysisDecisions));
       }
     }
   };
@@ -498,7 +501,8 @@ const createRuntimeActionPlugin = (
     "data.query.validate",
     "analysis.result.validate",
     "analysis.evidence.bind",
-    "analysis.requirements.commit"
+    "analysis.requirements.commit",
+    "analysis.decision.record"
   ];
   const extensionNames = extensionActions.map((action) => action.name);
   const collision = extensionNames.find((name, index) =>
@@ -512,6 +516,7 @@ const createRuntimeActionPlugin = (
       ...names.map((name) => ({
         name,
         exposure: name === "protocol.handoff.propose" || name === "analysis.requirements.commit"
+          || name === "analysis.decision.record"
           ? "agent" as const
           : "runtime" as const,
         inputSchema: z.unknown(),

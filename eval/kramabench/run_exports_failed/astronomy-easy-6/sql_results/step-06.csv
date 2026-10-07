@@ -1,0 +1,3 @@
+source_file,n_records,min_epoch,max_epoch,n_nonnull_mm,min_mm,max_mm
+C:\Users\shawn\KramaBench\data/astronomy/input\space-track\58214_quiet.csv,8,2024-05-01T10:29:14.898Z,2024-05-03T19:55:27.420Z,8,15.02535435,15.02553412
+C:\Users\shawn\KramaBench\data/astronomy/input\space-track\58214_storm.csv,13,2024-05-10T13:03:59.806Z,2024-05-13T14:27:30.969Z,13,15.02404928,15.02629845

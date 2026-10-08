@@ -60,6 +60,7 @@ except ImportError:  # the SUT still imports standalone for --smoke without the 
     load_by_extension = None
     DEFAULT_TABLE_NAME = {}
     SUPPORTED_EXTENSIONS = frozenset()
+import report_tables  # noqa: E402 — sibling module, importable via the path above
 
 # KramaBench's base class when run inside the harness; a shim for standalone --smoke.
 try:
@@ -109,6 +110,7 @@ TRANSIENT_MARKERS = (
     ("too many requests", "rate limited"),
     ("getaddrinfo", "provider unreachable"),
     ("cannot connect to api", "provider unreachable"),
+    ("headers timeout", "provider timed out"),
     ("econnreset", "connection reset"),
     ("socket hang up", "connection dropped"),
 )
@@ -236,12 +238,15 @@ class DataFoundryClient:
                     c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
                 if isinstance(c, str) and c.strip():
                     texts.append(c.strip())
+        checkpoints = conv.get("checkpoints") or [] if isinstance(conv, dict) else []
+        failure = (f"[DataFoundry run failed] {checkpoints[-1].get('errorMessage')}"
+                   if checkpoints and checkpoints[-1].get("status") == "failed" else None)
+        # A provider fault mid-run leaves partial text behind; report the fault so it is retried.
+        if failure and transient_failure_reason(failure):
+            return failure
         if texts:
             return texts[-1]
-        # No assistant text: surface the run failure instead of dumping the whole conversation.
-        failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
-                  if cp.get("status") == "failed"]
-        return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}" if failed else "[DataFoundry] no answer"
+        return failure or "[DataFoundry] no answer"
 
     def executed_sql(self) -> list[str]:
         """Every statement the last run sent through run_sql_readonly, from the session trace DAG."""
@@ -317,7 +322,9 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
              if not os.path.isdir(p)]
     con = duckdb.connect(out_path)
     made, skipped = 0, []
-    files, grouped = _group_file_families(con, files, dataset_directory)
+    overrides = _ingest_overrides()
+    notes: dict[str, list[tuple[str, str]]] = {}  # table -> notes, written once tables are final
+    files, grouped = _group_file_families(con, files, dataset_directory, notes)
     made += grouped
     names = _unique_table_names(files)
     for path in files:
@@ -326,6 +333,11 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
         ext = pathlib.Path(path).suffix.lower()
         try:
             if ext in (".csv", ".tsv", ".txt"):
+                override = _override_for(rel, overrides)
+                report = _parse_layout(path, override) if override.get("parser") != "sniff" else None
+                if report:
+                    made += _load_report(con, name, report, notes)
+                    continue
                 try:
                     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                 "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
@@ -351,9 +363,10 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM read_json_auto(?)', [path])
                 made += 1
             elif ext in (".xlsx", ".xls"):
-                made += _load_workbook(con, path, name)  # one table per sheet; sheet 1 is often a README
+                # One table per sheet; sheet 1 is often a README.
+                made += _load_workbook(con, path, name, _override_for(rel, overrides), notes)
             elif ext in (".html", ".htm"):
-                made += _load_html_tables(con, path, name)
+                made += _load_html_tables(con, path, name, notes)
             elif load_by_extension is not None and ext in SUPPORTED_EXTENSIONS:
                 outcome = _load_special(con, path, rel)
                 if outcome < 0:
@@ -364,11 +377,168 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 skipped.append(rel)
         except Exception as e:  # noqa: BLE001 — a load failure is also a finding
             skipped.append(f"{rel} ({str(e).splitlines()[0]})")
+    _apply_table_overrides(con, overrides, notes)
+    entries = _finalize_tables(con, notes)
     con.close()
     print(f"[ingest] {made} tables built, {len(skipped)} files skipped -> {out_path}")
     for s in skipped[:50]:
         print("   skip:", s)
+    _write_ingest_report(entries, skipped, out_path)
     return out_path
+
+
+# ── Report-style tables, numeric text and notes ──────────────────────────────
+
+INGEST_OVERRIDES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ingest_overrides.json")
+REPORT_MAX_BYTES = 20_000_000  # report-style files are small; big files go straight to DuckDB
+_GENERIC_COLUMN = re.compile(r"^(column\d+|Unnamed: \d+|col_\d+)$")
+
+
+def _ingest_overrides() -> dict[str, dict]:
+    """Corrections the heuristics cannot make: `files` sets a parser per glob, `tables` renames after loading."""
+    try:
+        with open(INGEST_OVERRIDES, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {"files": {}, "tables": {}}
+    return {"files": data.get("files", {}), "tables": data.get("tables", {})}
+
+
+def _override_for(rel: str, overrides: dict[str, dict]) -> dict:
+    import fnmatch
+
+    path = rel.replace(os.sep, "/")
+    return next((value for pattern, value in overrides["files"].items() if fnmatch.fnmatch(path, pattern)), {})
+
+
+def _apply_table_overrides(con, overrides: dict[str, dict], notes: dict[str, list[tuple[str, str]]]) -> None:
+    """Rename columns ({old: new}, swaps allowed) and tables named in the overrides file, when present."""
+    existing = {r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main'").fetchall()}
+    for table, change in overrides["tables"].items():
+        if table not in existing:
+            continue
+        renames = change.get("columns", {})
+        for index, old in enumerate(renames):  # via temporary names so swapped labels do not collide
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN "{old}" TO "__rename_{index}"')
+        for index, new in enumerate(renames.values()):
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN "__rename_{index}" TO "{new}"')
+        if renames:
+            notes.setdefault(table, []).append(("correction", change.get("reason", f"columns renamed: {renames}")))
+        if change.get("rename_to"):
+            con.execute(f'ALTER TABLE "{table}" RENAME TO "{change["rename_to"]}"')
+            notes[change["rename_to"]] = notes.pop(table, [])
+        print(f"[ingest] {table}: override applied ({change.get('reason', 'renamed')})")
+
+
+def _parse_layout(path: str, override: dict | None = None):
+    """A Report for files whose layout the CSV sniffer gets wrong, else None (load it as a plain CSV).
+
+    Two layouts: '#'-commented whitespace tables that name their columns in comments
+    (Swarm density files), and report-style files (titles, sections, footnotes).
+    """
+    override = override or {}
+    if os.path.getsize(path) > REPORT_MAX_BYTES:
+        return None
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        first = handle.readline()
+    if first.lstrip().startswith("#"):
+        return report_tables.parse_commented_table(path)
+    rows = _report_rows(path)
+    if rows and (override.get("parser") == "report" or report_tables.is_report_style(rows)):
+        return report_tables.parse_report(rows, bool(override.get("merge_continuations")))
+    return None
+
+
+def _report_rows(path: str) -> list[list[str]] | None:
+    if os.path.getsize(path) > REPORT_MAX_BYTES:
+        return None
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        head = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
+    return report_tables.read_rows(path, _best_delimiter(head)) if head else None
+
+
+def _section_frame(section, source_file: str | None = None):
+    import pandas as pd
+
+    frame = pd.DataFrame(section.rows, columns=section.columns, dtype="string").replace("", pd.NA)
+    if source_file is not None:
+        frame["source_file"] = source_file
+    return frame
+
+
+def _load_report(con, name: str, report, notes: dict[str, list[tuple[str, str]]]) -> int:
+    """One clean table per section of a report-style file; title and footnotes become notes."""
+    shared = ([("title", report.title)] if report.title else []) + [n for n in report.notes if n[0] != "section"]
+    tables = report_tables.section_table_names(name, report)
+    for table, section in zip(tables, report.sections):
+        con.register("_report", _section_frame(section))
+        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _report')
+        con.unregister("_report")
+        notes[table] = shared + ([("section", section.title)] if section.title else [])
+    print(f"[ingest] {name}: report layout -> {len(tables)} table(s), {len(shared)} note(s)")
+    return len(tables)
+
+
+def _finalize_tables(con, notes: dict[str, list[tuple[str, str]]]) -> list[dict]:
+    """Type formatted numbers in every table, write notes, and describe each table for the ingest report."""
+    entries = []
+    loaded = [r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    for table in loaded:
+        if not table.endswith("__notes"):
+            notes.setdefault(table, []).extend(report_tables.split_summary_rows(con, table))
+    tables = [r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    for table in tables:
+        if table.endswith("__notes"):
+            continue
+        converted = report_tables.normalize_numeric_text(con, table)
+        report_tables.write_notes(con, table, notes.get(table, []), converted)
+        columns = con.execute("select column_name, data_type from information_schema.columns "
+                              "where table_name = ? order by ordinal_position", [table]).fetchall()
+        numeric_text = []
+        for column, data_type in columns:
+            if data_type != "VARCHAR":
+                continue
+            ident = '"' + column.replace('"', '""') + '"'
+            nonempty, matched, leading_zero = con.execute(
+                f"select count(nullif(trim({ident}), '')), count(*) filter "
+                f"(where regexp_full_match(trim({ident}), ?)), count(*) filter "
+                f"(where regexp_full_match(trim({ident}), '0[0-9]+')) from \"{table}\"",
+                [report_tables.NUMBER_SQL]).fetchone()
+            # Leading zeros mark identifiers (county codes, station ids), which are text on purpose.
+            if nonempty and matched / nonempty >= 0.8 and not leading_zero:
+                odd = [r[0] for r in con.execute(
+                    f"select distinct trim({ident}) from \"{table}\" where nullif(trim({ident}), '') is not null "
+                    f"and not regexp_full_match(trim({ident}), ?) limit 3", [report_tables.NUMBER_SQL]).fetchall()]
+                numeric_text.append(f"{column} (e.g. {odd})")
+        entries.append({
+            "table": table,
+            "rows": con.execute(f'select count(*) from "{table}"').fetchone()[0],
+            "columns": len(columns),
+            "generic_columns": [c for c, _ in columns if _GENERIC_COLUMN.match(c)],
+            "numeric_text_columns": numeric_text,
+            "converted_columns": [text.split(":")[0] for _, text in converted],
+            "notes": len(notes.get(table, [])) + len(converted),
+        })
+    return entries
+
+
+def _write_ingest_report(entries: list[dict], skipped: list[str], out_path: str) -> None:
+    """Print tables that still look mis-parsed and save the full per-table report beside the DuckDB file."""
+    suspicious = [e for e in entries if e["generic_columns"] or e["numeric_text_columns"]]
+    print(f"[ingest] report: {len(entries)} tables, {sum(e['notes'] > 0 for e in entries)} with notes, "
+          f"{len(suspicious)} still suspicious")
+    for entry in suspicious[:40]:
+        problems = []
+        if entry["generic_columns"]:
+            problems.append(f"generic columns {entry['generic_columns'][:4]}")
+        if entry["numeric_text_columns"]:
+            problems.append(f"numbers stored as text {entry['numeric_text_columns'][:4]}")
+        print(f"   check: {entry['table']}: {'; '.join(problems)}")
+    with open(out_path + ".ingest.json", "w", encoding="utf-8") as handle:
+        json.dump({"tables": entries, "skipped": skipped}, handle, indent=1)
 
 
 def _load_special(con, path: str, rel: str) -> int:
@@ -438,7 +608,8 @@ def _family_table_name(directory: str, shape: str) -> str:
     return base
 
 
-def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple[list[str], int]:
+def _group_file_families(con, files: list[str], dataset_directory: str,
+                         notes: dict[str, list[tuple[str, str]]] | None = None) -> tuple[list[str], int]:
     """Union same-shaped files into one table each; return the files left to ingest singly.
 
     A lake often ships one logical table cut into shards — 715 `swarma-*` files for one
@@ -474,6 +645,9 @@ def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple
             remaining.extend(members)
             continue
         table = _family_table_name(directory, shape)
+        if extension != ".parquet" and _union_report_family(con, table, members, dataset_directory, notes):
+            made += 1
+            continue
         reader = "read_parquet" if extension in (".parquet", ".pq") else "read_csv_auto"
         options = "filename = true, union_by_name = false" + ("" if reader == "read_parquet" else ", sample_size = -1")
         listed = ", ".join("'" + member.replace("'", "''") + "'" for member in sorted(members))
@@ -490,13 +664,52 @@ def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple
     return sorted(remaining), made
 
 
-def _load_html_tables(con, path: str, name: str) -> int:
+def _union_report_family(con, table: str, members: list[str], dataset_directory: str,
+                         notes: dict[str, list[tuple[str, str]]] | None) -> bool:
+    """Union a family of report-style files (a title line per file) parsed one by one.
+
+    Returns False, leaving the family to the CSV reader, unless the first file is
+    report-style and every file parses to exactly one section with the same columns.
+    """
+    import pandas as pd
+
+    if _parse_layout(members[0]) is None:
+        return False
+    frames, seen_notes, columns = [], {}, None
+    for member in sorted(members):
+        report = _parse_layout(member)
+        if not report or len(report.sections) != 1 or columns not in (None, report.sections[0].columns):
+            return False
+        columns = report.sections[0].columns
+        frames.append(_section_frame(report.sections[0], os.path.relpath(member, dataset_directory)))
+        for note in ([("title", report.title)] if report.title else []) + report.notes:
+            seen_notes.setdefault(note[1], note)  # each state's file repeats the same footnotes
+    con.register("_family", pd.concat(frames, ignore_index=True))
+    con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _family')
+    con.unregister("_family")
+    if notes is not None:
+        notes[table] = list(seen_notes.values())[:50]
+    print(f"[ingest] {table}: {len(members)} report-layout files unioned into one table")
+    return True
+
+
+def _load_html_tables(con, path: str, name: str,
+                      notes: dict[str, list[tuple[str, str]]] | None = None) -> int:
     """Load every table in an HTML page (legal's metropolitan_statistics.html, for example)."""
     import pandas as pd
 
     frames = [frame for frame in pd.read_html(path) if frame.shape[0] >= 5 and frame.shape[1] >= 2]
     for index, frame in enumerate(frames):
-        frame.columns = [str(column) for column in frame.columns]
+        captions: list[str] = []
+        if isinstance(frame.columns, pd.MultiIndex):
+            # Wikipedia tables put a caption level above the real column names.
+            captions = list(dict.fromkeys(str(c[0]) for c in frame.columns if str(c[0]) != str(c[-1])))
+            frame.columns = [str(c[-1]) for c in frame.columns]
+        frame.columns = [f"column{i}" if str(c).startswith("Unnamed:") else str(c)
+                         for i, c in enumerate(frame.columns)]
+        table_name = name if len(frames) == 1 else f"{name}__t{index + 1}"
+        if notes is not None and captions:
+            notes[table_name] = [("title", caption) for caption in captions]
         for column in frame.columns[frame.dtypes == object]:
             frame[column] = frame[column].astype("string")
         table = name if len(frames) == 1 else f"{name}__t{index + 1}"
@@ -576,7 +789,8 @@ def _fix_csv_header(con, name: str, path: str) -> None:
     columns = [r[0] for r in con.execute(
         "select column_name from information_schema.columns where table_name = ?", [name]).fetchall()]
     degenerate = (
-        len(columns) <= 1
+        # One column is fine for a list ('Name' over state names) unless the name hides a delimiter.
+        (len(columns) <= 1 and (not columns or any(d in columns[0] for d in "\t;|,")))
         or sum(1 for c in columns if re.fullmatch(r"column\d+", c)) > len(columns) / 2
         or any("\t" in c for c in columns)
         or sum(1 for c in columns if _looks_numeric(c)) > len(columns) / 2
@@ -645,14 +859,27 @@ def detect_header_row(rows: list[list]) -> int:
     return best_index
 
 
-def _load_workbook(con, path: str, name: str) -> int:
-    """Load every sheet of an Excel workbook as its own table; returns tables created."""
+def _load_workbook(con, path: str, name: str, override: dict | None = None,
+                   notes: dict[str, list[tuple[str, str]]] | None = None) -> int:
+    """Load every sheet of an Excel workbook as its own table; returns tables created.
+
+    An override of `"parser": "report"` (ingest_overrides.json) reads each sheet as a
+    report: titles, a stacked header and footnotes, like the Census estimate sheets.
+    """
+    override = override or {}
+    parser = override.get("parser")
     import pandas as pd  # openpyxl engine; KramaBench's biomedical workbooks put a README on sheet 1
 
     raw_sheets = pd.read_excel(path, sheet_name=None, header=None)
     made = 0
     for sheet, raw in raw_sheets.items():
         table = name if len(raw_sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
+        if parser == "report":
+            rows = [["" if pd.isna(v) else str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip()
+                     for v in row] for row in raw.values.tolist()]
+            report = report_tables.parse_report(rows, bool(override.get("merge_continuations")))
+            made += _load_report(con, table, report, notes if notes is not None else {})
+            continue
         if raw.shape[1] == 1:
             # One-column sheets are bare lists (e.g. gene names) with no header row.
             df = raw.rename(columns={raw.columns[0]: "value"})

@@ -512,6 +512,8 @@ export const createDataFoundry = async (
     alwaysAllow: alwaysAllowTools,
     skillPolicy: input.skillSelection?.effectiveToolPolicy
   });
+  // Decisions come from a D-Trail receipt; without one the run keeps the baseline toolset.
+  const analysisDecisions = createDecisionsFromReceipt(input.assumptionReceipt);
   const agentToolPlanEntries: ToolPlanEntry[] = [
     ...toolPlan.entries,
     {
@@ -521,13 +523,15 @@ export const createDataFoundry = async (
       availability: "available",
       reasons: ["source:protocol-runtime"]
     },
-    {
-      name: "analysis_decision_record",
-      source: "protocol-runtime",
-      exposed: true,
-      availability: "available",
-      reasons: ["source:protocol-runtime"]
-    },
+    ...(analysisDecisions.length > 0
+      ? [{
+          name: "analysis_decision_record",
+          source: "protocol-runtime",
+          exposed: true,
+          availability: "available" as const,
+          reasons: ["source:protocol-runtime"]
+        }]
+      : []),
     {
       name: "protocol_handoff",
       source: "protocol-runtime",
@@ -537,7 +541,6 @@ export const createDataFoundry = async (
     }
   ];
   const selectedTools = toolPlan.exposedTools;
-  const analysisDecisions = createDecisionsFromReceipt(input.assumptionReceipt);
   const selectedDatasourceId = input.runContext.selected_datasource_id;
   const deferredProtocolEvents: ProtocolEvent[] = [];
   let protocolEventsReady = false;
@@ -691,7 +694,7 @@ export const createDataFoundry = async (
   const tools = {
     ...governedToolFactory.governTools(selectedTools),
     ...requirementsCommitTools,
-    ...decisionRecordTools,
+    ...(analysisDecisions.length > 0 ? decisionRecordTools : {}),
     protocol_handoff: createTool({
       id: "protocol_handoff",
       description: "Propose switching this run to another authorized protocol when the current protocol is unsuitable.",

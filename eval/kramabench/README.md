@@ -80,6 +80,8 @@ curl.exe -s http://127.0.0.1:8787/ready       # wait until this returns JSON
 
 The API port opens before the runtime finishes loading. If you send requests before `/ready` responds, you get `ECONNREFUSED`.
 
+For evaluation, raise the agent step budget (default 80) in the same shell before `npm run start`, for example `$env:DATAFOUNDRY_AGENT_MAX_STEPS = "160"` (bash: `DATAFOUNDRY_AGENT_MAX_STEPS=160 npm run start`). Set it in the shell, not in `.env`: agent-runtime reads its `DATAFOUNDRY_*` limits when it is imported, before the API loads `.env`, so a value there is ignored. Report the budget alongside any score.
+
 Then, in the web UI (`http://127.0.0.1:3000/login`):
 
 1. **Register** an account. In test email mode, the verification link is returned directly.
@@ -194,6 +196,11 @@ $env:OPENAI_API_KEY="placeholder"             # or a real key; see Grading
 | `DF_RUN_TIMEOUT` | How long the SUT waits for the event stream, in seconds |
 | `OPENAI_API_KEY` | Required to exist: KramaBench builds its judge client at startup even with `--no_pipeline_eval` |
 | `DTRAIL_API_URL`, `DTRAIL_TOKEN` | Optional d-trail REST API + bearer token; required for assumption readback |
+| `DF_GROUNDING` | `1` to turn on evidence-aware grounding (`evidenceGrounding` in run config): before any SQL, candidate join keys suggested by column names and in-lake data dictionaries are checked against the full data, and the ones the agent could miss are shown with the schema. Off by default. Report it alongside any score |
+| `DF_ANSWER_FRAME` | `1` to add an answer frame (`answerFrame` in run config): one model call lists the defensible readings of the question's unit, population and denominator, each is counted in the data, and choices that change the counts are shown with the schema as options, never as the answer. Independent of `DF_GROUNDING`. Off by default |
+| `DF_JOIN_BINDING` | `1` to make verified joins binding (`joinBinding` in run config; needs `DF_GROUNDING=1`): for each table pair whose verified join was shown to the agent, SQL that combines the two tables must join on a verified key, and the rejected keys shown beside it are forbidden. The SQL gate enforces it before the query runs. Off by default |
+| `DF_FRAME_BINDING` | `1` to make the answer frame binding (`frameBinding` in run config; needs `DF_ANSWER_FRAME=1`): readings get ids, the agent passes one choice per decision in `frame_choices` on `run_sql_readonly`, the SQL answering the question must apply each chosen population and denominator `WHERE`, and a chosen unit counted once per key must be computed once per key. Off by default |
+| `DF_BINDING` | `1` turns on both `DF_JOIN_BINDING` and `DF_FRAME_BINDING`. Report the binding settings alongside any score |
 | `DTRAIL_ASSUME` | `1` to ask d-trail to classify assumptions (`assumeVerification` in run config) and surface the receipt under `explanation.assumptions`. Off by default. The classifier's model key lives on the d-trail service; DataFoundry and this SUT never see it |
 
 Three timeouts must agree: `DATAFOUNDRY_MAX_RUN_TIMEOUT_MS` (the ceiling), the profile's timeout (the actual per-run limit), and `DF_RUN_TIMEOUT`. Whichever is shortest cuts the run off.
@@ -298,6 +305,7 @@ Get-ChildItem tasks\<domain>_task_* | Group-Object { $_.Name -replace '_\d{8}_\d
 | `ECONNREFUSED 127.0.0.1:8787` | API not ready yet | Wait for `/ready` |
 | `No permission to access model: …` | Profile's model name or key is wrong, or the run used `server-default` | Fix the profile and set `DF_LLM_PROFILE` to its id |
 | `RUN_TIMEOUT:300000` | The profile timeout is still 5 minutes | Raise the profile timeout and `DATAFOUNDRY_MAX_RUN_TIMEOUT_MS`, then rebuild and restart |
+| Runs stop at about 80 steps despite `DATAFOUNDRY_AGENT_MAX_STEPS` in `.env` | Agent-runtime limits are read before `.env` loads | Set the variable in the shell that runs `npm run start`, then restart |
 | `Read timed out` in the SUT | `DF_RUN_TIMEOUT` is shorter than the run | Raise `DF_RUN_TIMEOUT` |
 | `400 Bad Request` on `/api/copilotkit` | Outdated SUT | Re-copy `datafoundry_sut.py` |
 | `ModuleNotFoundError` (`untruncate_json`, `anthropic`) | Missing KramaBench dependency, or baselines imported | Install it, or apply the `systems/__init__.py` change |

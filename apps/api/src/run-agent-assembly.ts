@@ -133,6 +133,10 @@ export const createRunAgentContext = (input: CreateRunAgentContextInput): AgentR
     ...(input.effectiveRunConfig.evidenceRefs.length > 0
       ? { evidence_refs: input.effectiveRunConfig.evidenceRefs }
       : {}),
+    ...(input.effectiveRunConfig.evidenceGrounding ? { evidence_grounding: true } : {}),
+    ...(input.effectiveRunConfig.answerFrame ? { answer_frame: true } : {}),
+    ...(input.effectiveRunConfig.joinBinding ? { join_binding: true } : {}),
+    ...(input.effectiveRunConfig.frameBinding ? { frame_binding: true } : {}),
     model_name: input.modelProvider.model_name
   });
 

@@ -71,6 +71,11 @@ RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
 DTRAIL_API_URL = os.environ.get("DTRAIL_API_URL", "").rstrip("/")
 DTRAIL_TOKEN = os.environ.get("DTRAIL_TOKEN", "")
 DTRAIL_ASSUME = os.environ.get("DTRAIL_ASSUME", "0") == "1"
+GROUNDING = os.environ.get("DF_GROUNDING", "0") == "1"
+ANSWER_FRAME = os.environ.get("DF_ANSWER_FRAME", "0") == "1"
+# DF_BINDING=1 is the shortcut for both kinds of binding.
+JOIN_BINDING = os.environ.get("DF_JOIN_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
+FRAME_BINDING = os.environ.get("DF_FRAME_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
 
 # A failed run is reported as answer text, not raised, so retry decisions read the
 # text. Gate on these prefixes first: a task answer may legitimately contain the
@@ -83,11 +88,24 @@ FAILURE_PREFIXES = ("[DataFoundry run failed]", "[DataFoundry error]")
 TRANSIENT_MARKERS = (
     ("rate limit", "rate limited"),
     ("too many requests", "rate limited"),
+    # GLM (bigmodel.cn) reports its limiter in Chinese: 速率限制 = rate limit, 请求频率 = request rate.
+    ("速率限制", "rate limited"),
+    ("请求频率", "rate limited"),
     ("getaddrinfo", "provider unreachable"),
     ("cannot connect to api", "provider unreachable"),
     ("econnreset", "connection reset"),
     ("socket hang up", "connection dropped"),
 )
+
+
+# A spent plan quota lasts hours or days, so retrying in place cannot help.
+# GLM: 使用上限 = usage cap ("weekly/monthly usage cap reached, resets at ...").
+QUOTA_MARKERS = ("使用上限", "quota exceeded", "insufficient_quota")
+
+
+def quota_exhausted(text: str) -> bool:
+    lowered = text.lower()
+    return text.startswith(FAILURE_PREFIXES) and any(marker in lowered for marker in QUOTA_MARKERS)
 
 
 def transient_failure_reason(text: str) -> str | None:
@@ -172,6 +190,14 @@ class DataFoundryClient:
         }
         if DTRAIL_ASSUME:
             run_config["assumeVerification"] = True
+        if GROUNDING:
+            run_config["evidenceGrounding"] = True
+        if ANSWER_FRAME:
+            run_config["answerFrame"] = True
+        if JOIN_BINDING:
+            run_config["joinBinding"] = True
+        if FRAME_BINDING:
+            run_config["frameBinding"] = True
         payload = {
             "method": "agent/run",
             "params": {"agentId": "dataFoundry"},
@@ -201,6 +227,12 @@ class DataFoundryClient:
 
     def _final_answer(self, thread_id: str) -> str:
         conv = self._conversation(thread_id)
+        # A run that fails partway (e.g. a provider rate limit at step 40) still has the agent's
+        # earlier text; report the failure, not that text, so it is retried instead of scored.
+        failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
+                  if cp.get("status") == "failed"]
+        if failed:
+            return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}"
         msgs = conv.get("messages", conv) if isinstance(conv, dict) else conv
         texts: list[str] = []
         for m in msgs if isinstance(msgs, list) else []:
@@ -210,12 +242,7 @@ class DataFoundryClient:
                     c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
                 if isinstance(c, str) and c.strip():
                     texts.append(c.strip())
-        if texts:
-            return texts[-1]
-        # No assistant text: surface the run failure instead of dumping the whole conversation.
-        failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
-                  if cp.get("status") == "failed"]
-        return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}" if failed else "[DataFoundry] no answer"
+        return texts[-1] if texts else "[DataFoundry] no answer"
 
     def read_assumptions(self) -> dict | None:
         """Best-effort readback of the d-trail assumptions receipt for the last run.
@@ -702,6 +729,10 @@ class DataFoundrySUT(System):
                 full_text = client.run(question, self._ds_id)
             except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
                 full_text = f"[DataFoundry error] {e}"
+            if quota_exhausted(full_text):
+                # Every later task would fail in a second and be logged as done; stop the
+                # batch so a resumable runner picks up from here once the quota resets.
+                raise SystemExit(f"[DataFoundry] provider quota exhausted, stopping: {full_text}")
             reason = transient_failure_reason(full_text)
             if reason is None or attempt == RETRY_ATTEMPTS:
                 break

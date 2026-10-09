@@ -4,9 +4,13 @@ import { z } from "zod";
 
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 import {
+  ANALYSIS_ASSERTION_KINDS,
   analysisAssertionDraftSchema,
+  claimValueSpecSchema,
   createAnalysisAssertions,
   createManualAnalysisAssertion,
+  resultCheckSchema,
+  sqlConstraintSchema,
   type AnalysisAssertionDraft,
   type SqlSemanticConstraint
 } from "./analysis-contract.js";
@@ -41,7 +45,12 @@ export type AnalysisContractGroundingInput = {
 
 export type AnalysisContractGroundingFinding = {
   requirementId: string;
-  code: "CONTRACT_MISSING" | "CONTRACT_INVALID_OUTPUT" | "CONTRACT_UNKNOWN_TABLE" | "CONTRACT_UNKNOWN_COLUMN";
+  code:
+    | "CONTRACT_MISSING"
+    | "CONTRACT_INVALID_OUTPUT"
+    | "CONTRACT_OUTPUT_REPAIRED"
+    | "CONTRACT_UNKNOWN_TABLE"
+    | "CONTRACT_UNKNOWN_COLUMN";
   message: string;
 };
 
@@ -87,13 +96,13 @@ export const createAnalysisContractGroundingPrompt = (input: AnalysisContractGro
 export const parseAnalysisContractGroundingText = (
   text: string,
   requirements: AnalysisRequirement[],
-  physicalSchema: unknown
+  physicalSchema: unknown,
+  options: { salvage?: boolean } = {}
 ): AnalysisContractGroundingResult => {
-  const trimmed = text.trim();
-  const unfenced = trimmed.startsWith("```")
-    ? trimmed.replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "")
-    : trimmed;
-  const parsed = groundingSchema.parse(JSON.parse(unfenced) as unknown);
+  const repairs: Array<{ requirementId: string; message: string }> = [];
+  const parsed = groundingSchema.parse(options.salvage
+    ? salvageGroundingOutput(parseJsonObject(text), repairs)
+    : JSON.parse(unfence(text)) as unknown);
   const contracts = new Map(parsed.contracts.map((contract) => [
     contract.requirementId,
     contract.assertions.map(normalizeAssertionDraft)
@@ -115,6 +124,8 @@ export const parseAnalysisContractGroundingText = (
     }
     const draftFindings = validateAssertionDrafts(requirement.id, drafts, schema);
     findings.push(...draftFindings);
+    findings.push(...repairs.filter((repair) => repair.requirementId === requirement.id)
+      .map((repair) => ({ ...repair, code: "CONTRACT_OUTPUT_REPAIRED" as const })));
     return draftFindings.length > 0
       ? withManualAssertion(requirement)
       : { ...cloneRequirement(requirement), assertions: createAnalysisAssertions(requirement.id, drafts) };
@@ -122,12 +133,94 @@ export const parseAnalysisContractGroundingText = (
   return { requirements: grounded, findings };
 };
 
+const unfence = (text: string): string => {
+  const trimmed = text.trim();
+  return trimmed.startsWith("```")
+    ? trimmed.replace(/^```(?:json)?\s*/iu, "").replace(/\s*```$/u, "")
+    : trimmed;
+};
+
+// The model sometimes wraps the JSON in prose or a code fence; take the outermost object.
+const parseJsonObject = (text: string): unknown => {
+  const trimmed = unfence(text);
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch (error) {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start < 0 || end <= start) throw error;
+    return JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+  }
+};
+
+/**
+ * Last resort after strict retries: keep what is valid in a model contract instead of discarding
+ * all of it for one bad field (2026-10-08: 19 of 62 discarded wildfire contracts failed on a kind).
+ * Drops individual malformed constraints, checks and claim values; maps an unknown assertion
+ * kind to metric when it still has claim values, else to manual; trims an over-long
+ * description. Every repair is reported. Anything else still fails validation as before.
+ */
+const salvageGroundingOutput = (
+  value: unknown,
+  repairs: Array<{ requirementId: string; message: string }>
+): unknown => {
+  if (!isPlainRecord(value) || !Array.isArray(value.contracts)) return value;
+  return {
+    ...value,
+    contracts: value.contracts.map((contract) => {
+      if (!isPlainRecord(contract) || !Array.isArray(contract.assertions)) return contract;
+      const requirementId = typeof contract.requirementId === "string" ? contract.requirementId : "unknown";
+      const note = (index: number, message: string) => repairs.push({ requirementId, message: `assertion ${index + 1}: ${message}` });
+      return {
+        ...contract,
+        assertions: contract.assertions.map((assertion, index) => {
+          if (!isPlainRecord(assertion)) return assertion;
+          const repaired: Record<string, unknown> = { ...assertion };
+          for (const [field, schema] of [
+            ["sqlConstraints", sqlConstraintSchema],
+            ["resultChecks", resultCheckSchema],
+            ["claimValues", claimValueSpecSchema]
+          ] as const) {
+            const items = repaired[field];
+            if (!Array.isArray(items)) continue;
+            const kept = items.filter((item) => schema.safeParse(item).success);
+            if (kept.length < items.length) {
+              note(index, `dropped ${items.length - kept.length} invalid ${field} entr${items.length - kept.length === 1 ? "y" : "ies"}`);
+              repaired[field] = kept;
+            }
+          }
+          const hasClaims = Array.isArray(repaired.claimValues) && repaired.claimValues.length > 0;
+          if (!(ANALYSIS_ASSERTION_KINDS as readonly unknown[]).includes(repaired.kind)) {
+            const kind = hasClaims ? "metric" : "manual";
+            note(index, `unknown kind ${JSON.stringify(repaired.kind)} read as ${kind}`);
+            repaired.kind = kind;
+          } else if (repaired.kind !== "manual" && !hasClaims) {
+            note(index, "no valid claimValues left, read as manual");
+            repaired.kind = "manual";
+          }
+          if (typeof repaired.description === "string" && repaired.description.length > 500) {
+            repaired.description = repaired.description.slice(0, 500);
+            note(index, "description trimmed to 500 characters");
+          }
+          return repaired;
+        })
+      };
+    })
+  };
+};
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** Convert a parser failure into concrete model-facing repair instructions for the next grounding attempt. */
 export const createAnalysisContractGroundingRetryInstruction = (error: unknown): string => {
   return [
     "",
     "上次输出未通过服务端 schema 校验。不要重复原来的无效结构，只修正以下问题：",
     describeAnalysisContractGroundingError(error),
+    ...(error instanceof Error && error.message.startsWith("OUTPUT_TRUNCATED")
+      ? ["上次输出超过长度上限被截断：减少 assertions 数量，省略可选字段，不要输出解释文字。"]
+      : []),
     "重新检查每个嵌套对象的 kind 和必填字段，并严格返回紧凑 JSON。"
   ].join("\n");
 };
@@ -165,6 +258,7 @@ export const createModelAnalysisContractGrounder = (
     const prompt = createAnalysisContractGroundingPrompt(input);
     let retryInstruction = "";
     let lastError: unknown;
+    let lastText = "";
     for (let attempt = 0; attempt < AGENT_RUNTIME_LIMITS.contractGrounderMaxAttempts; attempt += 1) {
       const output = await agent.generate(`${prompt}${retryInstruction}`, {
         maxSteps: AGENT_RUNTIME_LIMITS.modelHelperMaxSteps,
@@ -173,14 +267,26 @@ export const createModelAnalysisContractGrounder = (
           temperature: 0
         }
       });
+      lastText = output.text;
       try {
         return parseAnalysisContractGroundingText(output.text, input.requirements, input.physicalSchema);
       } catch (error) {
-        lastError = error;
-        retryInstruction = createAnalysisContractGroundingRetryInstruction(error);
+        // A reply that stops at the output limit (reasoning models spend it before answering)
+        // fails as truncated JSON; say so, so traces show the cause and the retry is shorter.
+        lastError = output.finishReason === "length"
+          ? new Error(`OUTPUT_TRUNCATED at ${AGENT_RUNTIME_LIMITS.contractGrounderMaxOutputTokens} output tokens `
+            + `(finishReason=length): ${describeAnalysisContractGroundingError(error)}`)
+          : error;
+        retryInstruction = createAnalysisContractGroundingRetryInstruction(lastError);
       }
     }
-    return createFallbackAnalysisContractGrounding(input.requirements, lastError);
+    // Retries keep the strict schema so the model fixes its own output; only when they are
+    // spent, keep the valid parts of the last answer rather than dropping to manual assertions.
+    try {
+      return parseAnalysisContractGroundingText(lastText, input.requirements, input.physicalSchema, { salvage: true });
+    } catch {
+      return createFallbackAnalysisContractGrounding(input.requirements, lastError);
+    }
   };
 };
 

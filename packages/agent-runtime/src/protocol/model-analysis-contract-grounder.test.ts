@@ -223,4 +223,62 @@ describe("analysis contract grounding", () => {
       })
     ]);
   });
+
+  describe("salvage after strict retries", () => {
+    const output = (assertions: unknown[], prefix = "") => `${prefix}${JSON.stringify({
+      contracts: [{ requirementId: "R1", assertions }]
+    })}`;
+    const counted = {
+      description: "物流单量",
+      sourceTables: ["dacomp-zh-006"],
+      sqlConstraints: [
+        { kind: "aggregate", function: "COUNT", column: "物流单号", alias: "shipment_count" },
+        { kind: "group_by" }
+      ],
+      claimValues: [{ name: "shipment_count", field: "shipment_count", required: true }]
+    };
+
+    it("keeps the valid parts of output the strict parser rejects, and reports each repair", () => {
+      const text = output([
+        { ...counted, kind: "count" },
+        { kind: "format", description: "回答以 FINAL_ANSWER 结尾" }
+      ], "Here is the contract:\n");
+
+      expect(() => parseAnalysisContractGroundingText(text, requirements, physicalSchema)).toThrow();
+      const result = parseAnalysisContractGroundingText(text, requirements, physicalSchema, { salvage: true });
+
+      expect(result.requirements[0]?.assertions.map((assertion) => assertion.kind)).toEqual(["metric", "manual"]);
+      expect(result.requirements[0]?.assertions[0]?.sqlConstraints).toEqual([
+        { kind: "aggregate", function: "COUNT", column: "物流单号", alias: "shipment_count" }
+      ]);
+      expect(result.findings.map((finding) => finding.code)).toEqual([
+        "CONTRACT_OUTPUT_REPAIRED",
+        "CONTRACT_OUTPUT_REPAIRED",
+        "CONTRACT_OUTPUT_REPAIRED"
+      ]);
+      expect(result.findings.map((finding) => finding.message)).toEqual([
+        "assertion 1: dropped 1 invalid sqlConstraints entry",
+        "assertion 1: unknown kind \"count\" read as metric",
+        "assertion 2: unknown kind \"format\" read as manual"
+      ]);
+    });
+
+    it("still rejects unknown tables and output that is not JSON", () => {
+      const unknownTable = output([{ ...counted, kind: "metric", sourceTables: ["orders"] }]);
+
+      expect(parseAnalysisContractGroundingText(unknownTable, requirements, physicalSchema, { salvage: true })
+        .requirements[0]?.assertions[0]?.kind).toBe("manual");
+      expect(() => parseAnalysisContractGroundingText("", requirements, physicalSchema, { salvage: true })).toThrow();
+    });
+  });
+
+  it("tells the retry to shorten output that was cut off at the token limit", () => {
+    const truncated = createAnalysisContractGroundingRetryInstruction(
+      new Error("OUTPUT_TRUNCATED at 8192 output tokens (finishReason=length): Unexpected end of JSON input")
+    );
+    const invalid = createAnalysisContractGroundingRetryInstruction(new Error("Unexpected end of JSON input"));
+
+    expect(truncated).toContain("减少 assertions 数量");
+    expect(invalid).not.toContain("减少 assertions 数量");
+  });
 });

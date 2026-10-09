@@ -21,7 +21,18 @@ export type SqlSemanticConstraint =
   | { kind: "aggregate"; function: string; column?: string; alias?: string }
   | { kind: "group_by"; columns: string[] }
   | { kind: "filter"; column: string; operator: "eq" | "gt" | "gte" | "lt" | "lte"; value: AnalysisScalar }
-  | { kind: "time_range"; column: string; start: string; end: string; endInclusive: boolean };
+  | { kind: "time_range"; column: string; start: string; end: string; endInclusive: boolean }
+  // Server-owned: added from join keys checked against the data when note binding is on, and
+  // absent from the model-facing schema below so a contract model can never propose them.
+  | { kind: "join"; tables: [string, string]; anyOf: SqlJoinKey[]; condition: string }
+  | { kind: "avoid_join"; key: SqlJoinKey; instead: string };
+
+export type SqlJoinKey = {
+  left: { table: string; column: string };
+  right: { table: string; column: string };
+  /** Set when the values only match as numbers (e.g. 41007 vs "041007"): a text comparison misses them. */
+  compare?: "numeric";
+};
 
 export type AnalysisValueOperand = {
   field?: string;
@@ -127,7 +138,7 @@ const analysisOperandSchema = z.object({
 }).refine((value) => value.field !== undefined || value.literal !== undefined, {
   message: "An operand requires field or literal."
 });
-const sqlConstraintSchema = z.discriminatedUnion("kind", [
+export const sqlConstraintSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("source"), table: z.string().min(1) }),
   z.object({
     kind: z.literal("column"),
@@ -162,7 +173,7 @@ const commonBinaryCheckFields = {
   right: analysisOperandSchema,
   tolerance: z.number().nonnegative().optional()
 };
-const resultCheckSchema = z.discriminatedUnion("kind", [
+export const resultCheckSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("non_empty"), required: z.boolean() }),
   z.object({
     kind: z.literal("row_count"),
@@ -195,7 +206,7 @@ const resultCheckSchema = z.discriminatedUnion("kind", [
     tolerance: z.number().nonnegative().optional()
   })
 ]);
-const claimValueSpecSchema = z.object({
+export const claimValueSpecSchema = z.object({
   name: z.string().min(1),
   field: z.string().min(1),
   selector: analysisSelectorSchema.optional(),

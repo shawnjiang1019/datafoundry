@@ -126,6 +126,51 @@ describe("formal protocols", () => {
     expect(changedRevision.contractGrounded).toBe(false);
   });
 
+  it("grounds the contract again when it was grounded on an empty schema and real tables appear", () => {
+    const requirements = createUserAnalysisRequirements([{
+      kind: "metric",
+      description: "Average station elevation",
+      acceptanceCriteria: ["One number in feet"]
+    }]);
+    const protocol = createDataAnalysisProtocol([], requirements);
+    const resolve = { mode: "live", trust: "verified", datasourceRevision: "revision-1" };
+    let state = protocol.createInitialState({ contextPackageRef, runId: "run-empty-schema" });
+    // The agent's first inspect_schema names tables that do not exist.
+    state = reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [] });
+    state = reduceDataAnalysisAction(state, "semantic.context.resolve", resolve);
+    state = reduceDataAnalysisAction(state, "analysis.contract.ground", { requirements, datasourceRevision: "revision-1" });
+    expect(state.contractGrounded).toBe(true);
+
+    const sameEmptySchema = reduceDataAnalysisAction(
+      reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [] }),
+      "semantic.context.resolve",
+      resolve
+    );
+    const realSchema = reduceDataAnalysisAction(
+      reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [{ name: "fires" }, { name: "stations" }] }),
+      "semantic.context.resolve",
+      resolve
+    );
+    const regrounded = reduceDataAnalysisAction(realSchema, "analysis.contract.ground", {
+      requirements,
+      datasourceRevision: "revision-1"
+    });
+    const inspectedAgain = reduceDataAnalysisAction(
+      reduceDataAnalysisAction(regrounded, "inspect_schema", { schema_id: "s", tables: [{ name: "fires" }] }),
+      "semantic.context.resolve",
+      resolve
+    );
+
+    // The new grounding runs as an automatic action in whatever phase the agent has reached.
+    for (const phase of ["query_planning", "execution", "validation", "synthesis"]) {
+      expect(protocol.phases[phase]?.allowedActions).toContain("analysis.contract.ground");
+    }
+    expect(sameEmptySchema.contractGrounded).toBe(true);
+    expect(realSchema.contractGrounded).toBe(false);
+    expect(regrounded.contractTableCount).toBe(2);
+    expect(inspectedAgain.contractGrounded).toBe(true);
+  });
+
   it("keeps a later query attempt pending until it has its own validated evidence", () => {
     const protocol = createDataAnalysisProtocol([]);
     let state = protocol.createInitialState({ contextPackageRef, runId: "run-1" });
@@ -484,5 +529,81 @@ describe("formal protocols", () => {
     expect(() => reduceDataAnalysisAction(initial, "analysis.requirements.commit", {
       claims: [{ requirement_id: "R1", claim: "profit", evidence_binding_ids: ["E404"] }]
     })).toThrow("ANALYSIS_REQUIREMENT_EVIDENCE_INVALID:R1:E404");
+  });
+
+  it("keeps the answer metric strict and makes the contract's side checks optional", () => {
+    const requirements = createUserAnalysisRequirements([{
+      kind: "metric",
+      description: "Average age of serous patients",
+      acceptanceCriteria: ["One number"],
+      assertions: [
+        {
+          kind: "metric",
+          description: "average age",
+          sourceTables: ["samples"],
+          claimValues: [{ name: "avg_age", field: "avg_age", required: true }]
+        },
+        {
+          kind: "filter",
+          description: "serous row count",
+          sourceTables: ["samples"],
+          sqlConstraints: [{ kind: "filter", column: "Histologic_type", operator: "eq", value: "Serous" }],
+          resultChecks: [{ kind: "non_empty", required: true }],
+          claimValues: [{ name: "serous_rows", field: "serous_rows", required: true }]
+        }
+      ]
+    }]);
+    let state = createDataAnalysisProtocol([], requirements).createInitialState({ contextPackageRef, runId: "run-side" });
+    state = reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [{ name: "samples" }] });
+    state = reduceDataAnalysisAction(state, "semantic.context.resolve", { mode: "live", trust: "verified" });
+    state = reduceDataAnalysisAction(state, "analysis.contract.ground", { requirements });
+    const [answer, side] = state.requirements.find((requirement) => requirement.id === "R1")?.assertions ?? [];
+    const sideQuery = reduceDataAnalysisAction(
+      reduceDataAnalysisAction(state, "data.query.plan", { sql: "SELECT COUNT(*) AS serous_rows FROM samples", assertion_ids: ["R1.A2"] }),
+      "data.query.validate",
+      { valid: true }
+    );
+
+    expect(answer?.required).toBe(true);
+    expect(side).toMatchObject({ required: false, resultChecks: [{ required: false }], claimValues: [{ required: false }] });
+    expect(sideQuery.currentQueryValidated).toBe(true);
+    expect(sideQuery.queryAttempts.at(-1)?.validationFindings).toEqual([
+      expect.objectContaining({ code: "SQL_SEMANTIC_FILTER_MISSING:Histologic_type:eq", severity: "warning" })
+    ]);
+  });
+
+  it("commits the answer without evidence for an optional side check", () => {
+    // biomedical-easy-2, 2026-10-08: the commit demanded a side check's row count 225 times.
+    const requirements = createUserAnalysisRequirements([{
+      kind: "metric",
+      description: "Average age of serous patients",
+      acceptanceCriteria: ["One number"],
+      assertions: [
+        { kind: "metric", description: "average age", claimValues: [{ name: "avg_age", field: "avg_age", required: true }] },
+        { kind: "filter", description: "serous rows", claimValues: [{ name: "serous_rows", field: "serous_rows", required: true }] }
+      ]
+    }]);
+    let state = createDataAnalysisProtocol([], requirements).createInitialState({ contextPackageRef, runId: "run-side-commit" });
+    state = reduceDataAnalysisAction(state, "analysis.contract.ground", { requirements });
+    state = reduceDataAnalysisAction(state, "data.query.plan", { sql: "select avg(age) as avg_age from samples", assertion_ids: ["R1.A1"] });
+    state = reduceDataAnalysisAction(state, "data.query.validate", { valid: true });
+    state = reduceDataAnalysisAction(state, "run_sql_readonly", {
+      result: { artifact_id: "artifact-age", audit_log_id: "audit-age", columns: ["avg_age"] }
+    });
+    state = reduceDataAnalysisAction(state, "analysis.result.validate", {
+      valid: true,
+      validation_findings: [],
+      verified_values: [{ name: "avg_age", value: 68.5, tolerance: 0, assertionId: "R1.A1" }]
+    });
+    state = reduceDataAnalysisAction(state, "analysis.evidence.bind", {
+      artifact_id: "artifact-age",
+      audit_log_id: "audit-age",
+      evidence_refs: ["artifact-age"]
+    });
+    const committed = reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "Average age is 68.5", values: [{ name: "avg_age", value: 68.5 }] }]
+    });
+
+    expect(committed.requirements.find((requirement) => requirement.id === "R1")?.status).toBe("reported");
   });
 });

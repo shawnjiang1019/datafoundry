@@ -11,11 +11,15 @@ import {
   type AnalysisAssertion,
   type AnalysisClaimValue,
   type AnalysisScalar,
+  type AnalysisValidationFinding,
   type AnalysisVerifiedValue
 } from "../analysis-contract.js";
 import { DATA_ACTIONS } from "../data-actions.js";
-import { validateSqlSemantics } from "../sql-semantic-validator.js";
+import { fieldsNotPerUnit, missingWhereParts, validateSqlSemantics } from "../sql-semantic-validator.js";
 import type { AgentProtocolDefinition } from "../types.js";
+import { resolveFrameChoice, shownFrameDecisions, type FrameOption } from "../../grounding/answer-frame.js";
+import { verifiedJoinRules } from "../../grounding/evidence-grounding-provider.js";
+import type { EvidenceGroundingContext } from "../../grounding/types.js";
 
 export type DataAnalysisState = {
   schemaInspected: boolean;
@@ -24,7 +28,15 @@ export type DataAnalysisState = {
   semanticMode?: string;
   semanticTrust?: string;
   semanticWarnings: string[];
+  /** Join keys checked against the data during semantic grounding, when the run enables it. */
+  evidenceGrounding?: EvidenceGroundingContext;
+  /** Note binding: the answer-frame readings the agent chose, as option ids such as "F1.2". */
+  frameChoices?: string[];
   contractGrounded: boolean;
+  /** Tables in the most recent inspect_schema result. */
+  inspectedTableCount?: number;
+  /** Tables in the schema the current contract was grounded on. */
+  contractTableCount?: number;
   contractDatasourceRevision?: string;
   contractSchemaId?: string;
   contractGroundingFindings: Array<{ requirementId?: string; code?: string; message?: string }>;
@@ -83,6 +95,8 @@ export const createDataAnalysisProtocol = (
           "inspect_schema",
           "preview_table",
           "semantic.context.resolve",
+          // A later schema or semantic change can ground the contract again (see groundedOnEmptySchema).
+          "analysis.contract.ground",
           "data.query.plan",
           "data.query.validate"
         ]),
@@ -93,6 +107,7 @@ export const createDataAnalysisProtocol = (
           ...commonActions,
           "inspect_schema",
           "semantic.context.resolve",
+          "analysis.contract.ground",
           "preview_table",
           "run_sql_readonly",
           "data.query.plan"
@@ -110,6 +125,7 @@ export const createDataAnalysisProtocol = (
           ...commonActions,
           "inspect_schema",
           "semantic.context.resolve",
+          "analysis.contract.ground",
           "preview_table",
           "data.query.plan",
           "analysis.result.validate",
@@ -129,6 +145,7 @@ export const createDataAnalysisProtocol = (
           ...commonActions,
           "inspect_schema",
           "semantic.context.resolve",
+          "analysis.contract.ground",
           "preview_table",
           "data.query.plan",
           "analysis.result.validate",
@@ -212,9 +229,11 @@ export const reduceDataAnalysisAction = (
   if (actionName === "inspect_schema") {
     const dialect = recordString(result, "dialect") ?? nestedString(result, "summary", "dialect");
     const schemaId = recordString(result, "schema_id") ?? recordString(result, "schemaId");
+    const tables = recordValue(result, "tables");
     return updateCoreRequirement({
       ...state,
       schemaInspected: true,
+      ...(Array.isArray(tables) ? { inspectedTableCount: tables.length } : {}),
       contractGrounded: !hasUserRequirements(state) || state.contractGrounded,
       ...(schemaId ? { contractSchemaId: schemaId } : {}),
       ...(dialect ? { datasourceDialect: dialect } : {})
@@ -224,19 +243,28 @@ export const reduceDataAnalysisAction = (
     const semanticMode = recordString(result, "mode");
     const semanticTrust = recordString(result, "trust");
     const datasourceRevision = recordString(result, "datasourceRevision");
+    // A first inspect_schema that names tables which do not exist returns no tables, and the
+    // contract grounded on it has none either, so the SQL gate has nothing to check. Ground
+    // again once a later inspection finds real tables.
+    const groundedOnEmptySchema = state.contractTableCount === 0 && (state.inspectedTableCount ?? 0) > 0;
     const semanticContextChanged = state.contractGrounded && (
-      (semanticMode !== undefined && state.semanticMode !== undefined && semanticMode !== state.semanticMode)
+      groundedOnEmptySchema
+      || (semanticMode !== undefined && state.semanticMode !== undefined && semanticMode !== state.semanticMode)
       || (semanticTrust !== undefined && state.semanticTrust !== undefined && semanticTrust !== state.semanticTrust)
       || (datasourceRevision !== undefined && state.contractDatasourceRevision !== undefined
         && datasourceRevision !== state.contractDatasourceRevision)
     );
+    const evidenceGrounding = recordValue(recordValue(result, "value"), "evidence_grounding");
     const next = {
       ...state,
       semanticResolved: semanticMode !== undefined && semanticMode !== "unavailable",
       contractGrounded: !hasUserRequirements(state) || (state.contractGrounded && !semanticContextChanged),
       ...(semanticMode ? { semanticMode } : {}),
       ...(semanticTrust ? { semanticTrust } : {}),
-      semanticWarnings: recordStrings(result, "warnings")
+      semanticWarnings: recordStrings(result, "warnings"),
+      ...(Array.isArray(recordValue(evidenceGrounding, "candidates"))
+        ? { evidenceGrounding: structuredClone(evidenceGrounding) as EvidenceGroundingContext }
+        : {})
     };
     return next.semanticResolved ? updateCoreRequirement(next, "CORE_SEMANTIC", "validated") : next;
   }
@@ -247,6 +275,7 @@ export const reduceDataAnalysisAction = (
     return {
       ...state,
       contractGrounded: requirements.length > 0,
+      ...(state.inspectedTableCount !== undefined ? { contractTableCount: state.inspectedTableCount } : {}),
       ...(datasourceRevision ? { contractDatasourceRevision: datasourceRevision } : {}),
       ...(schemaId ? { contractSchemaId: schemaId } : {}),
       contractGroundingFindings: recordArray(result, "findings").map((finding) => ({
@@ -256,7 +285,9 @@ export const reduceDataAnalysisAction = (
         ...(recordString(finding, "code") ? { code: recordString(finding, "code") as string } : {}),
         ...(recordString(finding, "message") ? { message: recordString(finding, "message") as string } : {})
       })),
-      ...(requirements.length > 0 ? { requirements: cloneRequirements(requirements) } : {})
+      ...(requirements.length > 0
+        ? { requirements: bindVerifiedJoins(answerAssertionsRequired(cloneRequirements(requirements)), state.evidenceGrounding) }
+        : {})
     };
   }
   if (actionName === "data.query.plan") {
@@ -280,6 +311,13 @@ export const reduceDataAnalysisAction = (
     if (structuredAssertions.length > 0 && assertionIds.length === 0) {
       throw new Error(`ANALYSIS_ASSERTION_IDS_REQUIRED:${requirementIds[0] ?? "unknown"}`);
     }
+    // Frame readings describe the answer's rows, so only a query for a metric assertion must choose;
+    // side checks the contract adds (row counts, grain, filters) do not.
+    const frameChoices = recordFrameChoices(
+      state,
+      recordStrings(result, "frame_choices"),
+      structuredAssertions.some((assertion) => assertion.kind === "metric")
+    );
     const assertions = assertionIds.length > 0
       ? resolveRequirementAssertions(normalizedRequirements(state), requirementIds, assertionIds)
       : selectedRequirements.flatMap((requirement) => requirement.assertions ?? [])
@@ -300,6 +338,7 @@ export const reduceDataAnalysisAction = (
     };
     return updateRequirements({
       ...state,
+      ...(frameChoices ? { frameChoices } : {}),
       queryPlanned: true,
       currentQueryValidated: false,
       queryExecuted: false,
@@ -325,7 +364,12 @@ export const reduceDataAnalysisAction = (
       message: reason,
       severity: "error" as const
     }));
-    const validationFindings = [...runtimeFindings, ...semanticFindings];
+    const metricAssertions = (attempt?.assertions ?? []).filter((assertion) => assertion.kind === "metric");
+    const frameFindings = runtimeValid && attempt?.sql && metricAssertions.length > 0
+      ? chosenReadingFindings(state, attempt.sql, metricAssertions.flatMap((assertion) =>
+        assertion.claimValues.map((claim) => claim.field)))
+      : [];
+    const validationFindings = [...runtimeFindings, ...semanticFindings, ...frameFindings];
     const valid = runtimeValid && !validationFindings.some((finding) => finding.severity === "error");
     let next = {
       ...state,
@@ -445,6 +489,141 @@ const deriveRequirementIdsFromAssertions = (state: DataAnalysisState, assertionI
     .filter((requirement) => requirement.assertions.some((assertion) => assertionIds.includes(assertion.id)))
     .map((requirement) => requirement.id)
 );
+
+/**
+ * Keep the answer strict and the contract model's side checks optional. When a requirement has
+ * a metric assertion (the value that answers the question), its other structured assertions
+ * (row counts, grain, reconciliation, ...) stop being required: the gate reports their SQL
+ * findings as warnings and the commit no longer needs their values. Without this the agent can
+ * loop on a side check it cannot satisfy (biomedical-easy-2, 2026-10-08: 225 commit attempts on
+ * a row count until the context window overflowed). Requirements without a metric are unchanged.
+ */
+const answerAssertionsRequired = (requirements: AnalysisRequirement[]): AnalysisRequirement[] =>
+  requirements.map((requirement) => {
+    if (requirement.source !== "user" || !requirement.assertions.some((assertion) => assertion.kind === "metric")) {
+      return requirement;
+    }
+    return {
+      ...requirement,
+      assertions: requirement.assertions.map((assertion) => assertion.kind === "metric" || assertion.kind === "manual"
+        ? assertion
+        : {
+            ...assertion,
+            required: false,
+            resultChecks: assertion.resultChecks.map((check) => ({ ...check, required: false })),
+            claimValues: assertion.claimValues.map((claim) => ({ ...claim, required: false }))
+          })
+    };
+  });
+
+/**
+ * Note binding for the answer frame. Choices replace earlier ones for the same decision, and a
+ * query for a structured assertion needs one choice per shown decision. Returns the choices
+ * to store, or undefined when binding is off or the run has no shown frame.
+ */
+const recordFrameChoices = (
+  state: DataAnalysisState,
+  submitted: string[],
+  answersAssertion: boolean
+): string[] | undefined => {
+  const frame = state.evidenceGrounding?.binding?.frame ? state.evidenceGrounding.frame : undefined;
+  const shown = shownFrameDecisions(frame);
+  if (shown.length === 0) return undefined;
+  const choices = new Map((state.frameChoices ?? []).map((choice) => [choice.split(".")[0] as string, choice]));
+  for (const choice of submitted) {
+    const resolved = resolveFrameChoice(frame, choice);
+    if (!resolved) {
+      throw new Error(`ANALYSIS_FRAME_CHOICE_UNKNOWN:${choice}: valid ids are ${frameOptionIds(shown).join(", ")}.`);
+    }
+    choices.set(resolved.decisionId, choice.trim());
+  }
+  const undecided = shown.filter(({ id }) => !choices.has(id));
+  if (answersAssertion && undecided.length > 0) {
+    throw new Error(`ANALYSIS_FRAME_CHOICE_REQUIRED: pass frame_choices with one reading for each decision. ${
+      undecided.map(({ id, decision }) => `${id} (${decision.aspect}): ${decision.options
+        .map((option, index) => ({ option, index }))
+        .filter(({ option }) => option.status !== "invalid")
+        .map(({ option, index }) => `${id}.${index + 1} "${option.label.slice(0, 80)}"`)
+        .join(" | ")}`).join("; ")}`);
+  }
+  return [...choices.values()];
+};
+
+const frameOptionIds = (shown: ReturnType<typeof shownFrameDecisions>): string[] => shown.flatMap(({ id, decision }) =>
+  decision.options.flatMap((option, index) => option.status === "invalid" ? [] : [`${id}.${index + 1}`]));
+
+/**
+ * The SQL that answers a structured assertion must select the rows of each chosen population and
+ * denominator, and compute its claimed values once per unit when the chosen unit is a key that
+ * repeats across rows.
+ */
+const chosenReadingFindings = (state: DataAnalysisState, sql: string, fields: string[]): AnalysisValidationFinding[] => {
+  const frame = state.evidenceGrounding?.binding?.frame ? state.evidenceGrounding.frame : undefined;
+  return (state.frameChoices ?? []).flatMap((choice) => {
+    const resolved = resolveFrameChoice(frame, choice);
+    if (resolved?.decision.aspect === "unit") return chosenUnitFindings(choice, resolved.option, state, sql, fields);
+    const where = resolved?.option.sqlWhere?.trim();
+    if (!resolved || !where) return [];
+    const missing = missingWhereParts(sql, state.datasourceDialect, { table: resolved.option.table, where });
+    return missing && missing.length > 0 ? [{
+      code: `SQL_SEMANTIC_FRAME_READING_MISSING:${choice}`,
+      message: `You chose ${choice} (${resolved.decision.aspect}: "${resolved.option.label.slice(0, 80)}"), so the SQL `
+        + `must select its rows: WHERE ${where}. Not applied: ${missing.join("; ")}.`,
+      severity: "error" as const
+    }] : [];
+  });
+};
+
+const chosenUnitFindings = (
+  choice: string,
+  option: FrameOption,
+  state: DataAnalysisState,
+  sql: string,
+  fields: string[]
+): AnalysisValidationFinding[] => {
+  const repeats = option.rows !== undefined && option.units !== undefined && option.units < option.rows;
+  if (!repeats || option.keyColumns.length === 0) return [];
+  const notPerUnit = fieldsNotPerUnit(sql, state.datasourceDialect, { keyColumns: option.keyColumns, fields }) ?? [];
+  const keys = option.keyColumns.map((column) => `"${column}"`).join(", ");
+  return notPerUnit.length > 0 ? [{
+    code: `SQL_SEMANTIC_FRAME_UNIT_MISSING:${choice}`,
+    message: `You chose ${choice} (unit: "${option.label.slice(0, 80)}"; ${option.rows} rows are ${option.units} `
+      + `distinct ${keys}), so ${notPerUnit.join(", ")} must be computed once per ${keys}: aggregate over a `
+      + `relation made unique by SELECT DISTINCT ${keys} or GROUP BY ${keys}, not over the raw or joined rows.`,
+    severity: "error" as const
+  }] : [];
+};
+
+/**
+ * Note binding: every assertion that reads both tables of a verified join gets that join's
+ * rules, so the SQL gate rejects a query that links the tables on another key.
+ */
+const bindVerifiedJoins = (
+  requirements: AnalysisRequirement[],
+  grounding: EvidenceGroundingContext | undefined
+): AnalysisRequirement[] => {
+  if (!grounding?.binding?.joins) return requirements;
+  const joins = verifiedJoinRules(grounding);
+  if (joins.length === 0) return requirements;
+  return requirements.map((requirement) => ({
+    ...requirement,
+    assertions: requirement.assertions.map((assertion) => {
+      if (assertion.kind === "manual") return assertion;
+      const sources = new Set(assertion.sourceTables.map((table) => table.toLowerCase()));
+      const rules = joins
+        .filter(({ tables }) => tables.every((table) => sources.has(table.toLowerCase())))
+        .flatMap(({ rules }) => rules);
+      return rules.length === 0 ? assertion : {
+        ...assertion,
+        sqlConstraints: [
+          ...assertion.sqlConstraints.filter((constraint) =>
+            constraint.kind !== "join" && constraint.kind !== "avoid_join"),
+          ...rules
+        ]
+      };
+    })
+  }));
+};
 
 const isAnalysisRequirement = (value: unknown): value is AnalysisRequirement =>
   typeof value === "object"

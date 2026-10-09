@@ -1,4 +1,7 @@
 import { ToolExecutionError } from "../errors/tool-execution-error.js";
+import { renderAnswerFrame } from "../grounding/answer-frame.js";
+import { renderGroundingForAgent, summarizeGrounding } from "../grounding/evidence-grounding-provider.js";
+import type { EvidenceGroundingContext } from "../grounding/types.js";
 import type { AnalysisValidationFinding } from "./analysis-contract.js";
 import type { ProtocolActionHooks, ProtocolHookContext } from "./protocol-extensions.js";
 import { verifyAnalysisResult } from "./result-verifier.js";
@@ -75,12 +78,16 @@ export const semanticResolutionEventResult = (value: unknown): Record<string, un
   const trust = directString(value, "trust");
   const datasourceRevision = directString(value, "datasourceRevision");
   const fallbackReason = directString(value, "fallbackReason");
+  const evidenceGrounding = recordValue(recordValue(value, "value"), "evidence_grounding");
   return {
     ...(provider ? { provider } : {}),
     ...(mode ? { mode } : {}),
     ...(trust ? { trust } : {}),
     ...(datasourceRevision ? { datasourceRevision } : {}),
-    ...(fallbackReason ? { fallbackReason } : {})
+    ...(fallbackReason ? { fallbackReason } : {}),
+    ...(Array.isArray(recordValue(evidenceGrounding, "candidates"))
+      ? { evidenceGrounding: summarizeGrounding(evidenceGrounding as EvidenceGroundingContext) }
+      : {})
   };
 };
 
@@ -125,8 +132,14 @@ export const projectGroundedSchemaObservation = (
   const schemaObservation = typeof observation === "object" && observation !== null && !Array.isArray(observation)
     ? observation as Record<string, unknown>
     : { schema: observation };
+  const groundedRelationships = renderGroundingForAgent(state.evidenceGrounding);
+  const answerFrame = renderAnswerFrame(state.evidenceGrounding?.frame, {
+    binding: state.evidenceGrounding?.binding?.frame === true
+  });
   return {
     ...schemaObservation,
+    ...(groundedRelationships ? { grounded_relationships: groundedRelationships } : {}),
+    ...(answerFrame ? { answer_frame: answerFrame } : {}),
     analysis_contract: {
       instruction,
       requirements: state.requirements
@@ -138,6 +151,7 @@ export const projectGroundedSchemaObservation = (
           assertions: requirement.assertions.map((assertion) => ({
             assertion_id: assertion.id,
             kind: assertion.kind,
+            ...(assertion.required ? {} : { required: false, note: "Optional side check: the answer can be committed without it." }),
             description: assertion.description,
             source_tables: [...assertion.sourceTables],
             dimensions: [...assertion.dimensions],
@@ -269,12 +283,41 @@ export const groundingAutomaticActions = (input: {
       input: {
         requirements: state.requirements,
         physicalSchema: recordValue(input.input, "physicalSchema"),
-        semanticResolution: input.rawResult,
+        semanticResolution: withRenderedGrounding(input.rawResult),
         datasourceRevision: directString(input.input, "datasourceRevision") ?? "unknown"
       }
     }];
   }
   return [];
+};
+
+/**
+ * The contract grounder sees the same grounding the agent sees, not the full candidate
+ * list: when nothing is worth showing, its input is identical to a run without grounding.
+ */
+const withRenderedGrounding = (resolution: unknown): unknown => {
+  const value = recordValue(resolution, "value");
+  const grounding = recordValue(value, "evidence_grounding");
+  if (grounding === undefined) {
+    return resolution;
+  }
+  const { evidence_grounding: _full, ...rest } = value as Record<string, unknown>;
+  const rendered = renderGroundingForAgent(grounding as EvidenceGroundingContext);
+  const frame = renderAnswerFrame((grounding as EvidenceGroundingContext).frame, {
+    binding: (grounding as EvidenceGroundingContext).binding?.frame === true
+  });
+  const capabilities = recordValue(resolution, "capabilities");
+  return {
+    ...(resolution as Record<string, unknown>),
+    value: {
+      ...rest,
+      ...(rendered ? { grounded_relationships: rendered } : {}),
+      ...(frame ? { answer_frame: frame } : {})
+    },
+    ...(Array.isArray(capabilities) && !rendered && !frame
+      ? { capabilities: capabilities.filter((capability) => capability !== "evidence-grounding") }
+      : {})
+  };
 };
 
 /** After a governed SQL result: validate it against the current attempt's assertions

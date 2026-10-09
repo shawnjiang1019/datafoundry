@@ -399,6 +399,8 @@ const createMastraDataTools = (executors: DataToolExecutors): ToolRegistry["mast
       assertion_ids: z.array(z.string().min(1)).max(32).optional(),
       requirement_ids: z.array(z.string().min(1)).max(16).optional(),
       expected_columns: z.array(z.string().min(1)).max(100).optional(),
+      frame_choices: z.array(z.string().min(1)).max(8).optional()
+        .describe("Answer-frame reading ids you chose, such as F1.2, when the schema lists frame decisions with ids."),
       limit: z.number().int().positive().max(1000).optional(),
       timeout_ms: z.number().int().positive().max(30000).optional()
     }),

@@ -188,7 +188,7 @@ export class LocalDataGateway implements DataGateway {
       ),
       signal: input.signal
     });
-    return maskTableResult(result, resourcePolicy.maskFields);
+    return normalizeTableResult(maskTableResult(result, resourcePolicy.maskFields));
   }
 
   async runSqlReadonly(input: RunSqlReadonlyInput): Promise<SqlExecutionResult> {

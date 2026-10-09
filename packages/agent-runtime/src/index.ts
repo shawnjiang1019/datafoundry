@@ -102,6 +102,8 @@ import {
 import type { AnalysisRequirement } from "./protocol/analysis-requirements.js";
 import type { DataAnalysisState } from "./protocol/protocols/data-analysis.js";
 import { createDefaultSemanticProvider } from "./semantic/default-semantic-provider.js";
+import { createEvidenceGroundingProvider } from "./grounding/evidence-grounding-provider.js";
+import { createModelAnswerFrameProposer } from "./grounding/answer-frame.js";
 import type { ProtocolEvent } from "./protocol/types.js";
 import type { ContextPackageRef, ProtocolStateStore } from "./protocol/types.js";
 import { toolErrorObservation as createToolErrorObservation } from "./errors/tool-execution-error.js";
@@ -511,6 +513,30 @@ export const createDataFoundry = async (
   ];
   const selectedTools = toolPlan.exposedTools;
   const selectedDatasourceId = input.runContext.selected_datasource_id;
+  const selectedDatasourceRevision = String(
+    input.resourceRevisions?.[`datasource:${selectedDatasourceId}`] ?? "unknown"
+  );
+  const createSemanticProvider = (datasourceId: string) => {
+    const semanticProvider = createDefaultSemanticProvider({ tools: selectedTools });
+    return input.runContext.evidence_grounding || input.runContext.answer_frame
+      ? createEvidenceGroundingProvider({
+          inner: semanticProvider,
+          dataGateway: input.dataGateway,
+          runContext: input.runContext,
+          datasourceId,
+          datasourceRevision: selectedDatasourceRevision,
+          relationships: input.runContext.evidence_grounding === true,
+          proposeFrame: input.runContext.answer_frame
+            ? createModelAnswerFrameProposer(input.modelProvider)
+            : undefined,
+          binding: {
+            joins: input.runContext.join_binding === true,
+            frame: input.runContext.frame_binding === true
+          },
+          abortSignal: input.abortSignal
+        })
+      : semanticProvider;
+  };
   const deferredProtocolEvents: ProtocolEvent[] = [];
   let protocolEventsReady = false;
   let protocol: RunProtocolBoundary;
@@ -528,14 +554,12 @@ export const createDataFoundry = async (
       toolPlanEntries: agentToolPlanEntries,
       ...(selectedDatasourceId
         ? {
-            semanticProvider: createDefaultSemanticProvider({ tools: selectedTools }),
+            semanticProvider: createSemanticProvider(selectedDatasourceId),
             semanticRequest: {
               userId: input.runContext.user_id,
               workspaceId: input.runContext.workspace_id ?? "default",
               datasourceId: selectedDatasourceId,
-              datasourceRevision: String(
-                input.resourceRevisions?.[`datasource:${selectedDatasourceId}`] ?? "unknown"
-              )
+              datasourceRevision: selectedDatasourceRevision
             }
           }
         : {}),

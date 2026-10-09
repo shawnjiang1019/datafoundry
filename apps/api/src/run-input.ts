@@ -54,6 +54,14 @@ export type EffectiveRunConfig = {
     protocolId: string;
     protocolVersion: string;
   };
+  /** Check candidate join keys against the data during semantic grounding (experiment flag). */
+  evidenceGrounding?: boolean;
+  /** List readings of the question (unit, population, denominator) with data counts (experiment flag). */
+  answerFrame?: boolean;
+  /** Enforce verified joins as contract rules in the SQL gate (experiment flag; needs evidenceGrounding). */
+  joinBinding?: boolean;
+  /** Enforce the agent's answer-frame choices in the SQL gate (experiment flag; needs answerFrame). */
+  frameBinding?: boolean;
   /**
    * Resources silently dropped from `enabled*Ids` because `default_enabled=false` (R-020).
    * The run continues; this list is surfaced in `run.config.resolved` for diagnostics.
@@ -128,6 +136,12 @@ export const extractEffectiveRunConfig = (
   const pinnedPaths = pinnedPathsFromAliases(runConfig, ["pinnedPaths", "pinned_paths"]);
   const evidenceRefs = evidenceRefsFromAliases(runConfig, ["evidenceRefs", "evidence_refs"]);
   const protocol = protocolSelectionFromRunConfig(runConfig);
+  const evidenceGrounding = booleanFromAliases(runConfig, ["evidenceGrounding", "evidence_grounding"], false);
+  const answerFrame = booleanFromAliases(runConfig, ["answerFrame", "answer_frame"], false);
+  // noteBinding is the shortcut for both kinds of binding.
+  const noteBinding = booleanFromAliases(runConfig, ["noteBinding", "note_binding"], false);
+  const joinBinding = noteBinding || booleanFromAliases(runConfig, ["joinBinding", "join_binding"], false);
+  const frameBinding = noteBinding || booleanFromAliases(runConfig, ["frameBinding", "frame_binding"], false);
 
   if (
     activeDatasourceId
@@ -157,6 +171,10 @@ export const extractEffectiveRunConfig = (
     ...(mentioned ? { mentioned } : {}),
     ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
     ...(protocol ? { protocol } : {}),
+    ...(evidenceGrounding ? { evidenceGrounding } : {}),
+    ...(answerFrame ? { answerFrame } : {}),
+    ...(joinBinding ? { joinBinding } : {}),
+    ...(frameBinding ? { frameBinding } : {}),
     evidenceRefs
   };
 };

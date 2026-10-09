@@ -19,6 +19,33 @@ describe("extractEffectiveRunConfig protocol selection", () => {
   });
 });
 
+describe("extractEffectiveRunConfig evidence grounding", () => {
+  it("enables evidence grounding only when run_config asks for it", () => {
+    expect(extractEffectiveRunConfig(createInput({ evidenceGrounding: true })).evidenceGrounding).toBe(true);
+    expect(extractEffectiveRunConfig(createInput({ evidence_grounding: true })).evidenceGrounding).toBe(true);
+    expect(extractEffectiveRunConfig(createInput({})).evidenceGrounding).toBeUndefined();
+  });
+
+  it("enables the answer frame independently of relationship grounding", () => {
+    const config = extractEffectiveRunConfig(createInput({ answerFrame: true }));
+
+    expect(config.answerFrame).toBe(true);
+    expect(config.evidenceGrounding).toBeUndefined();
+  });
+
+  it("reads join and frame binding separately, with noteBinding turning on both", () => {
+    const joins = extractEffectiveRunConfig(createInput({ join_binding: true }));
+    const frame = extractEffectiveRunConfig(createInput({ frameBinding: true }));
+    const both = extractEffectiveRunConfig(createInput({ noteBinding: true }));
+    const neither = extractEffectiveRunConfig(createInput({}));
+
+    expect([joins.joinBinding, joins.frameBinding]).toEqual([true, undefined]);
+    expect([frame.joinBinding, frame.frameBinding]).toEqual([undefined, true]);
+    expect([both.joinBinding, both.frameBinding]).toEqual([true, true]);
+    expect([neither.joinBinding, neither.frameBinding]).toEqual([undefined, undefined]);
+  });
+});
+
 const createInput = (runConfig: Record<string, unknown>): RunAgentInput => ({
   context: [],
   forwardedProps: { run_config: runConfig },

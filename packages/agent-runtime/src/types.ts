@@ -29,6 +29,14 @@ export type AgentRunContext = {
   pinned_paths?: string[];
   /** User-selected evidence references for this run. Concrete content is resolved server-side. */
   evidence_refs?: EvidenceRef[];
+  /** Validate candidate join keys against the data during semantic grounding (experiment flag). */
+  evidence_grounding?: boolean;
+  /** List readings of the question (unit, population, denominator) with data counts (experiment flag). */
+  answer_frame?: boolean;
+  /** Turn the verified joins shown to the agent into contract rules the SQL gate enforces (experiment flag). */
+  join_binding?: boolean;
+  /** Make the agent choose answer-frame readings and enforce them in the SQL gate (experiment flag). */
+  frame_binding?: boolean;
 };
 
 export type AgentRunContextInput = AgentRunContext;

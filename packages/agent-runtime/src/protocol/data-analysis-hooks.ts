@@ -47,18 +47,27 @@ export const projectDecisionObservation = (
     : undefined;
   const recorded = decisions.find((decision) => decision.id === requestedId) ?? decisions.at(-1);
   const open = decisions.filter((decision) => decision.status === "open");
+  const undecided = undecidedDecisionIds(state);
   return {
     decision_result: {
       decision_id: recorded?.id,
       status: recorded?.status,
       choice: recorded?.choice,
       open_decision_ids: open.map((decision) => decision.id),
-      instruction: open.length === 0
+      undecided_decision_ids: undecided,
+      instruction: (open.length === 0
         ? "Every decision is recorded. Do not record it again."
-        : `Recorded. Still open: ${open.map((decision) => decision.id).join(", ")}.`
+        : `Recorded. Still open: ${open.map((decision) => decision.id).join(", ")}.`)
+        + (undecided.length > 0 ? ` ${undecidedReminder(undecided)}` : "")
     }
   };
 };
+
+const undecidedDecisionIds = (state: DataAnalysisState): string[] =>
+  (state.decisions ?? []).filter((decision) => decision.status === "undecided").map((decision) => decision.id);
+
+const undecidedReminder = (ids: string[]): string =>
+  `The final answer must list ${ids.join(", ")} as NOT CONFIRMED, with the reading it used and the alternatives.`;
 
 /**
  * What the commit actually did, read from the post-commit state.
@@ -78,6 +87,7 @@ export const projectCommitObservation = (
   const openDecisionIds = (state.decisions ?? [])
     .filter((decision) => decision.status === "open" && decision.impact === "high")
     .map((decision) => decision.id);
+  const undecided = undecidedDecisionIds(state);
   return {
     ...(typeof observation === "object" && observation !== null && !Array.isArray(observation)
       ? observation as Record<string, unknown>
@@ -92,13 +102,15 @@ export const projectCommitObservation = (
       })),
       pending_requirement_ids: pending.map((requirement) => requirement.id),
       open_decision_ids: openDecisionIds,
-      instruction: pending.length > 0
+      undecided_decision_ids: undecided,
+      instruction: (pending.length > 0
         ? `Committed. Still to commit: ${pending.map((requirement) => requirement.id).join(", ")}. `
           + "Do not resubmit a claim whose requirement already shows status 'reported'."
         : openDecisionIds.length > 0
           ? `Every required claim is committed. Do not commit again; resolve open decisions `
             + `${openDecisionIds.join(", ")} with analysis_decision_record, then write the final answer.`
-          : "Every required claim is committed. Do not commit again; write the final answer."
+          : "Every required claim is committed. Do not commit again; write the final answer.")
+        + (undecided.length > 0 ? ` ${undecidedReminder(undecided)}` : "")
     }
   };
 };

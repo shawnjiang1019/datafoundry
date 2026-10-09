@@ -90,12 +90,14 @@ describe("data-analysis decisions", () => {
       .toThrow("ANALYSIS_DECISION_BASIS_REQUIRED");
     expect(() => record(state, { decision_id: "D1", choice: "keep", basis: { kind: "evidence", detail: "x" } }))
       .toThrow("ANALYSIS_DECISION_EVIDENCE_REQUIRED");
-    expect(() => record(state, {
+    // Previews count as evidence; refs are recorded, not matched against SQL artifacts.
+    const previewed = record(state, {
       decision_id: "D1",
       choice: "keep",
-      basis: { kind: "evidence", detail: "x" },
-      evidence_refs: ["artifact-unknown"]
-    })).toThrow("ANALYSIS_DECISION_EVIDENCE_UNKNOWN:artifact-unknown");
+      basis: { kind: "evidence", detail: "the preview shows the flag" },
+      evidence_refs: ["preview:mmc1"]
+    });
+    expect(previewed.decisions[0]).toMatchObject({ status: "resolved", evidenceRefs: ["preview:mmc1"] });
   });
 
   it("lets the agent raise a decision mid-run with the next id", () => {
@@ -133,11 +135,70 @@ describe("data-analysis decisions", () => {
         status: "resolved",
         choice: "drop",
         open_decision_ids: ["D2"],
+        undecided_decision_ids: [],
         instruction: "Recorded. Still open: D2."
       }
     });
     expect(projectCommitObservation({}, resolved)).toMatchObject({
       commit_result: { open_decision_ids: ["D2"], instruction: expect.stringContaining("resolve open decisions D2") }
+    });
+  });
+});
+
+describe("resolver readings and undecided decisions", () => {
+  const receipt = {
+    assumptions: [{ clause: "2007 identity theft reports follow the 2024 age distribution", impact: "high" }],
+    trees: [{
+      status: "text_only",
+      claim: null,
+      resolution: {
+        status: "undecided",
+        quote: "the 2007 reports were distributed exactly like the 2024 ones",
+        quote_verified: true,
+        readings: [{ reading: "all 2007 reports take 2024's type and age shares" },
+                   { reading: "2007 identity theft reports take 2024's age shares" }],
+        recommended: 0,
+        confidence: "medium",
+        narrows_quote: true,
+        narrowing: "'the 2007 reports' restated as identity theft reports",
+        rationale: "the hypothesis names all reports"
+      }
+    }]
+  };
+
+  it("seeds the resolver's readings as the decision's options", () => {
+    const [seeded] = createDecisionsFromReceipt(receipt);
+    expect(seeded?.options).toEqual(["all 2007 reports take 2024's type and age shares",
+      "2007 identity theft reports take 2024's age shares"]);
+    expect(seeded?.resolution).toMatchObject({ status: "undecided", narrowsQuote: true, recommended: 0 });
+  });
+
+  it("does not let a quote confirm a reading the resolver left undecided", () => {
+    const { state } = evidencedState(createDecisionsFromReceipt(receipt));
+    const quote = { kind: "question_span", detail: "'If the 2007 reports were distributed exactly like the 2024 ones'" };
+
+    expect(() => record(state, { decision_id: "D1", choice: "2", basis: quote }))
+      .toThrow("ANALYSIS_DECISION_NOT_CONFIRMED_BY_QUOTE:D1");
+    expect(() => record(state, { decision_id: "D1", choice: "some other reading", status: "undecided", basis: quote }))
+      .toThrow("ANALYSIS_DECISION_CHOICE_NOT_AN_OPTION:D1");
+
+    const undecided = record(state, { decision_id: "D1", choice: "reading 2", status: "undecided", basis: quote });
+    expect(undecided.decisions[0]).toMatchObject({
+      status: "undecided",
+      choice: "2007 identity theft reports take 2024's age shares"
+    });
+  });
+
+  it("lets undecided decisions complete the run and reports them as not confirmed", () => {
+    const { protocol, state } = evidencedState(createDecisionsFromReceipt(receipt));
+    expect(protocol.completionPolicy({ contextPackageRef, state }).status).toBe("continue");
+    const undecided = record(state, {
+      decision_id: "D1", choice: "1", status: "undecided",
+      basis: { kind: "unresolved", detail: "the question does not say which breakdowns" }
+    });
+    expect(protocol.completionPolicy({ contextPackageRef, state: undecided }).status).toBe("completed");
+    expect(projectDecisionObservation({ decision_id: "D1" }, undecided)).toMatchObject({
+      decision_result: { undecided_decision_ids: ["D1"], instruction: expect.stringContaining("NOT CONFIRMED") }
     });
   });
 });

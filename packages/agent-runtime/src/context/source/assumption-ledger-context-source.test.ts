@@ -126,9 +126,9 @@ describe("AssumptionLedgerContextSource", () => {
   });
 
   it("truncates within the budget but keeps the header and the closing instruction", () => {
-    const text = createAssumptionLedgerText(receipt, 1100);
+    const text = createAssumptionLedgerText(receipt, 1400);
 
-    expect(text.length).toBeLessThanOrEqual(1100);
+    expect(text.length).toBeLessThanOrEqual(1400);
     expect(text).toMatch(/^Open analysis decisions:/u);
     expect(text).toContain("D2 [impact high");
     expect(text).toMatch(/\[assumption ledger truncated: \d of 4 items omitted\]/u);
@@ -138,6 +138,27 @@ describe("AssumptionLedgerContextSource", () => {
   it("uses the smaller of its own cap and the source budget", () => {
     const [item] = new AssumptionLedgerContextSource({ receipt }).collect(sourceInput(400));
     expect(String(item?.content).length).toBeLessThanOrEqual(400);
+  });
+
+  it("shows the resolver's readings and flags undecided items as not confirmed", () => {
+    const text = createAssumptionLedgerText({
+      assumptions: [{ clause: "2007 identity theft reports follow the 2024 age distribution", impact: "high" }],
+      trees: [{
+        status: "text_only",
+        claim: null,
+        resolution: {
+          status: "undecided", quote: "the 2007 reports were distributed exactly like the 2024 ones",
+          quote_verified: true, recommended: 0, confidence: "medium", narrows_quote: true,
+          narrowing: "'the 2007 reports' restated as identity theft reports",
+          readings: [{ reading: "all reports, by type and age" }, { reading: "identity theft reports, by age" }]
+        }
+      }]
+    });
+
+    expect(text).toContain("resolver: UNDECIDED — NOT CONFIRMED");
+    expect(text).toContain("question words: \"the 2007 reports were distributed exactly like the 2024 ones\"");
+    expect(text).toContain("warning: the hypothesis narrows those words — 'the 2007 reports' restated as identity theft");
+    expect(text).toContain("1. all reports, by type and age  [resolver's pick]\n   2. identity theft reports, by age");
   });
 
   it("contributes nothing for an empty, malformed or fully confirmed receipt", () => {

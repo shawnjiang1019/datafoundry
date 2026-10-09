@@ -22,9 +22,12 @@ const LEDGER_HEADER =
   + "started. Each hypothesis is UNCONFIRMED and is not a rule; only \"check passed\" lines are facts, and only "
   + "for the exact rows and columns they name.";
 const LEDGER_FOOTER =
-  "Resolve each decision from the data and the task wording with analysis_decision_record (choice + basis); if "
-  + "neither settles it, choose, use basis kind \"unresolved\", and say so in the answer. Cite decision_ids on every "
-  + "run_sql_readonly call that applies a choice. High-impact decisions must be recorded before the run can finish.";
+  "Resolve each decision from the data and the task wording with analysis_decision_record (choice + basis). Where "
+  + "readings are listed, work through each against the exact question words before choosing; a reading that "
+  + "narrows those words needs evidence. If the evidence does not settle it, record status \"undecided\": it does "
+  + "not block the run, and the final answer must list it as NOT CONFIRMED with the reading used. Cite "
+  + "decision_ids on every run_sql_readonly call that applies a choice. High-impact decisions must be recorded "
+  + "before the run can finish.";
 
 export type AssumptionLedgerContextSourceOptions = {
   receipt: AssumptionReceipt;
@@ -88,9 +91,22 @@ const renderDecision = (decision: AnalysisDecision): string => {
   return [
     `${decision.id} [impact ${decision.impact}${level}${confidence}] Decide: ${decision.question}`,
     ...(decision.hypothesis ? [`   hypothesis (unconfirmed): ${decision.hypothesis}`] : []),
-    ...decision.checks.map((check) => `   ${check}`)
+    ...decision.checks.map((check) => `   ${check}`),
+    ...(decision.resolution ? renderResolution(decision.resolution) : [])
   ].join("\n");
 };
+
+/** The independent resolver's reading: the quoted words, every reading, and whether it is settled. */
+const renderResolution = (resolution: NonNullable<AnalysisDecision["resolution"]>): string[] => [
+  resolution.status === "undecided"
+    ? "   resolver: UNDECIDED — NOT CONFIRMED; choose a reading below and record it as \"undecided\" unless evidence settles it"
+    : `   resolver: favours reading ${resolution.recommended + 1} (confidence ${resolution.confidence}); still unconfirmed`,
+  ...(resolution.quote ? [`   question words: "${resolution.quote}"${resolution.quoteVerified ? "" : " (not found verbatim)"}`] : []),
+  ...(resolution.narrowsQuote ? [`   warning: the hypothesis narrows those words — ${resolution.narrowing}`] : []),
+  ...resolution.readings.map((reading, index) =>
+    `   ${index + 1}. ${reading}${index === resolution.recommended ? "  [resolver's pick]" : ""}`),
+  ...(resolution.rationale ? [`   why: ${resolution.rationale}`] : [])
+];
 
 /** Keep header and footer; drop the least urgent (trailing) items that do not fit. */
 const fitLines = (body: string[], maxChars: number): string => {

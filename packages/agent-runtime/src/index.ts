@@ -107,6 +107,7 @@ import type { AnalysisRequirement } from "./protocol/analysis-requirements.js";
 import {
   ANALYSIS_DECISION_BASIS_KINDS,
   ANALYSIS_DECISION_KINDS,
+  ANALYSIS_DECISION_RECORD_STATUSES,
   createDecisionsFromReceipt
 } from "./protocol/analysis-decisions.js";
 import type { DataAnalysisState } from "./protocol/protocols/data-analysis.js";
@@ -668,7 +669,9 @@ export const createDataFoundry = async (
     analysis_decision_record: createTool({
       id: "analysis_decision_record",
       description: "Record the choice for an open analysis decision (decision_id), or record a choice the analysis "
-        + "made that no decision covers yet (omit decision_id; give question and options).",
+        + "made that no decision covers yet (omit decision_id; give question and options). Pick a listed option by "
+        + "number or text. Use status \"undecided\" when the evidence does not settle the choice: it does not block "
+        + "the run, and the final answer must report it as NOT CONFIRMED with the reading used.",
       inputSchema: z.object({
         decision_id: z.string().min(1).optional(),
         kind: z.enum(ANALYSIS_DECISION_KINDS).optional(),
@@ -676,6 +679,7 @@ export const createDataFoundry = async (
         options: z.array(z.string().min(1)).max(8).optional(),
         impact: z.enum(["low", "medium", "high"]).optional(),
         choice: z.string().min(1),
+        status: z.enum(ANALYSIS_DECISION_RECORD_STATUSES).optional(),
         basis: z.object({
           kind: z.enum(ANALYSIS_DECISION_BASIS_KINDS),
           detail: z.string().min(1)

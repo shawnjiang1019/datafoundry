@@ -188,7 +188,8 @@ export class LocalDataGateway implements DataGateway {
       ),
       signal: input.signal
     });
-    return maskTableResult(result, resourcePolicy.maskFields);
+    // Same JSON-safe values as SQL results: DuckDB BIGINT columns arrive as JS bigint.
+    return normalizeTableResult(maskTableResult(result, resourcePolicy.maskFields));
   }
 
   async runSqlReadonly(input: RunSqlReadonlyInput): Promise<SqlExecutionResult> {

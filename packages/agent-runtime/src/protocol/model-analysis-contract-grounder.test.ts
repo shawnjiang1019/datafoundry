@@ -281,4 +281,23 @@ describe("analysis contract grounding", () => {
     expect(truncated).toContain("减少 assertions 数量");
     expect(invalid).not.toContain("减少 assertions 数量");
   });
+
+  it("repairs name lists that arrive as objects instead of discarding the contract", () => {
+    // legal-hard-1, 2026-10-09: dimensions as objects made every requirement fall back to manual.
+    const text = JSON.stringify({ contracts: [{ requirementId: "R1", assertions: [{
+      kind: "metric",
+      description: "物流单量",
+      sourceTables: [{ name: "dacomp-zh-006" }],
+      dimensions: [{ column: "日期" }, 7],
+      claimValues: [{ name: "shipment_count", field: "shipment_count", required: true }]
+    }] }] });
+
+    expect(() => parseAnalysisContractGroundingText(text, requirements, physicalSchema)).toThrow();
+    const result = parseAnalysisContractGroundingText(text, requirements, physicalSchema, { salvage: true });
+    expect(result.requirements[0]?.assertions[0]).toMatchObject({
+      kind: "metric",
+      sourceTables: ["dacomp-zh-006"],
+      dimensions: ["日期"]
+    });
+  });
 });

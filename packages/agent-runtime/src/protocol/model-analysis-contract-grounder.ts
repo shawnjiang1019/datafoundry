@@ -178,6 +178,21 @@ const salvageGroundingOutput = (
         assertions: contract.assertions.map((assertion, index) => {
           if (!isPlainRecord(assertion)) return assertion;
           const repaired: Record<string, unknown> = { ...assertion };
+          // Name lists sometimes arrive as objects ({"name": "State"}); keep the name, drop the rest.
+          for (const field of ["sourceTables", "dimensions"] as const) {
+            const items = repaired[field];
+            if (!Array.isArray(items)) continue;
+            const names = items.flatMap((item) => {
+              if (typeof item === "string") return [item];
+              const record = isPlainRecord(item) ? item : {};
+              const name = [record.name, record.column, record.table].find((value) => typeof value === "string");
+              return typeof name === "string" ? [name] : [];
+            });
+            if (names.length !== items.length || items.some((item) => typeof item !== "string")) {
+              note(index, `${field} entries repaired to plain names`);
+              repaired[field] = names;
+            }
+          }
           for (const [field, schema] of [
             ["sqlConstraints", sqlConstraintSchema],
             ["resultChecks", resultCheckSchema],

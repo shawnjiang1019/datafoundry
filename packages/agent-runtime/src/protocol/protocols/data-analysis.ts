@@ -322,10 +322,11 @@ export const reduceDataAnalysisAction = (
     const frameChoices = recordFrameChoices(
       state,
       recordStrings(result, "frame_choices"),
-      // An advisory contract's labels decide nothing, so any structured query must carry the choice.
-      state.contractAdvisory
-        ? structuredAssertions.length > 0
-        : structuredAssertions.some((assertion) => assertion.kind === "metric")
+      // An advisory contract's labels decide nothing, and a contract that fell back to manual must not
+      // switch the frame off (legal-hard-1, 2026-10-09: the right reading was offered, never chosen),
+      // so every query carries the choice once the frame is shown.
+      state.contractAdvisory === true
+        || structuredAssertions.some((assertion) => assertion.kind === "metric")
     );
     const assertions = assertionIds.length > 0
       ? resolveRequirementAssertions(normalizedRequirements(state), requirementIds, assertionIds)
@@ -378,7 +379,7 @@ export const reduceDataAnalysisAction = (
     const advisory = state.contractAdvisory === true;
     const frameTargets = (attempt?.assertions ?? []).filter((assertion) =>
       advisory ? assertion.kind !== "manual" : assertion.kind === "metric");
-    const frameFindings = runtimeValid && attempt?.sql && frameTargets.length > 0
+    const frameFindings = runtimeValid && attempt?.sql && (advisory || frameTargets.length > 0)
       ? chosenReadingFindings(state, attempt.sql, frameTargets.flatMap((assertion) =>
         assertion.claimValues.map((claim) => claim.field)))
       : [];

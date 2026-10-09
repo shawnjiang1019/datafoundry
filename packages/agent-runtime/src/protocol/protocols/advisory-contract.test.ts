@@ -160,4 +160,36 @@ describe("advisory contract", () => {
     expect(result.valid).toBe(true);
     expect(result.validation_findings).toEqual([expect.objectContaining({ severity: "warning" })]);
   });
+
+  it("asks for the frame choice even when the contract fell back to manual, and records the reading as a warning", () => {
+    // legal-hard-1, 2026-10-09: the contract failed validation, so the frame's correct reading was never chosen.
+    const manual = createUserAnalysisRequirements([{
+      kind: "metric",
+      description: "Average reports for large metro areas",
+      acceptanceCriteria: ["One number"]
+    }]);
+    let state = createDataAnalysisProtocol([], manual)
+      .createInitialState({ contextPackageRef: { packageId: "p", revision: 0 }, runId: "run-manual" });
+    state = reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [{ name: "fires" }] });
+    state = reduceDataAnalysisAction(state, "semantic.context.resolve", {
+      mode: "live",
+      trust: "verified",
+      value: { evidence_grounding: { facts: [], candidates: [], duplicateTables: [], warnings: [], frame: FRAME, binding: { frame: true } } }
+    });
+    state = reduceDataAnalysisAction(state, "analysis.contract.ground", { requirements: manual, advisory: true });
+    const plan = (frameChoices?: string[]) => reduceDataAnalysisAction(state, "data.query.plan", {
+      sql: "SELECT COUNT(*) AS n FROM fires",
+      requirement_ids: ["R1"],
+      ...(frameChoices ? { frame_choices: frameChoices } : {})
+    });
+
+    expect(state.requirements.find((requirement) => requirement.id === "R1")?.assertions.map((assertion) => assertion.kind))
+      .toEqual(["manual"]);
+    expect(() => plan()).toThrow(/ANALYSIS_FRAME_CHOICE_REQUIRED/u);
+    const checked = reduceDataAnalysisAction(plan(["F1.1"]), "data.query.validate", { valid: true });
+    expect(checked.currentQueryValidated).toBe(true);
+    expect(checked.queryAttempts.at(-1)?.validationFindings).toEqual([
+      expect.objectContaining({ code: "SQL_SEMANTIC_FRAME_READING_MISSING:F1.1", severity: "warning" })
+    ]);
+  });
 });

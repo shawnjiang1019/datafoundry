@@ -137,6 +137,7 @@ export const createRunAgentContext = (input: CreateRunAgentContextInput): AgentR
     ...(input.effectiveRunConfig.answerFrame ? { answer_frame: true } : {}),
     ...(input.effectiveRunConfig.joinBinding ? { join_binding: true } : {}),
     ...(input.effectiveRunConfig.frameBinding ? { frame_binding: true } : {}),
+    ...(input.effectiveRunConfig.advisoryContract ? { advisory_contract: true } : {}),
     model_name: input.modelProvider.model_name
   });
 

@@ -44,6 +44,11 @@ describe("extractEffectiveRunConfig evidence grounding", () => {
     expect([both.joinBinding, both.frameBinding]).toEqual([true, true]);
     expect([neither.joinBinding, neither.frameBinding]).toEqual([undefined, undefined]);
   });
+
+  it("reads the advisory contract flag and leaves it off by default", () => {
+    expect(extractEffectiveRunConfig(createInput({ advisory_contract: true })).advisoryContract).toBe(true);
+    expect(extractEffectiveRunConfig(createInput({})).advisoryContract).toBeUndefined();
+  });
 });
 
 const createInput = (runConfig: Record<string, unknown>): RunAgentInput => ({

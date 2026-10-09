@@ -62,6 +62,8 @@ export type EffectiveRunConfig = {
   joinBinding?: boolean;
   /** Enforce the agent's answer-frame choices in the SQL gate (experiment flag; needs answerFrame). */
   frameBinding?: boolean;
+  /** Treat the contract model's rules as warnings; block only verified joins, frame choices and the answer value. */
+  advisoryContract?: boolean;
   /**
    * Resources silently dropped from `enabled*Ids` because `default_enabled=false` (R-020).
    * The run continues; this list is surfaced in `run.config.resolved` for diagnostics.
@@ -142,6 +144,7 @@ export const extractEffectiveRunConfig = (
   const noteBinding = booleanFromAliases(runConfig, ["noteBinding", "note_binding"], false);
   const joinBinding = noteBinding || booleanFromAliases(runConfig, ["joinBinding", "join_binding"], false);
   const frameBinding = noteBinding || booleanFromAliases(runConfig, ["frameBinding", "frame_binding"], false);
+  const advisoryContract = booleanFromAliases(runConfig, ["advisoryContract", "advisory_contract"], false);
 
   if (
     activeDatasourceId
@@ -175,6 +178,7 @@ export const extractEffectiveRunConfig = (
     ...(answerFrame ? { answerFrame } : {}),
     ...(joinBinding ? { joinBinding } : {}),
     ...(frameBinding ? { frameBinding } : {}),
+    ...(advisoryContract ? { advisoryContract } : {}),
     evidenceRefs
   };
 };

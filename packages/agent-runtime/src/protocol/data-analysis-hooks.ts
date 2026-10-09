@@ -403,7 +403,11 @@ export const validateAnalysisResult = (
         rowCount
       }, attempt?.assertions ?? [])
     : { valid: false, findings: [], verifiedValues: [] };
-  const validationFindings = [...structuralFindings, ...verification.findings, ...extraFindings];
+  // An advisory contract's result checks inform; the structural checks above still decide.
+  const checkFindings = state.contractAdvisory
+    ? verification.findings.map((finding) => ({ ...finding, severity: "warning" as const }))
+    : verification.findings;
+  const validationFindings = [...structuralFindings, ...checkFindings, ...extraFindings];
   return {
     valid: validationFindings.every((finding) => finding.severity !== "error"),
     reasons: validationFindings.map((finding) => finding.code),

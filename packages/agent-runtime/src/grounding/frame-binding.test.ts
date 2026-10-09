@@ -170,7 +170,7 @@ describe("answer frame binding", () => {
       const rowReading = validate(plan(grounded(true, perPatient), ANSWER, ["F1.2"]));
 
       expect(perRow.queryAttempts.at(-1)?.validationFindings.map((finding) => finding.code))
-        .toEqual(["SQL_SEMANTIC_FRAME_UNIT_MISSING:F1.1"]);
+        .toEqual(["SQL_SEMANTIC_FRAME_UNIT_MISSING:F1.1:avg_age"]);
       expect(perUnit.currentQueryValidated).toBe(true);
       expect(rowReading.currentQueryValidated).toBe(true);
     });

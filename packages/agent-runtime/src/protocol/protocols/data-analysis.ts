@@ -32,6 +32,11 @@ export type DataAnalysisState = {
   evidenceGrounding?: EvidenceGroundingContext;
   /** Note binding: the answer-frame readings the agent chose, as option ids such as "F1.2". */
   frameChoices?: string[];
+  /**
+   * Advisory contract: the contract model's rules warn instead of block. Only verified joins, the
+   * frame reading the answer came from, and a verified answer value can stop the agent.
+   */
+  contractAdvisory?: boolean;
   contractGrounded: boolean;
   /** Tables in the most recent inspect_schema result. */
   inspectedTableCount?: number;
@@ -275,6 +280,7 @@ export const reduceDataAnalysisAction = (
     return {
       ...state,
       contractGrounded: requirements.length > 0,
+      ...(recordBoolean(result, "advisory") === true ? { contractAdvisory: true } : {}),
       ...(state.inspectedTableCount !== undefined ? { contractTableCount: state.inspectedTableCount } : {}),
       ...(datasourceRevision ? { contractDatasourceRevision: datasourceRevision } : {}),
       ...(schemaId ? { contractSchemaId: schemaId } : {}),
@@ -316,7 +322,10 @@ export const reduceDataAnalysisAction = (
     const frameChoices = recordFrameChoices(
       state,
       recordStrings(result, "frame_choices"),
-      structuredAssertions.some((assertion) => assertion.kind === "metric")
+      // An advisory contract's labels decide nothing, so any structured query must carry the choice.
+      state.contractAdvisory
+        ? structuredAssertions.length > 0
+        : structuredAssertions.some((assertion) => assertion.kind === "metric")
     );
     const assertions = assertionIds.length > 0
       ? resolveRequirementAssertions(normalizedRequirements(state), requirementIds, assertionIds)
@@ -364,12 +373,22 @@ export const reduceDataAnalysisAction = (
       message: reason,
       severity: "error" as const
     }));
-    const metricAssertions = (attempt?.assertions ?? []).filter((assertion) => assertion.kind === "metric");
-    const frameFindings = runtimeValid && attempt?.sql && metricAssertions.length > 0
-      ? chosenReadingFindings(state, attempt.sql, metricAssertions.flatMap((assertion) =>
+    // Advisory contract: the contract model's SQL rules only warn (verified joins still block), and the
+    // frame is checked on every structured query but enforced at commit, on the query the answer came from.
+    const advisory = state.contractAdvisory === true;
+    const frameTargets = (attempt?.assertions ?? []).filter((assertion) =>
+      advisory ? assertion.kind !== "manual" : assertion.kind === "metric");
+    const frameFindings = runtimeValid && attempt?.sql && frameTargets.length > 0
+      ? chosenReadingFindings(state, attempt.sql, frameTargets.flatMap((assertion) =>
         assertion.claimValues.map((claim) => claim.field)))
       : [];
-    const validationFindings = [...runtimeFindings, ...semanticFindings, ...frameFindings];
+    const validationFindings = [
+      ...runtimeFindings,
+      ...semanticFindings.map((finding) => advisory && !finding.code.startsWith("SQL_SEMANTIC_JOIN")
+        ? { ...finding, severity: "warning" as const }
+        : finding),
+      ...frameFindings.map((finding) => advisory ? { ...finding, severity: "warning" as const } : finding)
+    ];
     const valid = runtimeValid && !validationFindings.some((finding) => finding.severity === "error");
     let next = {
       ...state,
@@ -574,6 +593,44 @@ const chosenReadingFindings = (state: DataAnalysisState, sql: string, fields: st
   });
 };
 
+/**
+ * Advisory contract commit: the claim carries at least one value, and with frame binding on, each
+ * value comes from a query that applied the chosen reading (the value's own field for a unit).
+ * The values themselves are still checked against executed results by validateClaimValues.
+ */
+const assertAdvisoryClaim = (
+  state: DataAnalysisState,
+  requirementId: string,
+  values: AnalysisClaimValue[],
+  verifiedValues: AnalysisVerifiedValue[],
+  boundAttempts: AnalysisQueryAttempt[],
+  assertions: AnalysisAssertion[]
+): void => {
+  if (values.length === 0) {
+    throw new Error(
+      `ANALYSIS_CLAIM_VALUE_REQUIRED:${requirementId}: submit the answer value from a verified query; `
+      + `verified names: ${unique(verifiedValues.map((value) => value.name)).join(", ") || "none"}.`
+    );
+  }
+  if (!state.evidenceGrounding?.binding?.frame) return;
+  for (const value of values) {
+    const source = boundAttempts.find((attempt) =>
+      (attempt.verifiedValues ?? []).some((verified) => verified.name === value.name));
+    const field = assertions.flatMap((assertion) => assertion.claimValues)
+      .find((spec) => spec.name === value.name)?.field ?? value.name;
+    const conflicts = (source?.validationFindings ?? []).filter((finding) =>
+      finding.code.startsWith("SQL_SEMANTIC_FRAME_READING_MISSING")
+      || (finding.code.startsWith("SQL_SEMANTIC_FRAME_UNIT_MISSING")
+        && (finding.code.split(":")[2] ?? "").split(",").includes(field)));
+    if (conflicts.length > 0) {
+      throw new Error(
+        `ANALYSIS_ANSWER_FRAME_MISMATCH:${requirementId}:${value.name}: the query behind this value does not `
+        + `follow your chosen reading. ${conflicts.map((finding) => finding.message).join(" ")}`
+      );
+    }
+  }
+};
+
 const chosenUnitFindings = (
   choice: string,
   option: FrameOption,
@@ -586,7 +643,7 @@ const chosenUnitFindings = (
   const notPerUnit = fieldsNotPerUnit(sql, state.datasourceDialect, { keyColumns: option.keyColumns, fields }) ?? [];
   const keys = option.keyColumns.map((column) => `"${column}"`).join(", ");
   return notPerUnit.length > 0 ? [{
-    code: `SQL_SEMANTIC_FRAME_UNIT_MISSING:${choice}`,
+    code: `SQL_SEMANTIC_FRAME_UNIT_MISSING:${choice}:${notPerUnit.join(",")}`,
     message: `You chose ${choice} (unit: "${option.label.slice(0, 80)}"; ${option.rows} rows are ${option.units} `
       + `distinct ${keys}), so ${notPerUnit.join(", ")} must be computed once per ${keys}: aggregate over a `
       + `relation made unique by SELECT DISTINCT ${keys} or GROUP BY ${keys}, not over the raw or joined rows.`,
@@ -752,7 +809,10 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
       .map((assertion) => assertion.id)));
     const verifiedValues = boundAttempts.flatMap((attempt) => attempt.verifiedValues ?? [])
       .filter((verifiedValue) => requirementAssertionIds.has(verifiedValue.assertionId));
-    const requiredValueSpecs = (requirement?.assertions ?? []).flatMap((assertion) =>
+    if (next.contractAdvisory) {
+      assertAdvisoryClaim(next, requirementId, values, verifiedValues, boundAttempts, requirement?.assertions ?? []);
+    }
+    const requiredValueSpecs = next.contractAdvisory ? [] : (requirement?.assertions ?? []).flatMap((assertion) =>
       assertion.required && assertion.kind !== "manual"
         ? assertion.claimValues.filter((spec) => spec.required).map((spec) => ({
             assertionId: assertion.id,

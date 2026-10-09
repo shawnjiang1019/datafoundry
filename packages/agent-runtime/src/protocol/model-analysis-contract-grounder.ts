@@ -1,5 +1,5 @@
 import { Agent } from "@mastra/core/agent";
-import type { ModelProvider } from "@datafoundry/providers";
+import { DISABLE_THINKING_HEADER, type ModelProvider } from "@datafoundry/providers";
 import { z } from "zod";
 
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
@@ -57,6 +57,8 @@ export type AnalysisContractGroundingFinding = {
 export type AnalysisContractGroundingResult = {
   requirements: AnalysisRequirement[];
   findings: AnalysisContractGroundingFinding[];
+  /** The run treats this contract's rules as warnings (advisory contract mode). */
+  advisory?: boolean;
 };
 
 export type AnalysisContractGrounder = (
@@ -264,7 +266,9 @@ export const createModelAnalysisContractGrounder = (
         maxSteps: AGENT_RUNTIME_LIMITS.modelHelperMaxSteps,
         modelSettings: {
           maxOutputTokens: AGENT_RUNTIME_LIMITS.contractGrounderMaxOutputTokens,
-          temperature: 0
+          temperature: 0,
+          // A contract is structured output; reasoning only spends the output budget and the time limit.
+          headers: { [DISABLE_THINKING_HEADER]: "1" }
         }
       });
       lastText = output.text;

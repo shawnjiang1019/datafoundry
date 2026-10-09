@@ -292,6 +292,10 @@ export type WorkspaceAttachment = {
   source_path: string;
 };
 
+/** Mark grounded contracts advisory so the protocol treats their rules as warnings. */
+const advisoryContractGrounder = (grounder: AnalysisContractGrounder, advisory: boolean): AnalysisContractGrounder =>
+  advisory ? async (input) => ({ ...await grounder(input), advisory: true }) : grounder;
+
 export const createDataFoundry = async (
   input: CreateDataFoundryInput
 ): Promise<{
@@ -569,8 +573,10 @@ export const createDataFoundry = async (
       classifier: input.protocolClassifier ?? createModelProtocolClassifier(input.modelProvider),
       requirementExtractor: input.analysisRequirementExtractor
         ?? createModelAnalysisRequirementExtractor(input.modelProvider),
-      analysisContractGrounder: input.analysisContractGrounder
-        ?? createModelAnalysisContractGrounder(input.modelProvider),
+      analysisContractGrounder: advisoryContractGrounder(
+        input.analysisContractGrounder ?? createModelAnalysisContractGrounder(input.modelProvider),
+        input.runContext.advisory_contract === true
+      ),
       ...(input.protocolStateStore ? { stateStore: input.protocolStateStore } : {}),
       projectContext: ({ actionName, rawResult }) => {
         if (isProtocolRuntimeAction(actionName)) {

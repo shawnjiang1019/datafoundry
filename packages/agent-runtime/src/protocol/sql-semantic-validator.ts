@@ -93,12 +93,15 @@ export const validateSqlSemantics = (
       ...assertion.sourceTables.map((table) => ({ kind: "source" as const, table })),
       ...assertion.sqlConstraints
     ];
-    // An optional assertion (a side check) is reported, not enforced.
+    // An optional assertion (a side check) is reported, not enforced, except its verified-join rules:
+    // those come from data checks, not from the contract model, and hold whatever the assertion's label.
     return constraints.flatMap((constraint) => validateConstraint(
       constraint,
       { aggregates, columns, groupBy, joins, predicates, tables },
       assertion.id
-    )).map((finding) => assertion.required ? finding : { ...finding, severity: "warning" as const });
+    )).map((finding) => assertion.required || finding.code.startsWith("SQL_SEMANTIC_JOIN")
+      ? finding
+      : { ...finding, severity: "warning" as const });
   });
 };
 

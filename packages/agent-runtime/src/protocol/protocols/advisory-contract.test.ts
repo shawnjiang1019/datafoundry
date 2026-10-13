@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AnswerFrame } from "../../grounding/answer-frame.js";
+import { renderAnswerFrame, type AnswerFrame } from "../../grounding/answer-frame.js";
 import { createUserAnalysisRequirements } from "../analysis-requirements.js";
 import { validateAnalysisResult } from "../data-analysis-hooks.js";
 import { createDataAnalysisProtocol, reduceDataAnalysisAction, type DataAnalysisState } from "./data-analysis.js";
@@ -46,6 +46,13 @@ const FRAME: AnswerFrame = {
     ]
   }]
 };
+
+// Bound options are shown in a seeded order; find the "2000 onward" reading's id as the agent would.
+const onwardChoice = (() => {
+  const bound = renderAnswerFrame(FRAME, { binding: true }) as { decisions: Array<{ options: Array<{ id: string; reading: string }> }> };
+  const id = bound.decisions[0]?.options.find((option) => option.reading === "2000 onward")?.id ?? "";
+  return { id, choice: `${id}: since 2000, including 2000` };
+})();
 
 const grounded = (advisory: boolean, frame = false): DataAnalysisState => {
   let state = createDataAnalysisProtocol([], requirements)
@@ -128,7 +135,7 @@ describe("advisory contract", () => {
   });
 
   it("enforces the chosen frame reading on the query the committed value came from", () => {
-    const side = validated(grounded(true, true), "SELECT COUNT(*) AS noaa_fires FROM fires", ["R1.A1"], ["F1.1"]);
+    const side = validated(grounded(true, true), "SELECT COUNT(*) AS noaa_fires FROM fires", ["R1.A1"], [onwardChoice.choice]);
     const skipped = evidenced(
       validated(side, "SELECT CORR(a, b) AS corr FROM fires f JOIN stations s ON f.station_ref = s.nws_id", ["R1.A2"]),
       [{ name: "corr", value: 0.5, assertionId: "R1.A2" }]
@@ -147,6 +154,20 @@ describe("advisory contract", () => {
     expect(() => commit(skipped, [{ name: "corr", value: 0.5 }])).toThrow(/ANALYSIS_ANSWER_FRAME_MISMATCH:R1:corr/u);
     expect(commit(applied, [{ name: "corr", value: 0.519 }]).requirements.find((requirement) => requirement.id === "R1")?.status)
       .toBe("reported");
+  });
+
+  it("keeps a one-row result committable by column name when the contract's own claim field is missing", () => {
+    // wildfire, 2026-10-12: a missing contract field emptied the verified values, so 8 of 12 bound runs
+    // could not commit anything ("allowed names: none").
+    const state = validated(grounded(true), "SELECT COUNT(*) AS n_fires FROM fires", ["R1.A1"]);
+    const result = validateAnalysisResult(
+      { result: { columns: ["n_fires"], rows: [[42]], row_count: 1, audit_log_id: "audit-1" } },
+      {},
+      state
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.verified_values).toEqual([expect.objectContaining({ name: "n_fires", value: 42, assertionId: "R1.A1" })]);
   });
 
   it("reports the contract's result checks as warnings", () => {
@@ -186,10 +207,47 @@ describe("advisory contract", () => {
     expect(state.requirements.find((requirement) => requirement.id === "R1")?.assertions.map((assertion) => assertion.kind))
       .toEqual(["manual"]);
     expect(() => plan()).toThrow(/ANALYSIS_FRAME_CHOICE_REQUIRED/u);
-    const checked = reduceDataAnalysisAction(plan(["F1.1"]), "data.query.validate", { valid: true });
+    const checked = reduceDataAnalysisAction(plan([onwardChoice.choice]), "data.query.validate", { valid: true });
     expect(checked.currentQueryValidated).toBe(true);
     expect(checked.queryAttempts.at(-1)?.validationFindings).toEqual([
-      expect.objectContaining({ code: "SQL_SEMANTIC_FRAME_READING_MISSING:F1.1", severity: "warning" })
+      expect.objectContaining({ code: `SQL_SEMANTIC_FRAME_READING_MISSING:${onwardChoice.id}`, severity: "warning" })
     ]);
+  });
+
+  it("lets a manual-fallback answer be committed by column name, from the query that applied the reading", () => {
+    // wildfire-hard-17, 2026-10-12: the manual contract named no claim values, so ten commits failed with
+    // "allowed names: none" and the run ended on an unchecked text answer.
+    const manual = createUserAnalysisRequirements([{ kind: "metric", description: "Average", acceptanceCriteria: ["One number"] }]);
+    let state = createDataAnalysisProtocol([], manual)
+      .createInitialState({ contextPackageRef: { packageId: "p", revision: 0 }, runId: "run-manual-commit" });
+    state = reduceDataAnalysisAction(state, "inspect_schema", { schema_id: "s", tables: [{ name: "fires" }] });
+    state = reduceDataAnalysisAction(state, "semantic.context.resolve", {
+      mode: "live",
+      trust: "verified",
+      value: { evidence_grounding: { facts: [], candidates: [], duplicateTables: [], warnings: [], frame: FRAME, binding: { frame: true } } }
+    });
+    state = reduceDataAnalysisAction(state, "analysis.contract.ground", { requirements: manual, advisory: true });
+    const run = (current: DataAnalysisState, sql: string, value: number) => {
+      const validated = reduceDataAnalysisAction(reduceDataAnalysisAction(current, "data.query.plan", {
+        sql, requirement_ids: ["R1"], frame_choices: [onwardChoice.choice]
+      }), "data.query.validate", { valid: true });
+      const result = { columns: ["n"], rows: [[value]], row_count: 1, audit_log_id: `audit-${value}` };
+      const checked = validateAnalysisResult({ result }, {}, validated);
+      const id = validated.currentQueryAttemptId ?? "Q";
+      let next = reduceDataAnalysisAction(validated, "run_sql_readonly", { result: { artifact_id: `artifact-${id}`, ...result } });
+      next = reduceDataAnalysisAction(next, "analysis.result.validate", checked);
+      return { checked, state: reduceDataAnalysisAction(next, "analysis.evidence.bind", {
+        artifact_id: `artifact-${id}`, audit_log_id: `audit-${value}`, evidence_refs: [`artifact-${id}`]
+      }) };
+    };
+    const skipped = run(state, "SELECT COUNT(*) AS n FROM fires", 30);
+    const applied = run(skipped.state, "SELECT COUNT(*) AS n FROM fires WHERE \"year\" >= 2000", 25);
+    const commitN = (current: DataAnalysisState, value: number) => reduceDataAnalysisAction(current, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: `n is ${value}`, values: [{ name: "n", value }] }]
+    });
+
+    expect(skipped.checked.verified_values).toEqual([expect.objectContaining({ name: "n", value: 30 })]);
+    expect(() => commitN(applied.state, 30)).toThrow(/ANALYSIS_ANSWER_FRAME_MISMATCH:R1:n/u);
+    expect(commitN(applied.state, 25).requirements.find((requirement) => requirement.id === "R1")?.status).toBe("reported");
   });
 });

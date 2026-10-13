@@ -412,8 +412,37 @@ export const validateAnalysisResult = (
     valid: validationFindings.every((finding) => finding.severity !== "error"),
     reasons: validationFindings.map((finding) => finding.code),
     validation_findings: validationFindings,
-    verified_values: verification.verifiedValues
+    verified_values: state.contractAdvisory
+      ? [
+          ...verification.verifiedValues,
+          ...singleRowValues(columns, rows, rowCount, attempt?.assertions ?? [])
+            .filter((value) => !verification.verifiedValues.some((verified) => verified.name === value.name))
+        ]
+      : verification.verifiedValues
   };
+};
+
+/**
+ * Advisory contract: a one-row result's cells are values the agent may commit, by column name. The
+ * contract's own claim values are lost whenever its fields miss the agent's columns or a check fails, and
+ * a manual fallback names none, so otherwise nothing is verified and no commit can pass (wildfire, 2026-10-12:
+ * 8 of 12 bound runs ended uncommitted after repeated "allowed names: none").
+ */
+const singleRowValues = (
+  columns: unknown,
+  rows: unknown,
+  rowCount: unknown,
+  assertions: Array<{ id: string; kind: string }>
+): Array<{ name: string; value: string | number | boolean | null; tolerance: number; assertionId: string }> => {
+  if (rowCount !== 1 || !Array.isArray(columns) || !Array.isArray(rows) || !Array.isArray(rows[0])) return [];
+  const row = rows[0] as unknown[];
+  const answerAssertionId = (assertions.find((assertion) => assertion.kind !== "manual") ?? assertions[0])?.id ?? "";
+  return columns.flatMap((column, index) => {
+    const value = row[index];
+    return typeof column === "string" && (value === null || ["string", "number", "boolean"].includes(typeof value))
+      ? [{ name: column, value: value as string | number | boolean | null, tolerance: 0, assertionId: answerAssertionId }]
+      : [];
+  });
 };
 
 const nestedString = (value: unknown, parent: string, key: string): string | undefined =>

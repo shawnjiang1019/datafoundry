@@ -7,6 +7,7 @@ import {
   type TaskRequirementLink
 } from "../analysis-requirements.js";
 import {
+  canonicalAssertionIds,
   resolveRequirementAssertions,
   type AnalysisAssertion,
   type AnalysisClaimValue,
@@ -297,7 +298,7 @@ export const reduceDataAnalysisAction = (
     };
   }
   if (actionName === "data.query.plan") {
-    const assertionIds = recordStrings(result, "assertion_ids");
+    const assertionIds = canonicalAssertionIds(normalizedRequirements(state), recordStrings(result, "assertion_ids"));
     const explicitRequirementIds = recordStrings(result, "requirement_ids");
     const requirementIds = explicitRequirementIds.length > 0
       ? explicitRequirementIds
@@ -547,15 +548,24 @@ const recordFrameChoices = (
   answersAssertion: boolean
 ): string[] | undefined => {
   const frame = state.evidenceGrounding?.binding?.frame ? state.evidenceGrounding.frame : undefined;
-  const shown = shownFrameDecisions(frame);
+  const shown = shownFrameDecisions(frame, true);
   if (shown.length === 0) return undefined;
   const choices = new Map((state.frameChoices ?? []).map((choice) => [choice.split(".")[0] as string, choice]));
-  for (const choice of submitted) {
+  for (const submittedChoice of submitted) {
+    const [choice = "", ...reasonParts] = submittedChoice.trim().split(/\s*[:\u2014\u2013-]\s*|\s+/u);
     const resolved = resolveFrameChoice(frame, choice);
     if (!resolved) {
       throw new Error(`ANALYSIS_FRAME_CHOICE_UNKNOWN:${choice}: valid ids are ${frameOptionIds(shown).join(", ")}.`);
     }
-    choices.set(resolved.decisionId, choice.trim());
+    // A reason tied to the question's own words makes the choice a reading of the question, not a pick
+    // of the first option listed.
+    const phraseWords = new Set(resolved.decision.questionPhrase.toLowerCase().match(/[a-z0-9]{4,}/gu) ?? []);
+    const reasonWords = reasonParts.join(" ").toLowerCase().match(/[a-z0-9]{4,}/gu) ?? [];
+    if (!reasonWords.some((word) => phraseWords.has(word))) {
+      throw new Error(`ANALYSIS_FRAME_CHOICE_REASON_REQUIRED:${choice}: write "${choice}: <why>", quoting words from `
+        + `the question phrase "${resolved.decision.questionPhrase.slice(0, 120)}".`);
+    }
+    choices.set(resolved.decisionId, choice);
   }
   const undecided = shown.filter(({ id }) => !choices.has(id));
   if (answersAssertion && undecided.length > 0) {
@@ -615,8 +625,11 @@ const assertAdvisoryClaim = (
   }
   if (!state.evidenceGrounding?.binding?.frame) return;
   for (const value of values) {
-    const source = boundAttempts.find((attempt) =>
+    // Several queries can verify the same name: the value's own query is the latest whose value matches.
+    const named = boundAttempts.filter((attempt) =>
       (attempt.verifiedValues ?? []).some((verified) => verified.name === value.name));
+    const source = [...named].reverse().find((attempt) => (attempt.verifiedValues ?? []).some((verified) =>
+      verified.name === value.name && sameScalar(verified.value, value.value, verified.tolerance))) ?? named.at(-1);
     const field = assertions.flatMap((assertion) => assertion.claimValues)
       .find((spec) => spec.name === value.name)?.field ?? value.name;
     const conflicts = (source?.validationFindings ?? []).filter((finding) =>
@@ -631,6 +644,11 @@ const assertAdvisoryClaim = (
     }
   }
 };
+
+const sameScalar = (left: unknown, right: unknown, tolerance: number): boolean =>
+  typeof left === "number" && typeof right === "number"
+    ? Math.abs(left - right) <= Math.max(tolerance, Math.abs(left) * 1e-9)
+    : left === right;
 
 const chosenUnitFindings = (
   choice: string,
@@ -965,7 +983,10 @@ const validateClaimValues = (
   for (const value of values) {
     if (submittedNames.has(value.name)) throw new Error(`ANALYSIS_CLAIM_VALUE_DUPLICATE:${value.name}`);
     submittedNames.add(value.name);
-    const verified = verifiedValues.find((candidate) => candidate.name === value.name);
+    // Several verified queries can share a name; the claim matches any of them, else report the latest.
+    const named = verifiedValues.filter((candidate) => candidate.name === value.name);
+    const verified = named.find((candidate) => candidate.unit === value.unit
+      && claimScalarsEqual(value.value, candidate.value, candidate.tolerance)) ?? named.at(-1);
     if (!verified) {
       const allowedNames = unique(verifiedValues.map((candidate) => candidate.name)).join(", ") || "none";
       throw new Error(

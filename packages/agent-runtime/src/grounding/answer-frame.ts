@@ -23,6 +23,8 @@ export type FrameOption = {
   units?: number;
   status?: "checked" | "empty" | "invalid";
   error?: string;
+  /** Words of the question this reading leaves unapplied, as the proposer reports them. */
+  unappliedWords?: string[];
 };
 
 export type FrameDecision = {
@@ -107,11 +109,16 @@ export const answerFramePrompt = (
   "- denominator: the base of any ratio, proportion, average or comparison.",
   "For each decision give every reading of the question's wording that a careful analyst could defend",
   `with this data (at most ${MAX_OPTIONS}). Do not pick one and do not say which is right.`,
+  "A reading must apply every qualifier the question states (for example \"used for ...\", \"with ...\",",
+  "\"in the X dataset\"); in unapplied_words list the question's words a reading leaves out (empty when none).",
+  "Do not list ways to define or measure a variable (thresholds, cut-offs, scores) or choices of analysis method:",
+  "those belong to the analysis. List only which rows are included and what one counted thing is.",
   "Express each reading as a DuckDB WHERE condition over one table (null when it is the whole table);",
   "it may use IN (SELECT ...) or EXISTS over other tables. key_columns identify one unit in that table.",
   "Use only the tables and columns listed below and double-quote every identifier.",
   "Return only JSON: {\"decisions\": [{\"aspect\": \"unit|population|denominator\", \"question_phrase\": str,",
-  "\"options\": [{\"label\": str, \"table\": str, \"sql_where\": str or null, \"key_columns\": [str]}]}]}",
+  "\"options\": [{\"label\": str, \"table\": str, \"sql_where\": str or null, \"key_columns\": [str],",
+  "\"unapplied_words\": [str]}]}]}",
   "",
   `QUESTION: ${question}`,
   "",
@@ -131,17 +138,18 @@ export const answerFramePrompt = (
 ].join("\n");
 
 /**
- * The agent-facing view. A decision is shown when the data makes it a real choice (two
- * readings select different counts) or when a reading selects nothing as written; a
- * decision whose readings all agree adds nothing and is left out. At most three are shown:
- * readings that select nothing first (the data contradicts them), then population, then
- * denominator, then unit, which offline was the noisiest on pre-aggregated tables.
+ * The agent-facing view. A decision is shown when the data makes it a real choice: at least two
+ * readings select rows, in different counts. A reading that selects nothing is listed inside a
+ * shown decision, but no longer makes one shown: environment-easy-4 (2026-10-12) got a decision
+ * whose readings nearly all matched 0 rows (the proposer's date filters missed the data), and it
+ * steered the agent to the wrong table. At most three are shown: population, then denominator,
+ * then unit, which offline was the noisiest on pre-aggregated tables.
  */
 export const renderAnswerFrame = (
   frame: AnswerFrame | undefined,
   options: { binding?: boolean } = {}
 ): Record<string, unknown> | undefined => {
-  const shown = shownFrameDecisions(frame);
+  const shown = shownFrameDecisions(frame, options.binding === true);
   if (shown.length === 0) {
     return undefined;
   }
@@ -152,9 +160,11 @@ export const renderAnswerFrame = (
       "Decide each one from the question's exact wording, and state the choice you made in the final answer.",
       ...(options.binding
         ? [
-            "Binding: pass the id of the reading you chose for every decision in frame_choices on run_sql_readonly",
-            "(for example [\"F1.2\", \"F2.1\"]). The SQL that answers the question must then apply that reading's WHERE,",
-            "and for a unit with fewer distinct units than rows, compute the answer once per unit (SELECT DISTINCT or GROUP BY its key)."
+            "Binding: options are listed in no particular order. For every decision, pass the reading you chose in",
+            "frame_choices on run_sql_readonly as \"<id>: <why, quoting the question's words>\" (for example",
+            "\"F1.2: the question says total acres burned per area\"). The SQL that answers the question must apply that reading's WHERE,",
+            "and for a unit with fewer distinct units than rows, compute the answer once per unit (SELECT DISTINCT or GROUP BY its key).",
+            "A reading marked leaves_out ignores those words of the question; choose it only if the question means them loosely."
           ]
         : [])
     ].join(" "),
@@ -173,7 +183,10 @@ export const renderAnswerFrame = (
           ...(option.units !== undefined && option.units !== option.rows
             ? { distinct_units: option.units, note: `${option.rows} rows are ${option.units} distinct units` }
             : {}),
-          ...(option.status === "empty" ? { note: "matches no rows as written" } : {})
+          ...(option.status === "empty" ? { note: "matches no rows as written" } : {}),
+          ...(unfaithfulWords(decision, option)
+            ? { leaves_out: unfaithfulWords(decision, option) }
+            : {})
         }))
     }))
   };
@@ -185,18 +198,39 @@ export const renderAnswerFrame = (
  * invalid options and can be resolved again from the stored frame.
  */
 export const shownFrameDecisions = (
-  frame: AnswerFrame | undefined
+  frame: AnswerFrame | undefined,
+  shuffle = false
 ): Array<{ id: string; decision: FrameDecision }> => {
-  const hasEmpty = (decision: FrameDecision) => decision.options.some((option) => option.status === "empty");
   return (frame?.decisions ?? [])
     .filter((decision) => {
       const checked = decision.options.filter((option) => option.status === "checked");
       const distinctCounts = new Set(checked.map((option) => `${option.rows}:${option.units}`));
-      return distinctCounts.size > 1 || hasEmpty(decision);
+      return checked.length >= 2 && distinctCounts.size > 1;
     })
-    .sort((a, b) => Number(hasEmpty(b)) - Number(hasEmpty(a)) || ASPECT_PRIORITY[a.aspect] - ASPECT_PRIORITY[b.aspect])
+    .sort((a, b) => ASPECT_PRIORITY[a.aspect] - ASPECT_PRIORITY[b.aspect])
     .slice(0, MAX_SHOWN_DECISIONS)
-    .map((decision, index) => ({ id: `F${index + 1}`, decision }));
+    .map((decision, index) => ({ id: `F${index + 1}`, decision: shuffle ? shuffledOptions(decision) : decision }));
+};
+
+/**
+ * Under binding the agent took the proposer's first option in 74% of 77 choices (2026-10-12), so a
+ * wrong first reading was enforced (wildfire-hard-7, hard-5). The options are shown in an order seeded
+ * from the decision's own text: stable within a run, so ids resolve the same way, but not the
+ * proposer's ranking.
+ */
+const shuffledOptions = (decision: FrameDecision): FrameDecision => {
+  let seed = 2166136261;
+  for (const char of `${decision.questionPhrase}|${decision.options.map((option) => option.label).join("|")}`) {
+    seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+  }
+  const order = decision.options.map((_, index) => index);
+  for (let index = order.length - 1; index > 0; index -= 1) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    // Use the high bits: a power-of-two LCG's low bits cycle with short periods.
+    const swap = Math.floor((seed / 2 ** 32) * (index + 1));
+    [order[index], order[swap]] = [order[swap] as number, order[index] as number];
+  }
+  return { ...decision, options: order.map((index) => decision.options[index] as FrameOption) };
 };
 
 /** Resolve an option id such as "F1.2" against the shown decisions. */
@@ -204,9 +238,9 @@ export const resolveFrameChoice = (
   frame: AnswerFrame | undefined,
   choiceId: string
 ): { decisionId: string; decision: FrameDecision; option: FrameOption } | undefined => {
-  const matched = /^(F\d+)\.(\d+)$/u.exec(choiceId.trim());
+  const matched = /^(F\d+)\.(\d+)\b/u.exec(choiceId.trim());
   if (!matched) return undefined;
-  const shown = shownFrameDecisions(frame).find(({ id }) => id === matched[1]);
+  const shown = shownFrameDecisions(frame, true).find(({ id }) => id === matched[1]);
   const option = shown?.decision.options[Number(matched[2]) - 1];
   return shown && option && option.status !== "invalid"
     ? { decisionId: shown.id, decision: shown.decision, option }
@@ -247,10 +281,7 @@ const parseDecisions = (text: string): FrameDecision[] => {
     if (!aspect || !["unit", "population", "denominator"].includes(aspect) || !Array.isArray(options)) {
       return [];
     }
-    return [{
-      aspect: aspect as FrameAspect,
-      questionPhrase: recordString(decision, "question_phrase") ?? "",
-      options: options.slice(0, MAX_OPTIONS).flatMap((option): FrameOption[] => {
+    const parsed = options.slice(0, MAX_OPTIONS).flatMap((option): FrameOption[] => {
         const table = unquote(recordString(option, "table") ?? "");
         if (!table) return [];
         const keyColumns = recordValue(option, "key_columns");
@@ -260,12 +291,34 @@ const parseDecisions = (text: string): FrameDecision[] => {
           sqlWhere: recordString(option, "sql_where") ?? null,
           keyColumns: Array.isArray(keyColumns)
             ? keyColumns.filter((column): column is string => typeof column === "string" && column.length > 0).map(unquote)
-            : []
+            : [],
+          unappliedWords: stringList(recordValue(option, "unapplied_words"))
         }];
-      })
+    });
+    return [{
+      aspect: aspect as FrameAspect,
+      questionPhrase: recordString(decision, "question_phrase") ?? "",
+      options: parsed
     }];
   });
 };
+
+/**
+ * The words of the question a reading leaves out, when another reading of the same decision applies
+ * them all; undefined when the reading may be chosen. wildfire-hard-17, 2026-10-12: "all stations,
+ * whether or not any fire used them" was offered for "stations used for fire site monitoring", and the
+ * agent chose it in 2 of 5 bound runs. It is marked, not blocked: environment-easy-1's expected answer
+ * reads "during the 2013 bathing season" as all of 2013, and blocking forced June-August (4.829, not 4.796).
+ */
+export const unfaithfulWords = (decision: FrameDecision, option: FrameOption): string[] | undefined => {
+  const words = option.unappliedWords ?? [];
+  const faithfulSibling = decision.options.some((candidate) =>
+    candidate !== option && candidate.status !== "invalid" && (candidate.unappliedWords ?? []).length === 0);
+  return words.length > 0 && faithfulSibling ? words : undefined;
+};
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 
 /**
  * The first balanced JSON object in the text. Without a JSON response mode the model may

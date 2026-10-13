@@ -34,16 +34,45 @@ const FRAME: AnswerFrame = {
   }]
 };
 
+type BoundFrame = { decisions: Array<{ id: string; options: Array<{ id: string; reading: string }> }> };
+
+// Under binding the options are shown in a seeded order, so a test finds a reading's id the way the agent does.
+const idFor = (frame: AnswerFrame, reading: string): string => {
+  const bound = renderAnswerFrame(frame, { binding: true }) as BoundFrame;
+  const option = bound.decisions.flatMap((decision) => decision.options).find((candidate) => candidate.reading === reading);
+  if (!option) throw new Error(`no option ${reading}`);
+  return option.id;
+};
+const EXACT = "exactly serous, cases not excluded";
+const ANY = "any histologic type containing serous";
+
 describe("answer frame binding", () => {
-  it("adds ids only when binding is on, and resolves them back to the reading", () => {
+  it("adds ids only when binding is on, and resolves them back to the reading shown", () => {
     const advisory = renderAnswerFrame(FRAME) as { decisions: Array<Record<string, unknown>> };
-    const bound = renderAnswerFrame(FRAME, { binding: true }) as { decisions: Array<{ id: string; options: Array<{ id: string }> }> };
+    const bound = renderAnswerFrame(FRAME, { binding: true }) as BoundFrame;
 
     expect(advisory.decisions[0]).not.toHaveProperty("id");
+    expect((advisory.decisions[0]?.options as Array<{ reading: string }>).map((option) => option.reading)).toEqual([ANY, EXACT]);
     expect(bound.decisions[0]?.id).toBe("F1");
     expect(bound.decisions[0]?.options.map((option) => option.id)).toEqual(["F1.1", "F1.2"]);
-    expect(resolveFrameChoice(FRAME, "F1.2")?.option.label).toBe("exactly serous, cases not excluded");
+    expect(resolveFrameChoice(FRAME, idFor(FRAME, EXACT))?.option.label).toBe(EXACT);
     expect(resolveFrameChoice(FRAME, "F1.3")).toBeUndefined();
+  });
+
+  it("does not keep the proposer's ranking: across many decisions, the first option lands in every position", () => {
+    const positions = new Set(Array.from({ length: 40 }, (_, index) => {
+      const frame: AnswerFrame = { warnings: [], decisions: [{
+        aspect: "population",
+        questionPhrase: `phrase ${index}`,
+        options: ["first", "second", "third"].map((label, rank) => ({
+          label: `${label} ${index}`, table: "t", sqlWhere: `x = ${rank}`, keyColumns: ["k"], rows: 10 + rank, units: 10 + rank, status: "checked"
+        }))
+      }] };
+      return (renderAnswerFrame(frame, { binding: true }) as BoundFrame).decisions[0]?.options
+        .findIndex((option) => option.reading.startsWith("first"));
+    }));
+
+    expect(positions).toEqual(new Set([0, 1, 2]));
   });
 
   describe("missingWhereParts", () => {
@@ -130,22 +159,45 @@ describe("answer frame binding", () => {
 
     it("requires a known choice before a query that answers the question", () => {
       expect(() => plan(grounded(true), ANSWER)).toThrow(/ANALYSIS_FRAME_CHOICE_REQUIRED: .*F1\.1 .*F1\.2/u);
-      expect(() => plan(grounded(true), ANSWER, ["F1.9"])).toThrow("ANALYSIS_FRAME_CHOICE_UNKNOWN:F1.9: valid ids are F1.1, F1.2.");
+      expect(() => plan(grounded(true), ANSWER, ["F1.9: serous"])).toThrow("ANALYSIS_FRAME_CHOICE_UNKNOWN:F1.9: valid ids are F1.1, F1.2.");
       expect(plan(grounded(false), ANSWER).frameChoices).toBeUndefined();
     });
 
+    it("allows a reading marked as leaving out the question's words: the question may mean them loosely", () => {
+      const flagged: AnswerFrame = { warnings: [], decisions: [{
+        ...FRAME.decisions[0]!,
+        options: FRAME.decisions[0]!.options.map((option) =>
+          option.label === ANY ? { ...option, unappliedWords: ["serous tumor"] } : option)
+      }] };
+      const anyId = idFor(flagged, ANY);
+
+      expect(plan(grounded(true, flagged), ANSWER, [`${anyId}: any serous tumor samples`]).frameChoices).toEqual([anyId]);
+      expect(plan(grounded(true, flagged), ANSWER, [`${idFor(flagged, EXACT)}: serous tumor samples`]).frameChoices)
+        .toEqual([idFor(flagged, EXACT)]);
+    });
+
+    it("requires a reason that uses the question's words", () => {
+      const exact = idFor(FRAME, EXACT);
+
+      expect(() => plan(grounded(true), ANSWER, [exact])).toThrow(/ANALYSIS_FRAME_CHOICE_REASON_REQUIRED/u);
+      expect(() => plan(grounded(true), ANSWER, [`${exact}: looks right`])).toThrow(/ANALYSIS_FRAME_CHOICE_REASON_REQUIRED/u);
+      expect(plan(grounded(true), ANSWER, [`${exact}: the question says serous tumor samples`]).frameChoices).toEqual([exact]);
+    });
+
     it("rejects SQL that skips the chosen rows and accepts SQL that selects them", () => {
-      const skipped = validate(plan(grounded(true), ANSWER, ["F1.2"]));
+      const exact = idFor(FRAME, EXACT);
+      const choice = `${exact}: serous tumor samples, exactly`;
+      const skipped = validate(plan(grounded(true), ANSWER, [choice]));
       const applied = validate(plan(
         grounded(true),
         `${ANSWER} WHERE "Histologic_type" = 'Serous' AND ("Case_excluded" IS NULL OR "Case_excluded" = 'No')`,
-        ["F1.2"]
+        [choice]
       ));
 
-      expect(skipped.frameChoices).toEqual(["F1.2"]);
+      expect(skipped.frameChoices).toEqual([exact]);
       expect(skipped.currentQueryValidated).toBe(false);
       expect(skipped.queryAttempts.at(-1)?.validationFindings.map((finding) => finding.code))
-        .toEqual(["SQL_SEMANTIC_FRAME_READING_MISSING:F1.2"]);
+        .toEqual([`SQL_SEMANTIC_FRAME_READING_MISSING:${exact}`]);
       expect(applied.currentQueryValidated).toBe(true);
     });
 
@@ -161,16 +213,18 @@ describe("answer frame binding", () => {
           ]
         }]
       };
-      const perRow = validate(plan(grounded(true, perPatient), ANSWER, ["F1.1"]));
+      const patient = `${idFor(perPatient, "one patient")}: average age of patients, each once`;
+      const sampleRow = `${idFor(perPatient, "one sample row")}: average age per row`;
+      const perRow = validate(plan(grounded(true, perPatient), ANSWER, [patient]));
       const perUnit = validate(plan(
         grounded(true, perPatient),
         `SELECT AVG(age) AS avg_age FROM (SELECT pid, ANY_VALUE("Age") AS age FROM samples GROUP BY pid) p`,
-        ["F1.1"]
+        [patient]
       ));
-      const rowReading = validate(plan(grounded(true, perPatient), ANSWER, ["F1.2"]));
+      const rowReading = validate(plan(grounded(true, perPatient), ANSWER, [sampleRow]));
 
       expect(perRow.queryAttempts.at(-1)?.validationFindings.map((finding) => finding.code))
-        .toEqual(["SQL_SEMANTIC_FRAME_UNIT_MISSING:F1.1:avg_age"]);
+        .toEqual([`SQL_SEMANTIC_FRAME_UNIT_MISSING:${idFor(perPatient, "one patient")}:avg_age`]);
       expect(perUnit.currentQueryValidated).toBe(true);
       expect(rowReading.currentQueryValidated).toBe(true);
     });
@@ -206,12 +260,14 @@ describe("answer frame binding", () => {
     });
 
     it("keeps a choice for later queries, and a new choice replaces it", () => {
-      const first = plan(grounded(true), ANSWER, ["F1.2"]);
+      const exact = idFor(FRAME, EXACT);
+      const any = idFor(FRAME, ANY);
+      const first = plan(grounded(true), ANSWER, [`${exact}: serous tumor samples`]);
       const later = plan(first, ANSWER);
-      const changed = plan(first, ANSWER, ["F1.1"]);
+      const changed = plan(first, ANSWER, [`${any}: any serous samples`]);
 
-      expect(later.frameChoices).toEqual(["F1.2"]);
-      expect(changed.frameChoices).toEqual(["F1.1"]);
+      expect(later.frameChoices).toEqual([exact]);
+      expect(changed.frameChoices).toEqual([any]);
     });
   });
 

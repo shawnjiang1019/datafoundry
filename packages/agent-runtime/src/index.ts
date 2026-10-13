@@ -91,6 +91,7 @@ import {
 } from "./tools/tool-plan.js";
 import type { ProtocolClassifier, ProtocolIdentity } from "./protocol/protocol-router.js";
 import { createModelProtocolClassifier } from "./protocol/model-protocol-classifier.js";
+import { createAnswerCommitCheck } from "./protocol/answer-commit-check.js";
 import {
   createModelAnalysisRequirementExtractor,
   type AnalysisRequirementExtractor
@@ -719,6 +720,12 @@ export const createDataFoundry = async (
     outputProcessors: mastraContextProcessors.outputProcessors,
     defaultOptions: {
       maxSteps: AGENT_MAX_STEPS,
+      // With frame binding on, an answer left uncommitted skips the frame check: send the agent back.
+      isTaskComplete: {
+        scorers: [createAnswerCommitCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never]
+      },
       ...(input.modelSettings ? { modelSettings: input.modelSettings } : {}),
       providerOptions: {
         openai: {

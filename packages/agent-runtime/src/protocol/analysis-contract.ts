@@ -253,6 +253,34 @@ export const createManualAnalysisAssertion = (
   description
 }])[0] as AnalysisAssertion;
 
+/**
+ * Map the assertion ids an agent wrote to the server's ids before anything else reads them.
+ * Agents guess formats ("R1.1", "A1", "R1_1" for R1.A1; wildfire-hard-20, 2026-10-12: 57 rejected
+ * queries and no query ran), so an unambiguous variant is accepted, and an unknown id is rejected
+ * with the valid ids listed (and a pointer to frame_choices for an answer-frame id such as F1.2).
+ */
+export const canonicalAssertionIds = (
+  requirements: Array<{ id: string; assertions: AnalysisAssertion[] }>,
+  assertionIds: string[]
+): string[] => {
+  const known = requirements.flatMap((requirement) => requirement.assertions.map((assertion) => assertion.id));
+  const valid = known.filter((id) => !id.startsWith("CORE"));
+  return assertionIds.map((raw) => {
+    const id = raw.trim();
+    if (known.includes(id)) return id;
+    const normalized = id.toUpperCase().replace(/[\s_-]+/gu, ".");
+    const parts = /^(?:(R\d+)\.?)?A?(\d+)$/u.exec(normalized.replace(/^(R\d+)\.A/u, "$1.").replace(/^A(\d+)$/u, "$1"));
+    const candidates = parts
+      ? valid.filter((candidate) => candidate.endsWith(`.A${parts[2]}`) && (!parts[1] || candidate.startsWith(`${parts[1]}.`)))
+      : [];
+    if (candidates.length === 1) return candidates[0] as string;
+    const hint = /^F\d+\.\d+$/u.test(normalized)
+      ? ` ${id} is an answer-frame reading: pass it in frame_choices, not assertion_ids.`
+      : "";
+    throw new Error(`ANALYSIS_ASSERTION_NOT_FOUND:${id}: valid assertion ids are ${valid.join(", ") || "none"}.${hint}`);
+  });
+};
+
 /** Resolve selected assertion IDs and reject cross-requirement or incomplete references. */
 export const resolveRequirementAssertions = (
   requirements: Array<{ id: string; assertions: AnalysisAssertion[] }>,

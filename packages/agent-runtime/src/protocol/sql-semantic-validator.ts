@@ -173,7 +173,11 @@ export const fieldsNotPerUnit = (
   const ctes = collectCtes(collectSelects(root));
   const keys = unit.keyColumns.map(normalizeIdentifier);
   const outputs = (Array.isArray(root.columns) ? root.columns : []).map(asRecord);
-  const targets = unit.fields.flatMap((field) => {
+  // No named answer fields (a contract that fell back to manual): check every named output.
+  const fields = unit.fields.length > 0
+    ? unit.fields
+    : outputs.flatMap((item) => typeof item.as === "string" ? [item.as] : []);
+  const targets = fields.flatMap((field) => {
     const output = outputs.find((item) => typeof item.as === "string" && normalizeIdentifier(item.as) === normalizeIdentifier(field));
     return output ? [{ field, verdicts: aggregateVerdicts(output.expr, root, ctes, keys, 0) }] : [];
   });

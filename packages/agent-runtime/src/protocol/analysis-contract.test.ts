@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalAssertionIds,
   createAnalysisAssertions,
   createManualAnalysisAssertion,
   resolveRequirementAssertions,
@@ -73,5 +74,31 @@ describe("analysis contract", () => {
 
     expect(() => resolveRequirementAssertions(requirements, ["R1"], []))
       .toThrow("ANALYSIS_ASSERTION_IDS_REQUIRED:R1");
+  });
+
+  describe("canonicalAssertionIds", () => {
+    // wildfire-hard-20, 2026-10-12: the agent wrote R1, R1.1, A1, R1_1 and F1.1 for R1.A1..R1.A6.
+    const requirements = [{ id: "R1", assertions: createAnalysisAssertions("R1", [
+      { kind: "metric", description: "a" },
+      { kind: "filter", description: "b" }
+    ]) }];
+
+    it("accepts unambiguous variants of a server id", () => {
+      expect(canonicalAssertionIds(requirements, ["R1.A1", "R1.1", "A2", "R1_1", "r1-a2"]))
+        .toEqual(["R1.A1", "R1.A1", "R1.A2", "R1.A1", "R1.A2"]);
+    });
+
+    it("lists the valid ids, and points answer-frame ids to frame_choices", () => {
+      expect(() => canonicalAssertionIds(requirements, ["R1"]))
+        .toThrow("ANALYSIS_ASSERTION_NOT_FOUND:R1: valid assertion ids are R1.A1, R1.A2.");
+      expect(() => canonicalAssertionIds(requirements, ["F1.1"]))
+        .toThrow("F1.1 is an answer-frame reading: pass it in frame_choices, not assertion_ids.");
+    });
+
+    it("does not guess between requirements", () => {
+      const two = [...requirements, { id: "R2", assertions: createAnalysisAssertions("R2", [{ kind: "metric", description: "c" }]) }];
+      expect(() => canonicalAssertionIds(two, ["A1"])).toThrow(/ANALYSIS_ASSERTION_NOT_FOUND:A1/u);
+      expect(canonicalAssertionIds(two, ["R2.1"])).toEqual(["R2.A1"]);
+    });
   });
 });

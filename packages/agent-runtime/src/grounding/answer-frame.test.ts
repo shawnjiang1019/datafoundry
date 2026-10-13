@@ -80,6 +80,29 @@ describe("buildAnswerFrame", () => {
     ]);
   });
 
+  it("marks a reading that leaves out the question's words, only when another reading applies them", async () => {
+    const frame = await buildAnswerFrame({
+      question: "What proportion of reporters who lost money lost between $1-$500?",
+      schema,
+      facts: [],
+      probe,
+      propose: proposal([{
+        aspect: "denominator",
+        question_phrase: "reporters who lost money",
+        options: [
+          { label: "all reporters", table: "loss_bands", sql_where: null, key_columns: [], unapplied_words: ["who lost money"] },
+          { label: "reporters who lost money", table: "loss_bands", sql_where: "\"band\" <> '$0'", key_columns: [], unapplied_words: [] }
+        ]
+      }])
+    });
+    const shown = renderAnswerFrame(frame, { binding: true }) as { decisions: Array<{ options: Array<Record<string, unknown>> }> };
+    const all = shown.decisions[0]?.options.find((option) => option.reading === "all reporters");
+    const lost = shown.decisions[0]?.options.find((option) => option.reading === "reporters who lost money");
+
+    expect(all).toMatchObject({ leaves_out: ["who lost money"], rows: 3 });
+    expect(lost).not.toHaveProperty("leaves_out");
+  });
+
   it("counts distinct units when one row is not one unit", async () => {
     const frame = await buildAnswerFrame({
       question: "How many patients are in the study?",
@@ -126,9 +149,9 @@ describe("buildAnswerFrame", () => {
     });
 
     expect(frame.decisions[0]?.options.map((option) => option.status)).toEqual(["empty", "invalid", "invalid"]);
-    expect(renderAnswerFrame(frame)).toMatchObject({
-      decisions: [{ options: [{ reading: "wrong key", rows: 0, note: "matches no rows as written" }] }]
-    });
+    // One reading selecting nothing is not a choice: a proposer whose filters miss the data would
+    // otherwise steer the agent (environment-easy-4, 2026-10-12).
+    expect(renderAnswerFrame(frame)).toBeUndefined();
   });
 
   it("shows nothing when every reading selects the same rows", async () => {
@@ -178,7 +201,7 @@ describe("buildAnswerFrame", () => {
     expect(frame.decisions[0]?.options[0]).toMatchObject({ label: "all {braces} \"quoted\"", rows: 3 });
   });
 
-  it("shows at most three decisions, contradicted readings first", async () => {
+  it("shows at most three decisions, population first, and skips one whose second reading selects nothing", async () => {
     const decision = (aspect: string, where: string) => ({
       aspect,
       question_phrase: aspect,
@@ -198,7 +221,7 @@ describe("buildAnswerFrame", () => {
     });
 
     expect((renderAnswerFrame(frame)?.decisions as Array<{ question_phrase: string; aspect: string }>)
-      .map((item) => item.aspect)).toEqual(["population", "population", "denominator"]);
+      .map((item) => item.aspect)).toEqual(["population", "denominator", "unit"]);
   });
 
   it("reaches the agent's schema view and the contract grounder through semantic resolution", async () => {

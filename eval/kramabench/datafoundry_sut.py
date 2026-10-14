@@ -26,6 +26,11 @@ Prereqs (env vars):
     DF_MCP_SERVER_IDS=             (comma-separated MCP server ids to enable per run, e.g. the
                                     DataLink server; empty = none, the semantic step falls back
                                     to the physical schema)
+    KRAMABENCH_ORACLE=<path to oracle_mappings.json>
+                                   (optional) bindings oracle: for tasks/domains with a mapping,
+                                   register a per-task DuckDB projected to exactly the gold
+                                   tables/columns, so the agent's resolver cannot bind elsewhere.
+                                   Unmapped tasks use the full lake. See oracle_lakes.py.
 DataFoundry must be running (npm run start) with a verified account + working model profile.
 """
 
@@ -61,6 +66,12 @@ except ImportError:  # the SUT still imports standalone for --smoke without the 
     DEFAULT_TABLE_NAME = {}
     SUPPORTED_EXTENSIONS = frozenset()
 import report_tables  # noqa: E402 — sibling module, importable via the path above
+try:
+    import oracle_lakes  # noqa: E402 — sibling module, same path trick as ds_ingest
+except ImportError:
+    oracle_lakes = None  # oracle disabled unless KRAMABENCH_ORACLE is set
+
+KRAMABENCH_ORACLE = os.environ.get("KRAMABENCH_ORACLE", "").strip()
 
 # KramaBench's base class when run inside the harness; a shim for standalone --smoke.
 try:
@@ -1059,6 +1070,14 @@ class DataFoundrySUT(System):
         self._domain: str | None = None
         self.dtrail = (DtrailAssumptionClient(DTRAIL_API_URL, DTRAIL_TOKEN)
                        if DTRAIL_ASSUME and DTRAIL_API_URL else None)
+        self._oracle_mappings: dict | None = None
+        if KRAMABENCH_ORACLE and oracle_lakes is not None:
+            try:
+                self._oracle_mappings = oracle_lakes.load_mappings(KRAMABENCH_ORACLE)
+                print(f"DataFoundrySUT: oracle enabled ({len(self._oracle_mappings)} mappings)", flush=True)
+            except oracle_lakes.OracleError as exc:
+                print(f"DataFoundrySUT: oracle disabled: {exc}", file=sys.stderr, flush=True)
+                self._oracle_mappings = None
 
     def _ensure_client(self) -> DataFoundryClient:
         if self.client is None:
@@ -1078,7 +1097,7 @@ class DataFoundrySUT(System):
         self._domain = tag
         self.dataset_directory = dataset_directory
 
-    def _run_with_backoff(self, question: str, assumption_receipt: dict | None = None) -> str:
+    def _run_with_backoff(self, question: str, ds_id: str, assumption_receipt: dict | None = None) -> str:
         """Run one task, retrying provider rate limits with exponential backoff.
 
         Without this a single 429 cascades: the limiter stays tripped, KramaBench
@@ -1087,11 +1106,10 @@ class DataFoundrySUT(System):
         spends wall time instead of tasks.
         """
         client = self._ensure_client()
-        assert self._ds_id is not None
         full_text = ""
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
-                full_text = client.run(question, self._ds_id, assumption_receipt)
+                full_text = client.run(question, ds_id, assumption_receipt)
             except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
                 full_text = f"[DataFoundry error] {e}"
             reason = transient_failure_reason(full_text)
@@ -1107,10 +1125,41 @@ class DataFoundrySUT(System):
             time.sleep(delay)
         return full_text
 
+    def _gold_datasource(self, query_id: str) -> str | None:
+        """Register (and cache) a gold-binding lake for this task, or None.
+
+        Returns the datasource id to run against when an oracle mapping covers
+        this task/domain, and None when the full domain lake should be used.
+        """
+        if self._oracle_mappings is None or self._domain is None:
+            return None
+        entry = oracle_lakes.lookup(query_id, self._domain, self._oracle_mappings)
+        if entry is None:
+            return None
+        cache_dir = oracle_lakes.projections_cache_dir(self.out)
+        os.makedirs(cache_dir, exist_ok=True)
+        lake_path = oracle_lakes.gold_lake_path(self.out, query_id, self._domain)
+        if not os.path.exists(lake_path):
+            domain_lake = os.path.join(self.out, f"{_safe_ident(self._domain)}.duckdb")
+            if not os.path.exists(domain_lake):
+                raise RuntimeError(f"oracle needs the domain lake first: {domain_lake}")
+            oracle_lakes.project_gold_lake(domain_lake, lake_path, entry, query_id)
+        client = self._ensure_client()
+        ds_id = client.register_duckdb_datasource(
+            f"kb-{_safe_ident(self._domain)}-{_safe_ident(query_id)}-oracle",
+            f"KramaBench {self._domain} oracle {query_id}",
+            lake_path,
+        )
+        print(f"DataFoundrySUT: {query_id} -> oracle datasource {ds_id} ({os.path.basename(lake_path)})",
+              file=sys.stderr, flush=True)
+        return ds_id
+
     def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
         self._ensure_client()
         if self._ds_id is None:
             raise RuntimeError("process_dataset must run before serve_query")
+        oracle_ds_id = self._gold_datasource(query_id)
+        run_ds_id = oracle_ds_id if oracle_ds_id is not None else self._ds_id
         assumptions = None
         if self.dtrail is not None and self._domain:
             # Before the run, so the agent can plan around it. The bare question, without
@@ -1121,7 +1170,7 @@ class DataFoundrySUT(System):
                 print(f"DataFoundrySUT: {query_id} d-trail {assumptions.get('run_status')} "
                       f"task={assumptions.get('task_id')} summary={summary} error={assumptions.get('error')}")
         receipt = agent_receipt(assumptions) if DTRAIL_TO_AGENT else None
-        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION, receipt)
+        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION, run_ds_id, receipt)
         answer = extract_final_answer(full_text)
         explanation = {"answer": answer, "id": query_id, "full_response": full_text}
         if assumptions is not None:

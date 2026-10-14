@@ -1,0 +1,22 @@
+{
+  "_usage": "Gold-binding oracle mappings for KramaBench reruns. Every entry MUST be verified against the KramaBench reference (subtasks) or the failed run's trace BEFORE the rerun — a wrong table/column corrupts the measurement. See oracle_lakes.py for the schema and the two granularities (table-level vs column-level).",
+  "biomedical-hard-5": {
+    "_verified": "todo — column names from failure-analysis.md (Log2_variant_per_Mbp, Case_excluded); exact table name from trace to confirm",
+    "table": {
+      "1_s2_0_S0092867420301070_mmc7": [
+        "Log2_variant_per_Mbp",
+        "Histologic_type",
+        "Case_excluded"
+      ]
+    }
+  },
+  "wildfire-hard-17": {
+    "_verified": "todo — failure-analysis.md confirms gold join column 'NWS ID' and Elevation; table name NOT confirmed, must be read from the trace before enabling",
+    "table": {
+      "<verify_table_name_from_trace>": [
+        "NWS ID",
+        "Elevation"
+      ]
+    }
+  }
+}

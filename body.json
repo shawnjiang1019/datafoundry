@@ -1,0 +1,10 @@
+{
+    "model": "Deepseek-V4-Flash",
+    "stream": false,
+    "messages": [
+        {
+            "role": "user",
+            "content": "hi"
+        }
+    ]
+}

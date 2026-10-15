@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Any
 
 try:
@@ -68,14 +69,33 @@ class OracleError(RuntimeError):
     """Raised when an oracle mapping or gold lake cannot be used."""
 
 
+def lookup(entry_key: str, domain: str, mappings: dict[str, Any]) -> Any | None:
+    """Return the oracle entry for a task, without falling across domains.
+
+    Match order: exact key first (e.g. ``biomedical-hard-5``), then the domain
+    (e.g. ``biomedical``) so a shared mapping can cover a whole domain. Keys
+    beginning with ``_`` are metadata (e.g. ``_usage``, ``_verified``) and are
+    never treated as mappings. A ``source_only`` marker means the entry is a
+    template, not a confirmed gold binding.
+    """
+    if entry_key.startswith("_"):
+        return None
+    if entry_key in mappings:
+        return mappings[entry_key]
+    if domain in mappings:
+        return mappings[domain]
+    return None
+
+
 def load_mappings(path: str) -> dict[str, Any]:
-    """Load and lightly validate the oracle mapping file."""
+    """Load and lightly validate the oracle mapping file (metadata keys dropped)."""
     if not os.path.isfile(path):
         raise OracleError(f"oracle mapping file not found: {path}")
-    raw = json.load(open(path, encoding="utf-8"))
+    with open(path, encoding="utf-8") as handle:
+        raw = json.load(handle)
     if not isinstance(raw, dict):
         raise OracleError(f"oracle mappings must be a JSON object: {path}")
-    return raw
+    return {key: value for key, value in raw.items() if not key.startswith("_")}
 
 
 def _entry_tables(entry: Any, key: str) -> dict[str, Any]:
@@ -97,9 +117,9 @@ def _entry_tables(entry: Any, key: str) -> dict[str, Any]:
     if not isinstance(tables, list) or not all(isinstance(name, str) for name in tables):
         raise OracleError(f"oracle {key!r} needs 'table' or 'tables'")
     columns = entry.get("columns", _FULL_TABLE)
-    if columns not in (_FULL_TABLE,):
-        if not isinstance(columns, list) or not columns or not all(isinstance(c, str) for c in columns):
-            raise OracleError(f"oracle {key!r} 'columns' must be '*' or a non-empty list of names")
+    if columns != _FULL_TABLE and (not isinstance(columns, list) or not columns
+                                   or not all(isinstance(c, str) for c in columns)):
+        raise OracleError(f"oracle {key!r} 'columns' must be '*' or a non-empty list of names")
     return {name: (list(columns) if columns != _FULL_TABLE else _FULL_TABLE) for name in tables}
 
 
@@ -134,26 +154,11 @@ def project_gold_lake(src_path: str, out_path: str, entry: Any, key: str) -> int
     finally:
         try:
             con.execute("DETACH src")
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - detach is best-effort cleanup
+            print(f"[oracle] {key}: detach failed ({exc}); continuing", file=sys.stderr)
         con.close()
     os.replace(tmp, out_path)
     return len(tables)
-
-
-def lookup(entry_key: str, domain: str, mappings: dict[str, Any]) -> Any | None:
-    """Return the oracle entry for a task, without falling across domains.
-
-    Match order: exact key first (e.g. ``biomedical-hard-5``), then the domain
-    (e.g. ``biomedical``) so a shared mapping can cover a whole domain. A
-    ``source_only`` marker means the entry is a template, not a confirmed gold
-    binding.
-    """
-    if entry_key in mappings:
-        return mappings[entry_key]
-    if domain in mappings:
-        return mappings[domain]
-    return None
 
 
 def projections_cache_dir(out_root: str) -> str:

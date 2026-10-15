@@ -1,9 +1,9 @@
 {
-  "_usage": "Gold-binding oracle mappings for KramaBench reruns. Every entry MUST be verified against the KramaBench reference (subtasks) or the failed run's trace BEFORE the rerun — a wrong table/column corrupts the measurement. See oracle_lakes.py for the schema and the two granularities (table-level vs column-level).",
+  "_usage": "Gold-binding oracle mappings for KramaBench reruns. A concept maps to the FULL entity set a correct answer touches: source tables, measure columns, filter/scope columns, join keys, and population flags - NOT a single column. Every entry MUST be verified against the KramaBench reference (subtasks) or the failed run's trace BEFORE the rerun; a wrong table/column corrupts the measurement. See oracle_lakes.py for the schema and the two granularities (table-level = keep whole tables, column-level = keep only these columns).",
   "biomedical-hard-5": {
-    "_verified": "todo — column names from failure-analysis.md (Log2_variant_per_Mbp, Case_excluded); exact table name from trace to confirm",
+    "_verified": "candidate - table/columns from trace (B_APM_subtypes sheet, agent's own mmc1 queries show same column names); confirm against reference",
     "table": {
-      "1_s2_0_S0092867420301070_mmc7": [
+      "1_s2_0_S0092867420301070_mmc7__B_APM_subtypes": [
         "Log2_variant_per_Mbp",
         "Histologic_type",
         "Case_excluded"
@@ -11,11 +11,43 @@
     }
   },
   "wildfire-hard-17": {
-    "_verified": "todo — failure-analysis.md confirms gold join column 'NWS ID' and Elevation; table name NOT confirmed, must be read from the trace before enabling",
+    "_verified": "candidate - table/column names echoed by the agent's own SQL (PublicView_RAWS__..., NWS ID never tried); confirm against reference",
     "table": {
-      "<verify_table_name_from_trace>": [
+      "PublicView_RAWS__3515561676727363726": [
+        "Station ID",
         "NWS ID",
-        "Elevation"
+        "MesoWest Station ID",
+        "WX ID",
+        "Elevation",
+        "Status"
+      ],
+      "noaa_wildfires": [
+        "station_verified_in_psa",
+        "start_year",
+        "incident_number"
+      ]
+    }
+  },
+  "wildfire-hard-5": {
+    "_verified": "candidate - nifc_wildfires confirmed in agent SQL; which NOAA series (incident noaa_wildfires vs monthly Number-of-Fires table) needs reference",
+    "table": {
+      "nifc_wildfires": [
+        "Year",
+        "Fires",
+        "Acres"
+      ],
+      "noaa_wildfires": [
+        "start_year",
+        "incident_number"
+      ]
+    }
+  },
+  "biomedical-easy-9": {
+    "_verified": "candidate - final SQL already uses this table/columns; failure was a connection-closed + rna schema mismatch, so weak case",
+    "table": {
+      "1_s2_0_S0092867420301070_mmc6__A_SE_protein_between_Serous_and": [
+        "ID",
+        "FDR.protein"
       ]
     }
   }

@@ -415,34 +415,45 @@ export const validateAnalysisResult = (
     verified_values: state.contractAdvisory
       ? [
           ...verification.verifiedValues,
-          ...singleRowValues(columns, rows, rowCount, attempt?.assertions ?? [])
+          ...smallResultValues(columns, rows, rowCount, attempt?.assertions ?? [])
             .filter((value) => !verification.verifiedValues.some((verified) => verified.name === value.name))
         ]
       : verification.verifiedValues
   };
 };
 
+/** Results up to this many rows are small enough that each cell can be committed by name. */
+const MAX_COMMITTABLE_ROWS = 10;
+
 /**
- * Advisory contract: a one-row result's cells are values the agent may commit, by column name. The
- * contract's own claim values are lost whenever its fields miss the agent's columns or a check fails, and
- * a manual fallback names none, so otherwise nothing is verified and no commit can pass (wildfire, 2026-10-12:
- * 8 of 12 bound runs ended uncommitted after repeated "allowed names: none").
+ * Advisory contract: the cells of a small result are values the agent may commit. One row: by column
+ * name. Up to ten rows: by column and row label, "<column>[<label>]", the label being the row's first
+ * text cell (wildfire-hard-18 compares two suppression groups in two rows). The contract's own claim
+ * values are lost whenever its fields miss the agent's columns or a check fails, and a manual fallback
+ * names none, so otherwise nothing is verified and no commit can pass (wildfire, 2026-10-12: 8 of 12
+ * bound runs ended uncommitted after repeated "allowed names: none").
  */
-const singleRowValues = (
+const smallResultValues = (
   columns: unknown,
   rows: unknown,
   rowCount: unknown,
   assertions: Array<{ id: string; kind: string }>
 ): Array<{ name: string; value: string | number | boolean | null; tolerance: number; assertionId: string }> => {
-  if (rowCount !== 1 || !Array.isArray(columns) || !Array.isArray(rows) || !Array.isArray(rows[0])) return [];
-  const row = rows[0] as unknown[];
+  if (typeof rowCount !== "number" || rowCount < 1 || rowCount > MAX_COMMITTABLE_ROWS) return [];
+  if (!Array.isArray(columns) || !Array.isArray(rows) || rows.length !== rowCount || !rows.every(Array.isArray)) return [];
   const answerAssertionId = (assertions.find((assertion) => assertion.kind !== "manual") ?? assertions[0])?.id ?? "";
-  return columns.flatMap((column, index) => {
-    const value = row[index];
-    return typeof column === "string" && (value === null || ["string", "number", "boolean"].includes(typeof value))
-      ? [{ name: column, value: value as string | number | boolean | null, tolerance: 0, assertionId: answerAssertionId }]
-      : [];
-  });
+  const scalar = (value: unknown): value is string | number | boolean | null =>
+    value === null || ["string", "number", "boolean"].includes(typeof value);
+  const labelIndex = rowCount === 1 ? -1 : (rows[0] as unknown[]).findIndex((value) => typeof value === "string");
+  if (rowCount > 1 && labelIndex < 0) return [];
+  const labels = rows.map((row) => String((row as unknown[])[labelIndex] ?? ""));
+  if (rowCount > 1 && new Set(labels).size !== labels.length) return [];
+  return rows.flatMap((row, rowIndex) => columns.flatMap((column, index) => {
+    const value = (row as unknown[])[index];
+    if (typeof column !== "string" || index === labelIndex || !scalar(value)) return [];
+    const name = rowCount === 1 ? column : `${column}[${labels[rowIndex]}]`;
+    return [{ name, value, tolerance: 0, assertionId: answerAssertionId }];
+  }));
 };
 
 const nestedString = (value: unknown, parent: string, key: string): string | undefined =>

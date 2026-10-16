@@ -1,5 +1,5 @@
 import { Agent } from "@mastra/core/agent";
-import type { ModelProvider } from "@datafoundry/providers";
+import { DISABLE_THINKING_HEADER, type ModelProvider } from "@datafoundry/providers";
 
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 import type { GroundingSchema, GroundingSqlProbe, SemanticFact } from "./types.js";
@@ -9,6 +9,8 @@ const MAX_DECISIONS = 4;
 const MAX_OPTIONS = 3;
 const MAX_SHOWN_DECISIONS = 3;
 const PROPOSAL_ATTEMPTS = 2;
+/** Readings whose counts all lie within this share of the largest are not a real choice. */
+const MIN_COUNT_GAP = 0.02;
 const ASPECT_PRIORITY: Record<FrameAspect, number> = { population: 0, denominator: 1, unit: 2 };
 
 export type FrameAspect = "unit" | "population" | "denominator";
@@ -92,7 +94,13 @@ export const createModelAnswerFrameProposer = (
   });
   return async (prompt) => (await agent.generate(prompt, {
     maxSteps: AGENT_RUNTIME_LIMITS.modelHelperMaxSteps,
-    modelSettings: { maxOutputTokens: AGENT_RUNTIME_LIMITS.contractGrounderMaxOutputTokens, temperature: 0 }
+    modelSettings: {
+      maxOutputTokens: AGENT_RUNTIME_LIMITS.contractGrounderMaxOutputTokens,
+      temperature: 0,
+      // Structured output, like the contract: with reasoning on, this call left runs silent for ~10 minutes
+      // and pushed environment-hard-10 past the 30-minute run limit (2026-10-12).
+      headers: { [DISABLE_THINKING_HEADER]: "1" }
+    }
   })).text;
 };
 
@@ -113,6 +121,8 @@ export const answerFramePrompt = (
   "\"in the X dataset\"); in unapplied_words list the question's words a reading leaves out (empty when none).",
   "Do not list ways to define or measure a variable (thresholds, cut-offs, scores) or choices of analysis method:",
   "those belong to the analysis. List only which rows are included and what one counted thing is.",
+  "When a column's values define a term of the question (for example a capital column with 'primary'),",
+  "use that definition and do not offer a broader or looser version of the term as another reading.",
   "Express each reading as a DuckDB WHERE condition over one table (null when it is the whole table);",
   "it may use IN (SELECT ...) or EXISTS over other tables. key_columns identify one unit in that table.",
   "Use only the tables and columns listed below and double-quote every identifier.",
@@ -164,7 +174,8 @@ export const renderAnswerFrame = (
             "frame_choices on run_sql_readonly as \"<id>: <why, quoting the question's words>\" (for example",
             "\"F1.2: the question says total acres burned per area\"). The SQL that answers the question must apply that reading's WHERE,",
             "and for a unit with fewer distinct units than rows, compute the answer once per unit (SELECT DISTINCT or GROUP BY its key).",
-            "A reading marked leaves_out ignores those words of the question; choose it only if the question means them loosely."
+            "A reading marked leaves_out ignores those words of the question; choose it only if the question means them loosely.",
+            "One also marked not_choosable selects very different rows from the readings that apply them and cannot be chosen."
           ]
         : [])
     ].join(" "),
@@ -185,7 +196,8 @@ export const renderAnswerFrame = (
             : {}),
           ...(option.status === "empty" ? { note: "matches no rows as written" } : {}),
           ...(unfaithfulWords(decision, option)
-            ? { leaves_out: unfaithfulWords(decision, option) }
+            ? { leaves_out: unfaithfulWords(decision, option),
+                ...(options.binding && blockedUnfaithfulWords(decision, option) ? { not_choosable: true } : {}) }
             : {})
         }))
     }))
@@ -204,12 +216,23 @@ export const shownFrameDecisions = (
   return (frame?.decisions ?? [])
     .filter((decision) => {
       const checked = decision.options.filter((option) => option.status === "checked");
-      const distinctCounts = new Set(checked.map((option) => `${option.rows}:${option.units}`));
-      return checked.length >= 2 && distinctCounts.size > 1;
+      return checked.length >= 2 && (countGap(checked.map((option) => option.rows)) >= MIN_COUNT_GAP
+        || countGap(checked.map((option) => option.units)) >= MIN_COUNT_GAP);
     })
     .sort((a, b) => ASPECT_PRIORITY[a.aspect] - ASPECT_PRIORITY[b.aspect])
     .slice(0, MAX_SHOWN_DECISIONS)
     .map((decision, index) => ({ id: `F${index + 1}`, decision: shuffle ? shuffledOptions(decision) : decision }));
+};
+
+/**
+ * The spread of the readings' counts as a share of the largest. archeology-easy-11 (2026-10-12) showed
+ * "any capital designation" (227 countries) beside "national capitals" (226): a 0.4% difference the
+ * agent took as a real choice, and lost. The decisions that helped differed by 7% to 38%.
+ */
+const countGap = (counts: Array<number | undefined>): number => {
+  const known = counts.filter((count): count is number => typeof count === "number");
+  const largest = Math.max(...known);
+  return known.length >= 2 && largest > 0 ? (largest - Math.min(...known)) / largest : 0;
 };
 
 /**
@@ -315,6 +338,35 @@ export const unfaithfulWords = (decision: FrameDecision, option: FrameOption): s
   const faithfulSibling = decision.options.some((candidate) =>
     candidate !== option && candidate.status !== "invalid" && (candidate.unappliedWords ?? []).length === 0);
   return words.length > 0 && faithfulSibling ? words : undefined;
+};
+
+/** A reading that leaves out the question's words this far from every faithful reading cannot be chosen. */
+const MAX_UNFAITHFUL_GAP = 0.25;
+
+/**
+ * The words left out, when the reading also selects very different rows from every reading that applies
+ * them: the question's words then clearly matter, and the reading cannot be chosen under binding. A small
+ * difference stays a label, since the question may mean the words loosely. wildfire-hard-17, 2026-10-16:
+ * "all stations, ignoring the fire-monitoring restriction" (2,965) against the faithful 759, a 74% gap, was
+ * chosen when only labeled; environment-easy-1's "bathing season" changed the rows by 5% and its expected
+ * answer reads it loosely.
+ */
+export const blockedUnfaithfulWords = (decision: FrameDecision, option: FrameOption): string[] | undefined => {
+  const words = unfaithfulWords(decision, option);
+  if (!words) return undefined;
+  const size = (candidate: FrameOption): number | undefined => candidate.units ?? candidate.rows;
+  const own = size(option);
+  // Counts are comparable only within one table: environment-hard-20 (2026-10-16) compared a 9-row beach list
+  // with 1,132 sample rows and refused the reading that had won the task.
+  const faithful = decision.options.filter((candidate) => candidate !== option && candidate.status === "checked"
+    && candidate.table === option.table
+    && (candidate.unappliedWords ?? []).length === 0 && size(candidate) !== undefined);
+  if (own === undefined || faithful.length === 0) return undefined;
+  const nearest = Math.min(...faithful.map((candidate) => {
+    const other = size(candidate) as number;
+    return Math.abs(own - other) / Math.max(own, other, 1);
+  }));
+  return nearest >= MAX_UNFAITHFUL_GAP ? words : undefined;
 };
 
 const stringList = (value: unknown): string[] =>

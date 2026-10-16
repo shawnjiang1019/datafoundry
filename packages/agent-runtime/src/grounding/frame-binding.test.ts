@@ -59,6 +59,21 @@ describe("answer frame binding", () => {
     expect(resolveFrameChoice(FRAME, "F1.3")).toBeUndefined();
   });
 
+  it("hides a decision whose readings differ by under 2%, and keeps one that differs by more", () => {
+    const decision = (counts: number[]): AnswerFrame => ({ warnings: [], decisions: [{
+      aspect: "population",
+      questionPhrase: "capital cities",
+      options: counts.map((count, index) => ({
+        label: `reading ${index}`, table: "worldcities", sqlWhere: `x = ${index}`, keyColumns: ["iso3"], rows: count, units: count, status: "checked"
+      }))
+    }] });
+
+    // archeology-easy-11, 2026-10-12: 226 national capitals against 227 with any designation.
+    expect(renderAnswerFrame(decision([226, 226, 227]), { binding: true })).toBeUndefined();
+    // biomedical-easy-2's population decision differed by 14% and helped.
+    expect(renderAnswerFrame(decision([14, 14, 12]), { binding: true })).toBeDefined();
+  });
+
   it("does not keep the proposer's ranking: across many decisions, the first option lands in every position", () => {
     const positions = new Set(Array.from({ length: 40 }, (_, index) => {
       const frame: AnswerFrame = { warnings: [], decisions: [{
@@ -174,6 +189,30 @@ describe("answer frame binding", () => {
       expect(plan(grounded(true, flagged), ANSWER, [`${anyId}: any serous tumor samples`]).frameChoices).toEqual([anyId]);
       expect(plan(grounded(true, flagged), ANSWER, [`${idFor(flagged, EXACT)}: serous tumor samples`]).frameChoices)
         .toEqual([idFor(flagged, EXACT)]);
+    });
+
+    it("refuses a reading that leaves out the question's words only when it selects very different rows", () => {
+      const decision = (looseRows: number): AnswerFrame => ({ warnings: [], decisions: [{
+        aspect: "population",
+        questionPhrase: "patients with serous tumor samples",
+        options: [
+          { label: "exactly serous", table: "samples", sqlWhere: "\"Histologic_type\" = 'Serous'", keyColumns: ["pid"], rows: 100, units: 100, status: "checked", unappliedWords: [] },
+          { label: "all samples", table: "samples", sqlWhere: null, keyColumns: ["pid"], rows: looseRows, units: looseRows, status: "checked", unappliedWords: ["serous tumor"] }
+        ]
+      }] });
+      // wildfire-hard-17: 2,965 against 759 (74% apart) is refused; environment-easy-1: 5% apart stays allowed.
+      const far = decision(400);
+      const near = decision(105);
+
+      expect(() => plan(grounded(true, far), ANSWER, [`${idFor(far, "all samples")}: serous tumor samples, all of them`]))
+        .toThrow(/ANALYSIS_FRAME_CHOICE_UNFAITHFUL/u);
+      expect(plan(grounded(true, near), ANSWER, [`${idFor(near, "all samples")}: serous tumor samples, all of them`]).frameChoices)
+        .toEqual([idFor(near, "all samples")]);
+      // A faithful reading on another table is not comparable (environment-hard-20): allowed.
+      const otherTable: AnswerFrame = { warnings: [], decisions: [{ ...far.decisions[0]!, options: far.decisions[0]!.options
+        .map((option) => option.label === "exactly serous" ? { ...option, table: "serous_list" } : option) }] };
+      expect(plan(grounded(true, otherTable), ANSWER, [`${idFor(otherTable, "all samples")}: serous tumor samples, all of them`]).frameChoices)
+        .toEqual([idFor(otherTable, "all samples")]);
     });
 
     it("requires a reason that uses the question's words", () => {

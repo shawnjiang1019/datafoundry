@@ -18,7 +18,7 @@ import {
 import { DATA_ACTIONS } from "../data-actions.js";
 import { fieldsNotPerUnit, missingWhereParts, validateSqlSemantics } from "../sql-semantic-validator.js";
 import type { AgentProtocolDefinition } from "../types.js";
-import { resolveFrameChoice, shownFrameDecisions, type FrameOption } from "../../grounding/answer-frame.js";
+import { blockedUnfaithfulWords, resolveFrameChoice, shownFrameDecisions, type FrameOption } from "../../grounding/answer-frame.js";
 import { verifiedJoinRules } from "../../grounding/evidence-grounding-provider.js";
 import type { EvidenceGroundingContext } from "../../grounding/types.js";
 
@@ -565,6 +565,12 @@ const recordFrameChoices = (
       throw new Error(`ANALYSIS_FRAME_CHOICE_REASON_REQUIRED:${choice}: write "${choice}: <why>", quoting words from `
         + `the question phrase "${resolved.decision.questionPhrase.slice(0, 120)}".`);
     }
+    const blocked = blockedUnfaithfulWords(resolved.decision, resolved.option);
+    if (blocked) {
+      throw new Error(`ANALYSIS_FRAME_CHOICE_UNFAITHFUL:${choice}: this reading leaves out the question's words `
+        + `${blocked.map((word) => `"${word}"`).join(", ")} and selects very different rows from the readings that apply `
+        + `them; choose a reading of ${resolved.decisionId} that applies them.`);
+    }
     choices.set(resolved.decisionId, choice);
   }
   const undecided = shown.filter(({ id }) => !choices.has(id));
@@ -631,7 +637,8 @@ const assertAdvisoryClaim = (
     const source = [...named].reverse().find((attempt) => (attempt.verifiedValues ?? []).some((verified) =>
       verified.name === value.name && sameScalar(verified.value, value.value, verified.tolerance))) ?? named.at(-1);
     const field = assertions.flatMap((assertion) => assertion.claimValues)
-      .find((spec) => spec.name === value.name)?.field ?? value.name;
+      // A grouped value is named "<column>[<row label>]"; the unit check is per column.
+      .find((spec) => spec.name === value.name)?.field ?? value.name.replace(/\[[^\]]*\]$/u, "");
     const conflicts = (source?.validationFindings ?? []).filter((finding) =>
       finding.code.startsWith("SQL_SEMANTIC_FRAME_READING_MISSING")
       || (finding.code.startsWith("SQL_SEMANTIC_FRAME_UNIT_MISSING")

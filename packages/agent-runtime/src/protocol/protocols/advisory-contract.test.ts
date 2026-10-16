@@ -170,6 +170,27 @@ describe("advisory contract", () => {
     expect(result.verified_values).toEqual([expect.objectContaining({ name: "n_fires", value: 42, assertionId: "R1.A1" })]);
   });
 
+  it("makes each cell of a small grouped result committable as <column>[<row label>]", () => {
+    // wildfire-hard-18, 2026-10-12: a two-group comparison had nothing committable, so the run ended uncommitted.
+    const state = validated(grounded(true), "SELECT strategy, AVG(duration) AS avg_duration FROM fires GROUP BY 1", ["R1.A1"]);
+    const result = validateAnalysisResult(
+      { result: { columns: ["strategy", "avg_duration"], rows: [["Full Suppression", 51.83], ["Other", 12.31]], row_count: 2, audit_log_id: "audit-2" } },
+      {},
+      state
+    );
+    const many = validateAnalysisResult(
+      { result: { columns: ["strategy", "n"], rows: Array.from({ length: 11 }, (_, index) => [`s${index}`, index]), row_count: 11, audit_log_id: "audit-3" } },
+      {},
+      state
+    );
+
+    expect(result.verified_values).toEqual([
+      expect.objectContaining({ name: "avg_duration[Full Suppression]", value: 51.83 }),
+      expect.objectContaining({ name: "avg_duration[Other]", value: 12.31 })
+    ]);
+    expect(many.verified_values).toEqual([]);
+  });
+
   it("reports the contract's result checks as warnings", () => {
     const state = validated(grounded(true), "SELECT COUNT(*) AS noaa_fires FROM fires", ["R1.A1"]);
     const result = validateAnalysisResult(

@@ -123,6 +123,8 @@ TRANSIENT_MARKERS = (
     ("cannot connect to api", "provider unreachable"),
     ("headers timeout", "provider timed out"),
     ("econnreset", "connection reset"),
+    ("connectionreseterror", "connection reset"),  # requests' wording for the same fault
+    ("connection aborted", "connection reset"),
     ("socket hang up", "connection dropped"),
 )
 
@@ -436,10 +438,34 @@ def _apply_table_overrides(con, overrides: dict[str, dict], notes: dict[str, lis
             con.execute(f'ALTER TABLE "{table}" RENAME COLUMN "__rename_{index}" TO "{new}"')
         if renames:
             notes.setdefault(table, []).append(("correction", change.get("reason", f"columns renamed: {renames}")))
+        if change.get("melt"):
+            _melt_table(con, table, change["melt"])
+            notes.setdefault(table, []).append(("reshape", change.get("reason", "matrix stored as long rows")))
         if change.get("rename_to"):
             con.execute(f'ALTER TABLE "{table}" RENAME TO "{change["rename_to"]}"')
             notes[change["rename_to"]] = notes.pop(table, [])
         print(f"[ingest] {table}: override applied ({change.get('reason', 'renamed')})")
+
+
+def _melt_table(con, table: str, spec: dict) -> None:
+    """Store a matrix sheet (one column per sample, gene or code) as long rows; empty cells are dropped.
+
+    spec: {"id": row-key column or omitted, "id_to": its new name, "names_to": column for the
+    old headers, "values_to": column for the cell values}.
+    """
+    def quote(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    width = len(con.execute(f"describe {quote(table)}").fetchall())
+    on = f"COLUMNS(* EXCLUDE ({quote(spec['id'])}))" if spec.get("id") else "COLUMNS(*)"
+    con.execute(f"CREATE TABLE __melt AS SELECT * FROM (UNPIVOT {quote(table)} ON {on} "
+                f"INTO NAME {quote(spec['names_to'])} VALUE {quote(spec['values_to'])})")
+    if spec.get("id") and spec.get("id_to"):
+        con.execute(f"ALTER TABLE __melt RENAME COLUMN {quote(spec['id'])} TO {quote(spec['id_to'])}")
+    con.execute(f"DROP TABLE {quote(table)}")
+    con.execute(f"ALTER TABLE __melt RENAME TO {quote(table)}")
+    rows = con.execute(f"select count(*) from {quote(table)}").fetchone()[0]
+    print(f"[ingest] {table}: {width}-column matrix stored as {rows} long rows")
 
 
 def _parse_layout(path: str, override: dict | None = None):
@@ -530,15 +556,24 @@ def _finalize_tables(con, notes: dict[str, list[tuple[str, str]]]) -> list[dict]
             "columns": len(columns),
             "generic_columns": [c for c, _ in columns if _GENERIC_COLUMN.match(c)],
             "numeric_text_columns": numeric_text,
-            "converted_columns": [text.split(":")[0] for _, text in converted],
+            "matrix_like": _looks_like_matrix(columns),
+            "converted_columns":[text.split(":")[0] for _, text in converted],
             "notes": len(notes.get(table, [])) + len(converted),
         })
     return entries
 
 
+def _looks_like_matrix(columns: list[tuple[str, str]]) -> bool:
+    """Many same-typed columns after a key: headers are probably values (samples, genes, codes)."""
+    if len(columns) < 40:
+        return False
+    types = [data_type for _, data_type in columns[1:]]
+    return max(types.count(t) for t in set(types)) / len(types) >= 0.9
+
+
 def _write_ingest_report(entries: list[dict], skipped: list[str], out_path: str) -> None:
     """Print tables that still look mis-parsed and save the full per-table report beside the DuckDB file."""
-    suspicious = [e for e in entries if e["generic_columns"] or e["numeric_text_columns"]]
+    suspicious = [e for e in entries if e["generic_columns"] or e["numeric_text_columns"] or e["matrix_like"]]
     print(f"[ingest] report: {len(entries)} tables, {sum(e['notes'] > 0 for e in entries)} with notes, "
           f"{len(suspicious)} still suspicious")
     for entry in suspicious[:40]:
@@ -547,6 +582,8 @@ def _write_ingest_report(entries: list[dict], skipped: list[str], out_path: str)
             problems.append(f"generic columns {entry['generic_columns'][:4]}")
         if entry["numeric_text_columns"]:
             problems.append(f"numbers stored as text {entry['numeric_text_columns'][:4]}")
+        if entry["matrix_like"]:
+            problems.append(f"{entry['columns']} same-typed columns: a matrix? add a 'melt' override")
         print(f"   check: {entry['table']}: {'; '.join(problems)}")
     with open(out_path + ".ingest.json", "w", encoding="utf-8") as handle:
         json.dump({"tables": entries, "skipped": skipped}, handle, indent=1)
@@ -613,8 +650,9 @@ def _family_table_name(directory: str, shape: str) -> str:
     """Readable table name for a family: the shape without placeholders, folder-qualified."""
     base = re.sub(r"<[a-z]+>", " ", shape)
     base = _safe_ident(" ".join(base.split()).strip(" _-")) or "files"
-    folder = _safe_ident(os.path.basename(directory))
-    if folder and folder.lower() not in ("", ".", "input") and folder.lower() != base.lower():
+    raw_folder = os.path.basename(directory)  # "" at the top level; _safe_ident would turn it into "t"
+    folder = _safe_ident(raw_folder) if raw_folder else ""
+    if folder and folder.lower() not in (".", "input") and folder.lower() != base.lower():
         return f"{folder}__{base}"
     return base
 
@@ -1154,6 +1192,10 @@ class DataFoundrySUT(System):
               file=sys.stderr, flush=True)
         return ds_id
 
+    def _prompt(self, query: str) -> str:
+        """The message the agent receives for one task."""
+        return query + ANSWER_FORMAT_INSTRUCTION
+
     def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
         self._ensure_client()
         if self._ds_id is None:
@@ -1170,7 +1212,7 @@ class DataFoundrySUT(System):
                 print(f"DataFoundrySUT: {query_id} d-trail {assumptions.get('run_status')} "
                       f"task={assumptions.get('task_id')} summary={summary} error={assumptions.get('error')}")
         receipt = agent_receipt(assumptions) if DTRAIL_TO_AGENT else None
-        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION, run_ds_id, receipt)
+        full_text = self._run_with_backoff(self._prompt(query), run_ds_id, receipt)
         answer = extract_final_answer(full_text)
         explanation = {"answer": answer, "id": query_id, "full_response": full_text}
         if assumptions is not None:
@@ -1186,6 +1228,84 @@ class DataFoundrySUT(System):
             "pipeline_code": "",   # DataFoundry emits SQL+artifacts, not a Python pipeline (use --no_pipeline_eval)
             "token_usage": 0, "token_usage_input": 0, "token_usage_output": 0,
         }
+
+
+# Rendered environment annotation per domain, <dir>/<domain>.txt, written by d-trail's
+# benchmarks/annotation-probe/render_context.py. Read by DataFoundryAnnotatedSUT only.
+DF_ANNOTATION_DIR = os.environ.get(
+    "DF_ANNOTATION_DIR", os.path.join(os.getcwd(), "system_scratch", "annotations"))
+
+ANNOTATION_PREAMBLE = (
+    "Environment annotation for this data source, built offline: every table's columns with "
+    "types, sampled values and cardinality, and links between tables proposed from metadata "
+    "(values were not compared).\n\n"
+)
+
+
+class DataFoundryAnnotatedSUT(DataFoundrySUT):
+    """DataFoundrySUT with the domain's environment annotation prepended to every question.
+
+    Same agent, datasource and DuckDB lake as DataFoundrySUT (the lake is shared, not rebuilt);
+    results land under this SUT's own name, so the two can be compared task by task.
+    """
+
+    def __init__(self, system_name: str = "DataFoundryAnnotatedSUT", verbose: bool = False,
+                 *args, **kwargs):
+        super().__init__(system_name, verbose=verbose, *args, **kwargs)
+        self.out = os.path.join(os.getcwd(), "system_scratch", "DataFoundrySUT")
+        self._annotation: str | None = None
+
+    def process_dataset(self, dataset_directory) -> None:
+        super().process_dataset(dataset_directory)
+        path = pathlib.Path(DF_ANNOTATION_DIR) / f"{self._domain}.txt"
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"no annotation for {self._domain!r} at {path}; render it with d-trail's "
+                "benchmarks/annotation-probe/render_context.py")
+        self._annotation = path.read_text(encoding="utf-8")
+
+    def _prompt(self, query: str) -> str:
+        return ANNOTATION_PREAMBLE + self._annotation + "\n\nQuestion: " + super()._prompt(query)
+
+
+class DataFoundryAnnotatedToolsSUT(DataFoundrySUT):
+    """DataFoundrySUT under its own results name, for a server that delivers the annotation itself.
+
+    The prompt is unchanged: the annotation reaches the agent only through the server
+    (DF_ENV_ANNOTATION_PATH: enriched inspect_schema/preview_table results and SQL-guard warnings).
+    Same DuckDB lake as DataFoundrySUT.
+    """
+
+    def __init__(self, system_name: str = "DataFoundryAnnotatedToolsSUT", verbose: bool = False,
+                 *args, **kwargs):
+        super().__init__(system_name, verbose=verbose, *args, **kwargs)
+        self.out = os.path.join(os.getcwd(), "system_scratch", "DataFoundrySUT")
+
+
+class DataFoundryDataLinkOnlySUT(DataFoundrySUT):
+    """DataFoundrySUT under its own results name, for the DataLink-only control.
+
+    Run against the same server as DataFoundryAnnotatedToolsSUT with the annotation file absent,
+    so the only difference between the two is the annotation. Same DuckDB lake as DataFoundrySUT.
+    """
+
+    def __init__(self, system_name: str = "DataFoundryDataLinkOnlySUT", verbose: bool = False,
+                 *args, **kwargs):
+        super().__init__(system_name, verbose=verbose, *args, **kwargs)
+        self.out = os.path.join(os.getcwd(), "system_scratch", "DataFoundrySUT")
+
+
+class DataFoundryAnnotationOnlySUT(DataFoundrySUT):
+    """DataFoundrySUT under its own results name, for the annotation-only condition.
+
+    Run against the annotation-enabled server with DF_MCP_SERVER_IDS unset, so the agent has the
+    annotation tools but no DataLink. Same DuckDB lake as DataFoundrySUT.
+    """
+
+    def __init__(self, system_name: str = "DataFoundryAnnotationOnlySUT", verbose: bool = False,
+                 *args, **kwargs):
+        super().__init__(system_name, verbose=verbose, *args, **kwargs)
+        self.out = os.path.join(os.getcwd(), "system_scratch", "DataFoundrySUT")
 
 
 # ── Standalone smoke path (run outside KramaBench to test one task) ────────────

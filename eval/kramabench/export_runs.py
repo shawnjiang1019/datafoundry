@@ -72,8 +72,8 @@ def read_csv(path: pathlib.Path) -> list[dict]:
         return list(csv.DictReader(handle))
 
 
-def cache_files(kb_root: pathlib.Path, task_id: str) -> list[tuple[str, pathlib.Path]]:
-    cache = kb_root / "results" / "DataFoundrySUT" / "response_cache" / "tasks"
+def cache_files(kb_root: pathlib.Path, task_id: str, sut: str) -> list[tuple[str, pathlib.Path]]:
+    cache = kb_root / "results" / sut / "response_cache" / "tasks"
     found = []
     for path in cache.glob(f"*_task_{task_id}_*.json"):
         match = et.CACHE_NAME.match(path.name)
@@ -196,8 +196,8 @@ def task_readme(task: dict, facts: dict, reason: dict) -> str:
     return "\n".join(lines)
 
 
-def load_snapshot(kb_root: pathlib.Path) -> dict:
-    path = kb_root / "results" / "DataFoundrySUT" / "graded_snapshot.csv"
+def load_snapshot(kb_root: pathlib.Path, sut: str) -> dict:
+    path = kb_root / "results" / sut / "graded_snapshot.csv"
     if not path.exists():
         return {}
     with path.open(encoding="utf-8") as handle:
@@ -215,13 +215,15 @@ def main() -> None:
     parser.add_argument("--no-results", action="store_true", help="skip copying full SQL result CSVs")
     parser.add_argument("--kb-root", default=os.environ.get("KB_ROOT", str(pathlib.Path.home() / "KramaBench")))
     parser.add_argument("--out", default=str(OUT_DIR))
+    parser.add_argument("--sut", default="DataFoundrySUT",
+                        help="KramaBench SUT whose cached answers to export (results/<sut>/)")
     args = parser.parse_args()
 
     et.FULL = True  # traces are exported untruncated
     kb_root, out = pathlib.Path(args.kb_root), pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(f"file:{et.DB_PATH.as_posix()}?mode=ro", uri=True)
-    snapshot = load_snapshot(kb_root)
+    snapshot = load_snapshot(kb_root, args.sut)
     if args.failed:
         if not snapshot:
             parser.error("--failed needs graded_snapshot.csv; run grade_cached.py first")
@@ -245,7 +247,7 @@ def main() -> None:
                     "expected": json.dumps(task["answer"], ensure_ascii=False) if not isinstance(task["answer"], str)
                     else task["answer"], "failure_reason": reason.get("reason", ""),
                     "owner": reason.get("owner", ""), "evidence": reason.get("evidence", "")}
-            attempts = cache_files(kb_root, task["id"])
+            attempts = cache_files(kb_root, task["id"], args.sut)
             if not attempts:
                 index.append({**base, "attempt": "none", "run_status": "not run",
                               "score": graded.get("score", "")})

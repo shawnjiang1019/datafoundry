@@ -1,5 +1,5 @@
 {
-  "_usage": "Corrections the ingest heuristics cannot make. 'files': globs over paths relative to the domain lake (forward slashes) -> {\"parser\": \"report\" | \"sniff\", \"merge_continuations\": true to append blank-line-separated rows to the table above}. 'tables': final table name -> {\"columns\": {old: new}, \"rename_to\": new table name, \"reason\": why}. Each correction is recorded in the table's notes.",
+  "_usage": "Corrections the ingest heuristics cannot make. 'files': globs over paths relative to the domain lake (forward slashes) -> {\"parser\": \"report\" | \"sniff\", \"merge_continuations\": true to append blank-line-separated rows to the table above}. 'tables': final table name -> {\"columns\": {old: new}, \"melt\": {\"id\": row-key column (omit if none), \"id_to\": its new name, \"names_to\": column for the old headers, \"values_to\": column for the cells}, \"rename_to\": new table name, \"reason\": why}. 'melt' stores a matrix sheet (headers are values: samples, genes, codes) as long rows, dropping empty cells. Each correction is recorded in the table's notes.",
   "files": {
     "NST-EST2024-POP.xlsx": {"parser": "report", "merge_continuations": true}
   },
@@ -18,6 +18,22 @@
       "columns": {"State Law Enforcement Agencies": "Year"},
       "rename_to": "2024_CSN_Data_Contributors__State_Law_Enforcement_Agencies",
       "reason": "the source CSV puts the section title in the Year header cell"
+    },
+    "1_s2_0_S0092867420301070_mmc2__A_global_proteomics": {
+      "melt": {"id": "idx", "id_to": "protein", "names_to": "sample", "values_to": "log2_abundance"},
+      "reason": "protein x sample matrix (one column per sample S001-S153, the case ids in mmc1.idx); stored as one row per protein and sample, empty cells omitted. Values are median-polished, log2-transformed global protein abundance (mmc2 README)"
+    },
+    "1_s2_0_S0092867420301070_mmc2__B_phospho_proteomics": {
+      "melt": {"id": "idx", "id_to": "phosphosite", "names_to": "sample", "values_to": "log2_abundance"},
+      "reason": "phosphosite x sample matrix (one column per sample S001-S153, the case ids in mmc1.idx; sites are GENE-residue, e.g. CHEK2-S163); stored as one row per site and sample, empty cells omitted. Values are median-polished, log2-transformed phosphosite abundance (mmc2 README)"
+    },
+    "1_s2_0_S0092867420301070_mmc5__B_circRNA_and_RBP_correlation": {
+      "melt": {"id": "idx", "id_to": "circRNA", "names_to": "rbp", "values_to": "value"},
+      "reason": "circRNA x RNA-binding-protein matrix (one column per RBP gene); stored as one row per circRNA and RBP. The README calls the values correlations between circRNA expression and RBP abundance, but they all lie in 0.10-1.0 and some RBP columns are all 1, so they may be p-values rather than coefficients"
+    },
+    "state_abbreviation_to_state": {
+      "melt": {"names_to": "abbreviation", "values_to": "state"},
+      "reason": "one-row sheet whose headers are the state abbreviations and whose cells are the state names; stored as one row per state"
     }
   }
 }

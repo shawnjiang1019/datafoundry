@@ -93,6 +93,18 @@ guard server sees everything set up this way.
 Follow section 2 of [`README.md`](README.md): clone it, create the `kbench` env, install the
 dependencies, download the data, and install the SUT. Then:
 
+1. **Copy the ingest overrides too.** The README's install step copies `datafoundry_sut.py`
+   and `ds_ingest`. The SUT also reads `ingest_overrides.json` from its own folder:
+
+   ```powershell
+   copy <datafoundry>\eval\kramabench\ingest_overrides.json systems\ingest_overrides.json
+   ```
+
+   Without it, the lake still builds, but differently: the biomedical proteomics sheets stay as
+   wide matrices (one column per sample) instead of one row per protein and sample, so the agent
+   works on different tables from the study. Copy it **before** the first run on the domain,
+   since the lake is built only once (to rebuild, delete `system_scratch\DataFoundrySUT\biomedical.duckdb`).
+
 1. **Register the study's SUTs.** In `systems/__init__.py`, change the DataFoundry import to:
 
    ```python
@@ -123,7 +135,7 @@ dependencies, download the data, and install the SUT. Then:
    `OPENAI_API_KEY` (a placeholder is fine with `--no_pipeline_eval`). `kb-env.ps1` holds a
    password, so keep it out of git.
 
-Re-copy `datafoundry_sut.py` into `systems/` whenever it changes.
+Re-copy `datafoundry_sut.py` and `ingest_overrides.json` into `systems/` whenever they change.
 
 ---
 

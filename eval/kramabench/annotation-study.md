@@ -5,12 +5,22 @@ DataFoundry failed, each run under the same agent with different context. The re
 
 | Condition | KramaBench SUT | Score (2026-10-19/20, one run each) |
 |---|---|---|
-| Baseline: no DataLink, no annotation | `DataFoundrySUT` | 0/4 |
 | DataLink only (control) | `DataFoundryDataLinkOnlySUT` | 1/4 |
 | Annotation tools only | `DataFoundryAnnotationOnlySUT` | 2/4 |
 | DataLink + annotation tools | `DataFoundryAnnotatedToolsSUT` | 4/4 |
 
 Each condition is one run per question, so treat the gaps as indicative, not measured.
+
+All three run on the same server: the guard build (`feat/env-annotation-guard`, port 8788).
+The control runs there with the annotation file removed, so the comparisons isolate one change
+each:
+
+- control → DataLink + annotation tools: adds the annotation
+- annotation tools only → DataLink + annotation tools: adds DataLink, with the annotation on
+
+The original study also had a plain-DataFoundry baseline and a prompt-injection condition.
+They're left out here: they ran on a different build, so they don't compare cleanly with these
+three.
 
 The four questions:
 
@@ -34,7 +44,7 @@ only learns this when the flag appears in its `inspect_schema` / `preview_table`
 
 | Repo | Branch | Used for |
 |---|---|---|
-| [`shawnjiang1019/datafoundry`](https://github.com/shawnjiang1019/datafoundry) | `datatrail-integration` | The baseline DataFoundry server (port 8787), the KramaBench SUT (`eval/kramabench/`), the DataLink service (`services/datalink/`) |
+| [`shawnjiang1019/datafoundry`](https://github.com/shawnjiang1019/datafoundry) | `datatrail-integration` | One-time setup through its web UI (account, model profile, MCP servers), the KramaBench SUT (`eval/kramabench/`), the DataLink service (`services/datalink/`) |
 | same repo, **second checkout** | `feat/env-annotation-guard` | The DataFoundry server that delivers the annotation through its tools (port 8788) |
 | [`ddsm-lab/d-trail`](https://github.com/ddsm-lab/d-trail) | `feat/annotation-assumption-integration` | `dtrail-annotate`, which builds the annotation |
 | [`mitdbg/KramaBench`](https://github.com/mitdbg/KramaBench) | `main`, plus a small local patch (step 3) | The benchmark harness and grader |
@@ -70,8 +80,11 @@ npm install
 npm run build
 ```
 
-Both servers must share one metadata store and storage root. That way the account, model profile,
-registered data sources and MCP servers exist for both. The guard server is started in step 7.
+The runs themselves only use the guard server, which starts the API without the web UI. Use
+the main checkout's server (`npm run start`, web UI on :3000) for the one-time setup: register
+an account, create the model profile, and later register the DataLink MCP server (step 6).
+Stop it before the runs. Both checkouts use the same metadata store and storage root, so the
+guard server sees everything set up this way.
 
 ---
 
@@ -192,11 +205,10 @@ use DataLink pass it as `DF_MCP_SERVER_IDS`.
 
 ## 7. Start the servers
 
-Three terminals, all left open:
+Two terminals, both left open:
 
 | Terminal | Command | Port |
 |---|---|---|
-| Baseline DataFoundry | `cd <datafoundry>; npm run start` (see `README.md` §1) | 8787 |
 | DataLink | step 6 | 8080 |
 | Guard DataFoundry | below | 8788 |
 
@@ -241,38 +253,37 @@ $ann = "<KramaBench>\system_scratch\annotations\agent_annotation.biomedical.json
 Each question takes roughly 5–12 minutes, so a condition takes 20–50 minutes. Run the
 conditions one after another, not in parallel.
 
-**A. Baseline** (main server, no DataLink, no annotation):
+Every condition uses the guard server:
 
 ```powershell
-$env:DF_API = "http://127.0.0.1:8787"; $env:DF_MCP_SERVER_IDS = ""
-python evaluate.py --sut DataFoundrySUT --workload biomedical --no_pipeline_eval --num_workers 1 --verbose
+$env:DF_API = "http://127.0.0.1:8788"
 ```
 
-**B. DataLink only** (guard server, annotation file disabled):
+**A. DataLink only** (annotation file disabled):
 
 ```powershell
 Move-Item $ann "$ann.disabled"
-$env:DF_API = "http://127.0.0.1:8788"; $env:DF_MCP_SERVER_IDS = "<DataLink MCP server id>"
+$env:DF_MCP_SERVER_IDS = "<DataLink MCP server id>"
 python evaluate.py --sut DataFoundryDataLinkOnlySUT --workload biomedical --no_pipeline_eval --num_workers 1 --verbose
 Move-Item "$ann.disabled" $ann
 ```
 
-**C. Annotation tools only** (guard server, annotation on, no DataLink):
+**B. Annotation tools only** (annotation on, no DataLink):
 
 ```powershell
-$env:DF_API = "http://127.0.0.1:8788"; $env:DF_MCP_SERVER_IDS = ""
+$env:DF_MCP_SERVER_IDS = ""
 python evaluate.py --sut DataFoundryAnnotationOnlySUT --workload biomedical --no_pipeline_eval --num_workers 1 --verbose
 ```
 
-**D. DataLink + annotation tools** (guard server, annotation on, DataLink on):
+**C. DataLink + annotation tools** (annotation on, DataLink on):
 
 ```powershell
-$env:DF_API = "http://127.0.0.1:8788"; $env:DF_MCP_SERVER_IDS = "<DataLink MCP server id>"
+$env:DF_MCP_SERVER_IDS = "<DataLink MCP server id>"
 python evaluate.py --sut DataFoundryAnnotatedToolsSUT --workload biomedical --no_pipeline_eval --num_workers 1 --verbose
 ```
 
 Before each run, check that the annotation file is where that condition needs it:
-`Test-Path $ann` should be `False` for B and `True` for C and D. The B and D runs differ only
+`Test-Path $ann` should be `False` for A and `True` for B and C. The A and C runs differ only
 in that file.
 
 ---
@@ -289,14 +300,78 @@ $t = "--task biomedical-easy-2 --task biomedical-easy-9 --task biomedical-hard-1
 python <datafoundry>\eval\kramabench\export_runs.py biomedical $t.Split(" ") --sut DataFoundryAnnotatedToolsSUT --out <folder>
 ```
 
-`<datafoundry>\eval\kramabench\token_usage.py` totals input and output tokens per run. The
-exports from the original study are in
-[`run_exports_annotation_study/`](run_exports_annotation_study/README.md).
+`<datafoundry>\eval\kramabench\token_usage.py` totals input and output tokens per run. Export
+folders are git-ignored (`run_exports*/`), so the original study's exports aren't in the repo;
+ask the study's owner for `run_exports_annotation_study/` if you want to compare against them.
 
-**To confirm the annotation reached the agent** in conditions C and D, open a run's trace and
+**To confirm the annotation reached the agent** in conditions B and C, open a run's trace and
 look for an `env_annotation` block in an `inspect_schema` or `preview_table` result for `…_mmc1`.
 It should mention `Case_excluded` and keep `'No'`. If it's missing, the agent never inspected
-that table, which is the usual reason C scores lower than D.
+that table, which is the usual reason B scores lower than C.
+
+---
+
+## 10. Running other questions
+
+### Other biomedical questions
+
+Nothing needs rebuilding: the lake, annotation, graph and servers all cover the whole domain.
+Change `KB_TASKS` to the task ids you want and rerun any condition from step 8. To list the ids
+and questions:
+
+```powershell
+python -c "import json; [print(t['id'], '|', t['query'][:100]) for t in json.load(open('workload/biomedical.json'))]"
+```
+
+To run the whole domain, clear the filter (`$env:KB_TASKS = ""`). At 5–12 minutes per question,
+that takes several hours per condition.
+
+Each run starts fresh and writes a new `results\<SUT>\biomedical_measures_<timestamp>.csv`.
+Earlier answers are reused only with `--use_system_cache`, so don't pass it when you want a
+new run of a question.
+
+### Another domain
+
+The setup is per domain. Repeat steps 4–7 with the domain's name in place of `biomedical`:
+
+1. **Lake and exports (step 4):** the first SUT run on the domain builds
+   `system_scratch\DataFoundrySUT\<domain>.duckdb`. Then run `export_duckdb_tables.py` with
+   `--format csv <domain>` and `--format parquet <domain>`.
+2. **Annotation (step 5):** run `dtrail-annotate` over
+   `system_scratch\dtrail_sources\<domain>\*.csv`, writing
+   `agent_annotation.<domain>.json`.
+3. **DataLink graph (step 6):** build or copy `<domain>.db`, serve it on its own port, and
+   register that URL as another MCP server. Each domain gets its own server and id. On the
+   original machine the ports were 8080 (biomedical), 8081 (legal), 8082 (wildfire),
+   8083 (archeology) and 8084 (environment); any free port works.
+4. **Guard server (step 7):** restart it with `DF_ENV_ANNOTATION_PATH` pointing at the new
+   domain's file. The server reads one annotation file, so it serves **one domain at a time**.
+   Renaming the file toggles the annotation without a restart (that's how the control works),
+   but changing which file it points to needs a restart.
+5. **Run (step 8):** set `--workload <domain>`, `KB_TASKS` to that domain's ids,
+   `DF_MCP_SERVER_IDS` to that domain's DataLink id, and `$ann` to its annotation file.
+
+### Check the annotation before spending runs
+
+The annotation only helps where its roles fit the failure. Before running a domain, see which
+roles it found:
+
+```powershell
+python -c "import json, collections; a=json.load(open(r'<path>\agent_annotation.<domain>.json')); print(collections.Counter(r for t in a['tables'].values() for c in t['columns'].values() for r in c.get('roles') or []))"
+```
+
+- **`eligibility_flag`:** marks "in the study" / included / excluded columns. This is the role
+  that fixed the biomedical questions.
+- **`competing_measures`:** sibling variants of one measure, e.g. `FDR.phos` / `FDR.prot`.
+- **`identifier`:** key-like columns, used for joins.
+
+If a domain has only `identifier` roles (environment does), the agent gets identifiers, links
+and sampled values but no population flag. That tests something different from the biomedical
+result.
+
+All roles and sampled values come from the **first 64 rows** of each file, not a random sample,
+so a column can look narrower than it is. For example, environment's `Year` samples show only
+`2002`, because the file is in date order. Keep this in mind when reading traces.
 
 ---
 
@@ -307,6 +382,6 @@ that table, which is the usual reason C scores lower than D.
 | DataLink calls return no nodes | `datalink serve` was started without `--db` |
 | Run fails with a DuckDB lock error | Another DataFoundry server still has the lake open; stop it |
 | `KB_TASKS has ids not in biomedical.json` | A typo in `KB_TASKS`, or the `benchmark.py` patch is missing (then all 40+ tasks run) |
-| `ECONNREFUSED` right after startup | The API port opens before the runtime is ready; wait for the "listening" line (`/ready` on 8787) |
-| Every condition scores the same | Check `Test-Path $ann` before the run, and that `DF_API` points at 8788 for B–D |
+| `ECONNREFUSED` right after startup | The API port opens before the runtime is ready; wait for the "listening" line before starting a run |
+| Every condition scores the same | Check `Test-Path $ann` before the run, and that `DF_API` points at 8788 |
 | HTTP 429 in the log | The model provider's rate limit; the SUT retries with backoff, so runs just take longer |

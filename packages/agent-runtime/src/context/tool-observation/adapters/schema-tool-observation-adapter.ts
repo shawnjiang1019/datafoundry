@@ -10,6 +10,7 @@ import { toolObservationProjectionToItems } from "../tool-observation-projection
 import type { ToolObservationAdapter } from "../tool-observation-adapter.js";
 
 type SchemaResultInput = SchemaSummary & {
+  env_annotation?: Record<string, unknown>;
   schema_id?: string;
 };
 
@@ -39,6 +40,11 @@ export class SchemaToolObservationAdapter implements ToolObservationAdapter {
       projection.model = { ...(projection.model as SchemaSummary), schema_id: schema.schema_id };
       projection.activity = { ...(projection.activity as SchemaSummary), schema_id: schema.schema_id };
     }
+    // Already capped by the tool registry (envAnnotationForTables); appended after the schema.
+    if (schema.env_annotation) {
+      projection.model = { ...(projection.model as SchemaSummary), env_annotation: schema.env_annotation };
+      projection.activity = { ...(projection.activity as SchemaSummary), env_annotation: schema.env_annotation };
+    }
     return toolObservationProjectionToItems(projection, this.resultType, 10);
   }
 }
@@ -56,6 +62,9 @@ const normalizeSchemaResultInput = (raw: unknown): SchemaResultInput | undefined
   };
   if (typeof raw.schema_id === "string") {
     schema.schema_id = raw.schema_id;
+  }
+  if (isRecord(raw.env_annotation)) {
+    schema.env_annotation = raw.env_annotation;
   }
   return schema;
 };

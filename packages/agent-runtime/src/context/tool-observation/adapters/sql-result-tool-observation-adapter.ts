@@ -10,6 +10,7 @@ import { toolObservationProjectionToItems } from "../tool-observation-projection
 import type { ToolObservationAdapter } from "../tool-observation-adapter.js";
 
 export type SqlResultInput = {
+  envAnnotationWarnings?: string[];
   result: SqlExecutionResult;
   sql: string;
 };
@@ -47,9 +48,18 @@ export class SqlResultToolObservationAdapter implements ToolObservationAdapter {
         max_sql_chars: getLimit(budget, "maxSqlChars", DEFAULT_TOOL_OBSERVATION_PROJECTION_POLICY.sql.max_sql_chars)
       }
     });
+    if (input.envAnnotationWarnings) {
+      contextPackage.model = { ...asObject(contextPackage.model), annotation_warnings: input.envAnnotationWarnings };
+      contextPackage.activity = {
+        ...asObject(contextPackage.activity),
+        annotation_warnings: input.envAnnotationWarnings
+      };
+    }
     return toolObservationProjectionToItems(contextPackage, this.resultType, 10);
   }
 }
+
+const asObject = (value: unknown): Record<string, unknown> => isRecord(value) ? value : {};
 
 const getLimit = (budget: ContextBudget, key: string, defaultValue: number): number =>
   budget.sourceLimits?.[key] ?? defaultValue;
@@ -60,7 +70,14 @@ const normalizeSqlResultInput = (raw: unknown): SqlResultInput | undefined => {
   }
 
   if (isSqlExecutionResult(raw.result)) {
-    return { result: raw.result, sql: typeof raw.sql === "string" ? raw.sql : "" };
+    const warnings = Array.isArray(raw.env_annotation_warnings)
+      ? raw.env_annotation_warnings.filter((warning): warning is string => typeof warning === "string")
+      : [];
+    return {
+      result: raw.result,
+      sql: typeof raw.sql === "string" ? raw.sql : "",
+      ...(warnings.length > 0 ? { envAnnotationWarnings: warnings } : {})
+    };
   }
 
   if (isSqlExecutionResult(raw)) {

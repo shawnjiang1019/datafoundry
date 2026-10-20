@@ -52,5 +52,13 @@ describe("createRunAgentAssembly assumption receipt", () => {
     await createRunAgentAssembly(assemblyInput({}));
 
     expect(createDataFoundry.mock.calls[0]?.[0]).not.toHaveProperty("assumptionReceipt");
+    expect(createDataFoundry.mock.calls[0]?.[0]).not.toHaveProperty("envAnnotation");
+  });
+
+  it("forwards the run config's env annotation to the agent runtime", async () => {
+    const envAnnotation = { environment_id: "env-1", tables: { t: { columns: {}, links: [] } } };
+    await createRunAgentAssembly(assemblyInput({ envAnnotation }));
+
+    expect(createDataFoundry.mock.calls[0]?.[0]).toMatchObject({ envAnnotation });
   });
 });

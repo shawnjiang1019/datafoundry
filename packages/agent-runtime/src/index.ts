@@ -65,6 +65,7 @@ import {
 } from "./context/inventory/context-source-metadata.js";
 import { GoalRuntimeAdapter, type GoalRequest } from "./memory/goal-runtime-adapter.js";
 import { createDataFoundryToolRegistry } from "./tools/data-tools.js";
+import { envAnnotationFromEnvironment, parseEnvAnnotation, type EnvAnnotation } from "./tools/env-annotation.js";
 import { GovernedToolFactory } from "./tools/governed-tool-factory.js";
 import {
   maybeIngestSessionFileOutput,
@@ -216,6 +217,12 @@ export {
 export { resolvePythonRuntime } from "./tools/python-runtime.js";
 export { createDataFoundryToolRegistry, type ToolRegistry } from "./tools/data-tools.js";
 export {
+  ENV_ANNOTATION_PATH_VARIABLE,
+  envAnnotationFromEnvironment,
+  parseEnvAnnotation,
+  type EnvAnnotation
+} from "./tools/env-annotation.js";
+export {
   GoalRuntimeAdapter,
   type GoalRequest,
   type GoalSnapshot
@@ -267,6 +274,11 @@ export type CreateDataFoundryInput = {
   evidenceContextItems?: AgentContextItem[];
   /** D-Trail receipt checked before the run; rendered as the always-present assumption ledger. */
   assumptionReceipt?: AssumptionReceipt;
+  /**
+   * D-Trail environment annotation (`dtrail-annotate --export-agent-json`). Falls back to the file
+   * named by DF_ENV_ANNOTATION_PATH; absent both, schema/SQL tool results are unchanged.
+   */
+  envAnnotation?: EnvAnnotation;
   messages: Message[];
   modelSettings?: {
     frequencyPenalty?: number;
@@ -373,10 +385,12 @@ export const createDataFoundry = async (
   const governedMessages = normalizeIngressMessages(input.messages);
 
   const tokenUsageCorrelation = createTokenUsageCorrelationStore();
+  const envAnnotation = parseEnvAnnotation(input.envAnnotation) ?? envAnnotationFromEnvironment();
   const registry = createDataFoundryToolRegistry({
     ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     dataGateway: input.dataGateway,
     emitter: input.emitter,
+    ...(envAnnotation ? { envAnnotation } : {}),
     runContext: input.runContext,
     tokenUsageCorrelation,
   });

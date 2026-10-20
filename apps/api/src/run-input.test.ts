@@ -1,7 +1,12 @@
 import type { RunAgentInput } from "@ag-ui/client";
 import { describe, expect, it } from "vitest";
 
-import { ASSUMPTION_RECEIPT_MAX_CHARS, assumptionsLoadedPayload, extractEffectiveRunConfig } from "./run-input.js";
+import {
+  ASSUMPTION_RECEIPT_MAX_CHARS,
+  ENV_ANNOTATION_MAX_CHARS,
+  assumptionsLoadedPayload,
+  extractEffectiveRunConfig
+} from "./run-input.js";
 
 describe("extractEffectiveRunConfig protocol selection", () => {
   it("parses an explicit protocol identity from run_config", () => {
@@ -69,6 +74,23 @@ describe("extractEffectiveRunConfig assumption receipt", () => {
   it("does not count a stripped conditioner_reply toward the size cap", () => {
     const big = { ...receipt, conditioner_reply: "x".repeat(ASSUMPTION_RECEIPT_MAX_CHARS) };
     expect(extractEffectiveRunConfig(createInput({ assumptionReceipt: big })).assumptionReceipt).toBeDefined();
+  });
+});
+
+describe("extractEffectiveRunConfig env annotation", () => {
+  const annotation = { environment_id: "env-1", tables: { t: { columns: {}, links: [] } } };
+
+  it("accepts an exported annotation under either spelling", () => {
+    expect(extractEffectiveRunConfig(createInput({ envAnnotation: annotation })).envAnnotation).toEqual(annotation);
+    expect(extractEffectiveRunConfig(createInput({ env_annotation: annotation })).envAnnotation).toEqual(annotation);
+  });
+
+  it("ignores missing, malformed or oversized annotations", () => {
+    for (const envAnnotation of [undefined, "text", [annotation], { tables: [] }, { tables: "x" }]) {
+      expect(extractEffectiveRunConfig(createInput({ envAnnotation })).envAnnotation).toBeUndefined();
+    }
+    const huge = { tables: { t: { columns: {}, note: "x".repeat(ENV_ANNOTATION_MAX_CHARS) } } };
+    expect(extractEffectiveRunConfig(createInput({ envAnnotation: huge })).envAnnotation).toBeUndefined();
   });
 });
 

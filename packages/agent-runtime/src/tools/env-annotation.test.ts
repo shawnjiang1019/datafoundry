@@ -228,3 +228,150 @@ describe("DF_ENV_ANNOTATION_PATH", () => {
     expect(parseEnvAnnotation({ tables: [] })).toBeUndefined();
   });
 });
+
+describe("DF_ENV_ANNOTATION_LAYERS", () => {
+  const exported = {
+    environment_id: "env-1",
+    tables: {
+      [CLINICAL]: {
+        columns: {
+          Case_excluded: {
+            type: "str",
+            roles: ["eligibility_flag"],
+            role_details: { eligibility_flag: { keep_value: "'No'" } },
+            value_sample: ["'No'", "'Yes'"]
+          }
+        },
+        links: []
+      },
+      rain: { columns: { Mar: { type: "float" } }, links: [] }
+    },
+    author_text: {
+      rain: {
+        table: [{ kind: "footnote", text: "Values are in inches", source: "rain__notes#3" }],
+        columns: { Mar: [{ kind: "column", text: "Mar: converted from text", source: "rain__notes#2" }] }
+      }
+    },
+    descriptions: {
+      source: "model",
+      tables: {
+        [CLINICAL]: {
+          summary: { text: "One row per case in the study.", verdict: "inferred" },
+          columns: { Case_excluded: { text: "'Yes' marks a case excluded from the study.", verdict: "inferred" } }
+        },
+        rain: { summary: { text: "Monthly rainfall, 2 years.", verdict: "checked" }, columns: {} }
+      }
+    }
+  };
+
+  it("adds no layer unless asked, so existing runs are unchanged", () => {
+    const plain = parseEnvAnnotation(exported, [])!;
+    expect(plain.tables.rain).toEqual({ columns: { Mar: { type: "float" } }, links: [] });
+    expect(envAnnotationForTables(plain, ["rain"])).toBeUndefined();
+    const summary = envAnnotationForTables(plain, [CLINICAL]) as { tables: Record<string, unknown> };
+    expect(Object.keys(summary)).toEqual(["note", "tables"]);
+    expect(summary.tables[CLINICAL]).toEqual({ eligibility_flags: [{ column: "Case_excluded", keep_value: "'No'" }] });
+  });
+
+  it("shows author text verbatim and model descriptions labelled, each with its own note", () => {
+    const layered = parseEnvAnnotation(exported, ["author_text", "descriptions"])!;
+    const summary = envAnnotationForTables(layered, [CLINICAL, "rain"]) as {
+      author_text_note?: string;
+      model_descriptions_note?: string;
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(summary.author_text_note).toContain("word for word");
+    expect(summary.model_descriptions_note).toContain("not facts");
+    expect(summary.tables.rain?.author_text).toEqual(["Values are in inches", "Mar: converted from text"]);
+    expect(summary.tables.rain?.model_descriptions).toEqual({ table: "Monthly rainfall, 2 years. [checked]" });
+    expect(summary.tables[CLINICAL]?.model_descriptions).toEqual({
+      table: "One row per case in the study. [inferred]",
+      columns: { Case_excluded: "'Yes' marks a case excluded from the study. [inferred]" }
+    });
+    expect(summary.tables[CLINICAL]?.eligibility_flags).toEqual([{ column: "Case_excluded", keep_value: "'No'" }]);
+  });
+
+  it("enables each layer on its own", () => {
+    const textOnly = envAnnotationForTables(parseEnvAnnotation(exported, ["author_text"])!, ["rain"]) as {
+      model_descriptions_note?: string;
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(textOnly.tables.rain?.author_text).toBeDefined();
+    expect(textOnly.tables.rain?.model_descriptions).toBeUndefined();
+    expect(textOnly.model_descriptions_note).toBeUndefined();
+  });
+
+  it("drops links, then text, before dropping whole tables to fit the cap", () => {
+    const layered = parseEnvAnnotation(exported, ["author_text", "descriptions"])!;
+    const small = envAnnotationForTables(layered, [CLINICAL, "rain"], 330) as {
+      model_descriptions_note?: string;
+      omitted_tables?: number;
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(small.omitted_tables).toBeUndefined();
+    expect(small.tables[CLINICAL]?.eligibility_flags).toBeDefined();
+    expect(small.tables[CLINICAL]?.model_descriptions).toBeUndefined();
+    expect(small.model_descriptions_note).toBeUndefined();
+  });
+
+  it("never shows less than the base annotation when the text cannot fit", () => {
+    const long = (n: number) => `${"word ".repeat(40)}${n}`;
+    const crowded = {
+      ...exported,
+      tables: {
+        ...exported.tables,
+        [CLINICAL]: {
+          ...exported.tables[CLINICAL],
+          links: [{ column: "idx", other_table: "assay", other_column: "sample", kind: "join_candidate", score: 0.5 }]
+        }
+      },
+      descriptions: {
+        tables: {
+          [CLINICAL]: {
+            columns: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`c${i}`, { text: long(i), verdict: "inferred" }]))
+          }
+        }
+      }
+    };
+    const base = envAnnotationForTables(parseEnvAnnotation(crowded, [])!, [CLINICAL], 600) as {
+      tables: Record<string, Record<string, unknown>>;
+    };
+    const layered = envAnnotationForTables(parseEnvAnnotation(crowded, ["descriptions"])!, [CLINICAL], 600) as {
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(base.tables[CLINICAL]?.links).toBeDefined();
+    expect(layered.tables[CLINICAL]?.links).toEqual(base.tables[CLINICAL]?.links);
+  });
+
+  it("orders described columns by role, eligibility flags first", () => {
+    const layered = parseEnvAnnotation({
+      ...exported,
+      descriptions: { tables: { [CLINICAL]: { columns: {
+        Age: { text: "Age at diagnosis.", verdict: "inferred" },
+        Case_excluded: { text: "'Yes' marks excluded cases.", verdict: "inferred" }
+      } } } }
+    }, ["descriptions"])!;
+    const summary = envAnnotationForTables(layered, [CLINICAL]) as {
+      tables: Record<string, { model_descriptions?: { columns?: Record<string, string> } }>;
+    };
+    expect(Object.keys(summary.tables[CLINICAL]?.model_descriptions?.columns ?? {})).toEqual(["Case_excluded", "Age"]);
+  });
+
+  it("reads the layers from the environment variable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "df-env-layers-"));
+    try {
+      const path = join(dir, "annotation.json");
+      writeFileSync(path, JSON.stringify(exported));
+      const withLayers = envAnnotationFromEnvironment({
+        DF_ENV_ANNOTATION_PATH: path,
+        DF_ENV_ANNOTATION_LAYERS: "descriptions, unknown"
+      })!;
+      expect(withLayers.tables.rain?.descriptions?.summary?.text).toBe("Monthly rainfall, 2 years.");
+      expect(withLayers.tables.rain?.author_text).toBeUndefined();
+      const without = envAnnotationFromEnvironment({ DF_ENV_ANNOTATION_PATH: path })!;
+      expect(without.tables.rain?.descriptions).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

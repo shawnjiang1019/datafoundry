@@ -58,7 +58,14 @@ export const ENV_ANNOTATION_LAYERS_VARIABLE = "DF_ENV_ANNOTATION_LAYERS";
 export type EnvAnnotationLayer = "author_text" | "descriptions";
 const KNOWN_LAYERS: readonly EnvAnnotationLayer[] = ["author_text", "descriptions"];
 
+/**
+ * Optional character budget for the annotation block in one tool result (default 2,500). Above
+ * the default the per-table limits below are lifted too, so only the budget decides what fits.
+ */
+export const ENV_ANNOTATION_MAX_CHARS_VARIABLE = "DF_ENV_ANNOTATION_MAX_CHARS";
+
 const DEFAULT_MAX_ANNOTATION_CHARS = 2500;
+/** Per-table limits, applied only at (or below) the default budget. */
 const MAX_LINKS_PER_TABLE = 6;
 const MAX_AUTHOR_TEXT_CHARS = 400;
 const MAX_DESCRIBED_COLUMNS = 8;
@@ -76,6 +83,12 @@ export const envAnnotationLayersFromEnvironment = (
 ): EnvAnnotationLayer[] => {
   const named = new Set((env[ENV_ANNOTATION_LAYERS_VARIABLE] ?? "").split(",").map((part) => part.trim()));
   return KNOWN_LAYERS.filter((layer) => named.has(layer));
+};
+
+/** The budget named by DF_ENV_ANNOTATION_MAX_CHARS; unset or not a positive integer gives the default. */
+export const envAnnotationMaxCharsFromEnvironment = (env: NodeJS.ProcessEnv = process.env): number => {
+  const value = Number.parseInt(env[ENV_ANNOTATION_MAX_CHARS_VARIABLE] ?? "", 10);
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_MAX_ANNOTATION_CHARS;
 };
 
 /**
@@ -187,17 +200,19 @@ type TableSummary = {
 /**
  * The annotation for the named tables only, compact and capped at `maxChars`: tables with an
  * eligibility flag come first, then the rest in the given order. To fit, links are dropped first,
- * then the optional text layers, and whole tables only last.
+ * then the optional text layers, and whole tables only last. A budget above the default also
+ * lifts the per-table limits.
  * Undefined when no named table has anything to report.
  */
 export const envAnnotationForTables = (
   annotation: EnvAnnotation,
   tableNames: string[],
-  maxChars = DEFAULT_MAX_ANNOTATION_CHARS
+  maxChars = envAnnotationMaxCharsFromEnvironment()
 ): Record<string, unknown> | undefined => {
+  const limits = maxChars > DEFAULT_MAX_ANNOTATION_CHARS ? UNLIMITED : PER_TABLE_LIMITS;
   const summaries = tableNames.flatMap((name) => {
     const table = lookupTable(annotation, name);
-    const summary = table ? summarizeTable(table) : undefined;
+    const summary = table ? summarizeTable(table, limits) : undefined;
     return summary ? [{ name, summary }] : [];
   });
   if (summaries.length === 0) {
@@ -255,7 +270,15 @@ export const envAnnotationForTables = (
   return rendered;
 };
 
-const summarizeTable = (table: EnvAnnotationTable): TableSummary | undefined => {
+type TableLimits = { links: number; authorTextChars: number; describedColumns: number };
+const PER_TABLE_LIMITS: TableLimits = {
+  links: MAX_LINKS_PER_TABLE,
+  authorTextChars: MAX_AUTHOR_TEXT_CHARS,
+  describedColumns: MAX_DESCRIBED_COLUMNS
+};
+const UNLIMITED: TableLimits = { links: Infinity, authorTextChars: Infinity, describedColumns: Infinity };
+
+const summarizeTable = (table: EnvAnnotationTable, limits: TableLimits): TableSummary | undefined => {
   const flags: { column: string; keep_value?: string }[] = [];
   const groups = new Map<string, string[]>();
   const identifiers: string[] = [];
@@ -275,10 +298,10 @@ const summarizeTable = (table: EnvAnnotationTable): TableSummary | undefined => 
   }
   const links = [...(table.links ?? [])]
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || linkText(a).localeCompare(linkText(b)))
-    .slice(0, MAX_LINKS_PER_TABLE)
+    .slice(0, limits.links)
     .map(linkText);
-  const authorText = authorTextLines(table.author_text);
-  const modelDescriptions = describedLines(table.descriptions, table.columns);
+  const authorText = authorTextLines(table.author_text, limits.authorTextChars);
+  const modelDescriptions = describedLines(table.descriptions, table.columns, limits.describedColumns);
   const summary: TableSummary = {
     ...(flags.length ? { eligibility_flags: flags } : {}),
     ...(groups.size ? { competing_measures: [...groups.values()] } : {}),
@@ -290,8 +313,8 @@ const summarizeTable = (table: EnvAnnotationTable): TableSummary | undefined => 
   return Object.keys(summary).length > 0 ? summary : undefined;
 };
 
-/** Table-level source text, then column notes, verbatim, up to MAX_AUTHOR_TEXT_CHARS in all. */
-const authorTextLines = (text: EnvAnnotationTable["author_text"]): string[] => {
+/** Table-level source text, then column notes, verbatim, up to `maxChars` in all. */
+const authorTextLines = (text: EnvAnnotationTable["author_text"], maxChars: number): string[] => {
   if (!text) {
     return [];
   }
@@ -302,8 +325,8 @@ const authorTextLines = (text: EnvAnnotationTable["author_text"]): string[] => {
   const lines: string[] = [];
   let used = 0;
   for (const line of all) {
-    if (used + line.length > MAX_AUTHOR_TEXT_CHARS) {
-      const room = MAX_AUTHOR_TEXT_CHARS - used;
+    if (used + line.length > maxChars) {
+      const room = maxChars - used;
       if (room > 40) {
         lines.push(`${line.slice(0, room)}…`);
       }
@@ -327,12 +350,13 @@ const rolePriority = (column: EnvAnnotationColumn | undefined): number => {
 };
 
 /**
- * The table sentence and up to MAX_DESCRIBED_COLUMNS column sentences, each tagged [verdict];
+ * The table sentence and up to `maxColumns` column sentences, each tagged [verdict];
  * columns ordered by role (eligibility flags first), then name.
  */
 const describedLines = (
   described: EnvAnnotationTable["descriptions"],
-  columnInfo: Record<string, EnvAnnotationColumn>
+  columnInfo: Record<string, EnvAnnotationColumn>,
+  maxColumns: number
 ): TableSummary["model_descriptions"] | undefined => {
   if (!described) {
     return undefined;
@@ -340,7 +364,7 @@ const describedLines = (
   const tag = (claim: EnvAnnotationClaim): string => `${claim.text} [${claim.verdict ?? "inferred"}]`;
   const columns = Object.entries(described.columns)
     .sort(([a], [b]) => rolePriority(columnInfo[a]) - rolePriority(columnInfo[b]) || a.localeCompare(b))
-    .slice(0, MAX_DESCRIBED_COLUMNS);
+    .slice(0, maxColumns);
   return {
     ...(described.summary ? { table: tag(described.summary) } : {}),
     ...(columns.length ? { columns: Object.fromEntries(columns.map(([name, claim]) => [name, tag(claim)])) } : {})

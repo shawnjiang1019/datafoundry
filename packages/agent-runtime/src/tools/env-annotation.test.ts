@@ -13,6 +13,7 @@ import {
   createEnvAnnotationGuard,
   envAnnotationForTables,
   envAnnotationFromEnvironment,
+  envAnnotationMaxCharsFromEnvironment,
   parseEnvAnnotation,
   type EnvAnnotation
 } from "./env-annotation.js";
@@ -355,6 +356,26 @@ describe("DF_ENV_ANNOTATION_LAYERS", () => {
       tables: Record<string, { model_descriptions?: { columns?: Record<string, string> } }>;
     };
     expect(Object.keys(summary.tables[CLINICAL]?.model_descriptions?.columns ?? {})).toEqual(["Case_excluded", "Age"]);
+  });
+
+  it("lifts the per-table limits when the budget is above the default", () => {
+    const layered = parseEnvAnnotation({
+      ...exported,
+      descriptions: { tables: { [CLINICAL]: {
+        columns: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`c${i}`, { text: `Column ${i}.`, verdict: "inferred" }]))
+      } } }
+    }, ["descriptions"])!;
+    const shown = (maxChars: number) => Object.keys((envAnnotationForTables(layered, [CLINICAL], maxChars) as {
+      tables: Record<string, { model_descriptions?: { columns?: Record<string, string> } }>;
+    }).tables[CLINICAL]?.model_descriptions?.columns ?? {}).length;
+    expect(shown(2500)).toBe(8);
+    expect(shown(12000)).toBe(12);
+  });
+
+  it("reads the budget from the environment variable", () => {
+    expect(envAnnotationMaxCharsFromEnvironment({ DF_ENV_ANNOTATION_MAX_CHARS: "12000" })).toBe(12000);
+    expect(envAnnotationMaxCharsFromEnvironment({ DF_ENV_ANNOTATION_MAX_CHARS: "lots" })).toBe(2500);
+    expect(envAnnotationMaxCharsFromEnvironment({})).toBe(2500);
   });
 
   it("reads the layers from the environment variable", () => {

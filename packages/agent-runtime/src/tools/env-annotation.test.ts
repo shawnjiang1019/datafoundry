@@ -358,6 +358,40 @@ describe("DF_ENV_ANNOTATION_LAYERS", () => {
     expect(Object.keys(summary.tables[CLINICAL]?.model_descriptions?.columns ?? {})).toEqual(["Case_excluded", "Age"]);
   });
 
+  it("shows soft table edges from both ends only with the table_edges layer", () => {
+    const withEdges = {
+      ...exported,
+      table_edges: {
+        note: "soft edges",
+        edges: [{
+          left: CLINICAL,
+          right: "rain",
+          left_to_right: 0.5,
+          right_to_left: 1,
+          support_left_to_right: 1,
+          support_right_to_left: 1,
+          via: [["idx", "sample"]],
+          kinds: ["join_candidate"],
+          value_only: true,
+          summary: "value-only ..."
+        }]
+      }
+    };
+    expect(parseEnvAnnotation(withEdges, [])!.tables.rain?.related_tables).toBeUndefined();
+    const layered = parseEnvAnnotation(withEdges, ["table_edges"])!;
+    expect(layered.tables.rain?.related_tables).toEqual([
+      { other_table: CLINICAL, weight: 1, via: [["sample", "idx"]], value_only: true }
+    ]);
+    const summary = envAnnotationForTables(layered, [CLINICAL, "rain"]) as {
+      related_tables_note?: string;
+      tables: Record<string, { related_tables?: string[] }>;
+    };
+    expect(summary.related_tables_note).toMatch(/soft edges/u);
+    expect(summary.tables[CLINICAL]?.related_tables).toEqual([
+      `rain via idx=sample; 50% of this table's linked columns; value-only (names differ, values match)`
+    ]);
+  });
+
   it("lifts the per-table limits when the budget is above the default", () => {
     const layered = parseEnvAnnotation({
       ...exported,

@@ -32,6 +32,17 @@ export type EnvAnnotationTextEntry = { kind?: string; text: string; source?: str
 /** One model-written sentence: "checked" (numbers/values matched its facts) or "inferred". */
 export type EnvAnnotationClaim = { text: string; verdict?: string };
 
+/** A soft table edge seen from one table (table_edges layer): another table it probably relates to. */
+export type EnvAnnotationRelatedTable = {
+  other_table: string;
+  /** Share of this table's linked columns that reach the other table (m / n). */
+  weight: number;
+  /** Column pairs, this table's column first. */
+  via: [string, string][];
+  /** Every link is from value overlap alone: the names differ (a renamed key). */
+  value_only?: boolean;
+};
+
 export type EnvAnnotationTable = {
   columns: Record<string, EnvAnnotationColumn>;
   links?: EnvAnnotationLink[];
@@ -39,6 +50,8 @@ export type EnvAnnotationTable = {
   author_text?: { table: EnvAnnotationTextEntry[]; columns: Record<string, EnvAnnotationTextEntry[]> };
   /** Present only with the `descriptions` layer enabled. */
   descriptions?: { summary?: EnvAnnotationClaim; columns: Record<string, EnvAnnotationClaim> };
+  /** Present only with the `table_edges` layer enabled. */
+  related_tables?: EnvAnnotationRelatedTable[];
 };
 
 export type EnvAnnotation = {
@@ -55,8 +68,8 @@ export const ENV_ANNOTATION_PATH_VARIABLE = "DF_ENV_ANNOTATION_PATH";
  * Unset or empty shows neither, so runs keep exactly the base annotation.
  */
 export const ENV_ANNOTATION_LAYERS_VARIABLE = "DF_ENV_ANNOTATION_LAYERS";
-export type EnvAnnotationLayer = "author_text" | "descriptions";
-const KNOWN_LAYERS: readonly EnvAnnotationLayer[] = ["author_text", "descriptions"];
+export type EnvAnnotationLayer = "author_text" | "descriptions" | "table_edges";
+const KNOWN_LAYERS: readonly EnvAnnotationLayer[] = ["author_text", "descriptions", "table_edges"];
 
 /**
  * Optional character budget for the annotation block in one tool result (default 2,500). Above
@@ -69,6 +82,7 @@ const DEFAULT_MAX_ANNOTATION_CHARS = 2500;
 const MAX_LINKS_PER_TABLE = 6;
 const MAX_AUTHOR_TEXT_CHARS = 400;
 const MAX_DESCRIBED_COLUMNS = 8;
+const MAX_RELATED_TABLES = 4;
 const ANNOTATION_NOTE =
   "D-Trail environment annotation from sampled metadata (advisory; verify against the data).";
 const AUTHOR_TEXT_NOTE = "author_text is copied word for word from the source's own README / notes.";
@@ -76,6 +90,9 @@ const DESCRIPTIONS_NOTE =
   "model_descriptions are model-written readings of the facts, not facts: [inferred] is an "
   + "interpretation; [checked] only had its numbers and quoted values matched to the facts. "
   + "Verify before relying on either.";
+const RELATED_TABLES_NOTE =
+  "related_tables are soft edges rolled up from unverified column links (names, formats, sampled "
+  + "value overlap): candidates to check, not confirmed joins. Verify with a join before relying on one.";
 
 /** The layers named by DF_ENV_ANNOTATION_LAYERS (unknown names are ignored). */
 export const envAnnotationLayersFromEnvironment = (
@@ -92,8 +109,8 @@ export const envAnnotationMaxCharsFromEnvironment = (env: NodeJS.ProcessEnv = pr
 };
 
 /**
- * Accept the exporter's `{environment_id, tables: {...}, author_text?, descriptions?}` file;
- * anything else is ignored. The optional sections are attached to their tables only for the
+ * Accept the exporter's `{environment_id, tables: {...}, author_text?, descriptions?, table_edges?}`
+ * file; anything else is ignored. The optional sections are attached to their tables only for the
  * enabled `layers` (default: DF_ENV_ANNOTATION_LAYERS).
  */
 export const parseEnvAnnotation = (
@@ -108,16 +125,19 @@ export const parseEnvAnnotation = (
     && isRecord(value.descriptions.tables)
     ? value.descriptions.tables
     : {};
+  const related = layers.includes("table_edges") ? relatedTablesByTable(value.table_edges) : new Map();
   const tables: Record<string, EnvAnnotationTable> = {};
   for (const [name, table] of Object.entries(value.tables)) {
     if (isRecord(table) && isRecord(table.columns)) {
       const text = parseAuthorText(authorText[name]);
       const descriptions = parseDescriptions(described[name]);
+      const relatedTables = related.get(name);
       tables[name] = {
         columns: table.columns as Record<string, EnvAnnotationColumn>,
         links: Array.isArray(table.links) ? table.links.filter(isLink) : [],
         ...(text ? { author_text: text } : {}),
-        ...(descriptions ? { descriptions } : {})
+        ...(descriptions ? { descriptions } : {}),
+        ...(relatedTables ? { related_tables: relatedTables } : {})
       };
     }
   }
@@ -126,6 +146,48 @@ export const parseEnvAnnotation = (
     tables
   };
 };
+
+/** The exporter's `table_edges.edges` (left/right, directional weights, `via` pairs), seen from each end. */
+const relatedTablesByTable = (value: unknown): Map<string, EnvAnnotationRelatedTable[]> => {
+  const byTable = new Map<string, EnvAnnotationRelatedTable[]>();
+  const edges = isRecord(value) && Array.isArray(value.edges) ? value.edges.filter(isEdge) : [];
+  for (const edge of edges) {
+    const valueOnly = edge.value_only === true ? { value_only: true } : {};
+    const add = (table: string, entry: EnvAnnotationRelatedTable) =>
+      byTable.set(table, [...(byTable.get(table) ?? []), entry]);
+    add(edge.left, {
+      other_table: edge.right,
+      weight: edge.left_to_right,
+      via: edge.via.map(([a, b]) => [a, b] as [string, string]),
+      ...valueOnly
+    });
+    add(edge.right, {
+      other_table: edge.left,
+      weight: edge.right_to_left,
+      via: edge.via.map(([a, b]) => [b, a] as [string, string]),
+      ...valueOnly
+    });
+  }
+  return byTable;
+};
+
+type ExportedEdge = {
+  left: string;
+  right: string;
+  left_to_right: number;
+  right_to_left: number;
+  via: [string, string][];
+  value_only?: boolean;
+};
+
+const isEdge = (value: unknown): value is ExportedEdge =>
+  isRecord(value)
+  && typeof value.left === "string"
+  && typeof value.right === "string"
+  && typeof value.left_to_right === "number"
+  && typeof value.right_to_left === "number"
+  && Array.isArray(value.via)
+  && value.via.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every((c) => typeof c === "string"));
 
 const parseAuthorText = (value: unknown): EnvAnnotationTable["author_text"] | undefined => {
   if (!isRecord(value)) {
@@ -191,6 +253,8 @@ type TableSummary = {
   competing_measures?: string[][];
   identifiers?: string[];
   links?: string[];
+  /** Soft table edges, strongest first (table_edges layer). */
+  related_tables?: string[];
   /** Verbatim source text (author_text layer). */
   author_text?: string[];
   /** Model-written sentences, each ending in its verdict (descriptions layer). */
@@ -199,9 +263,9 @@ type TableSummary = {
 
 /**
  * The annotation for the named tables only, compact and capped at `maxChars`: tables with an
- * eligibility flag come first, then the rest in the given order. To fit, links are dropped first,
- * then the optional text layers, and whole tables only last. A budget above the default also
- * lifts the per-table limits.
+ * eligibility flag come first, then the rest in the given order. To fit, links (and related tables)
+ * are dropped first, then the optional text layers, and whole tables only last. A budget above the
+ * default also lifts the per-table limits.
  * Undefined when no named table has anything to report.
  */
 export const envAnnotationForTables = (
@@ -224,10 +288,11 @@ export const envAnnotationForTables = (
   ];
   const render = (entries: typeof ordered, withLinks: boolean, withText: boolean) => {
     const tables = Object.fromEntries(entries.flatMap(({ name, summary }) => {
-      const { links, author_text, model_descriptions, ...rest } = summary;
+      const { links, related_tables, author_text, model_descriptions, ...rest } = summary;
       const shown = {
         ...rest,
         ...(withLinks && links ? { links } : {}),
+        ...(withLinks && related_tables ? { related_tables } : {}),
         ...(withText && author_text ? { author_text } : {}),
         ...(withText && model_descriptions ? { model_descriptions } : {})
       };
@@ -236,8 +301,10 @@ export const envAnnotationForTables = (
     const shownText = (key: "author_text" | "model_descriptions") =>
       withText && entries.some((entry) => entry.summary[key]);
     const omitted = ordered.length - entries.length;
+    const shownRelated = withLinks && entries.some((entry) => entry.summary.related_tables);
     return {
       note: ANNOTATION_NOTE,
+      ...(shownRelated ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
       ...(shownText("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
       ...(shownText("model_descriptions") ? { model_descriptions_note: DESCRIPTIONS_NOTE } : {}),
       tables,
@@ -270,13 +337,19 @@ export const envAnnotationForTables = (
   return rendered;
 };
 
-type TableLimits = { links: number; authorTextChars: number; describedColumns: number };
+type TableLimits = { links: number; authorTextChars: number; describedColumns: number; relatedTables: number };
 const PER_TABLE_LIMITS: TableLimits = {
   links: MAX_LINKS_PER_TABLE,
   authorTextChars: MAX_AUTHOR_TEXT_CHARS,
-  describedColumns: MAX_DESCRIBED_COLUMNS
+  describedColumns: MAX_DESCRIBED_COLUMNS,
+  relatedTables: MAX_RELATED_TABLES
 };
-const UNLIMITED: TableLimits = { links: Infinity, authorTextChars: Infinity, describedColumns: Infinity };
+const UNLIMITED: TableLimits = {
+  links: Infinity,
+  authorTextChars: Infinity,
+  describedColumns: Infinity,
+  relatedTables: Infinity
+};
 
 const summarizeTable = (table: EnvAnnotationTable, limits: TableLimits): TableSummary | undefined => {
   const flags: { column: string; keep_value?: string }[] = [];
@@ -300,6 +373,10 @@ const summarizeTable = (table: EnvAnnotationTable, limits: TableLimits): TableSu
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || linkText(a).localeCompare(linkText(b)))
     .slice(0, limits.links)
     .map(linkText);
+  const relatedTables = [...(table.related_tables ?? [])]
+    .sort((a, b) => b.weight - a.weight || a.other_table.localeCompare(b.other_table))
+    .slice(0, limits.relatedTables)
+    .map(relatedTableText);
   const authorText = authorTextLines(table.author_text, limits.authorTextChars);
   const modelDescriptions = describedLines(table.descriptions, table.columns, limits.describedColumns);
   const summary: TableSummary = {
@@ -307,6 +384,7 @@ const summarizeTable = (table: EnvAnnotationTable, limits: TableLimits): TableSu
     ...(groups.size ? { competing_measures: [...groups.values()] } : {}),
     ...(identifiers.length ? { identifiers } : {}),
     ...(links.length ? { links } : {}),
+    ...(relatedTables.length ? { related_tables: relatedTables } : {}),
     ...(authorText.length ? { author_text: authorText } : {}),
     ...(modelDescriptions ? { model_descriptions: modelDescriptions } : {})
   };
@@ -387,6 +465,15 @@ const compactText = (summary: TableSummary): TableSummary => {
     ...(author_text?.length ? { author_text: author_text.slice(0, 1) } : {}),
     ...(compactDescriptions && Object.keys(compactDescriptions).length ? { model_descriptions: compactDescriptions } : {})
   };
+};
+
+/** e.g. `mmc7 via idx=idx, MLH1=MLH1 (2 more); 40% of this table's linked columns` */
+const relatedTableText = (related: EnvAnnotationRelatedTable): string => {
+  const pairs = related.via.slice(0, 3).map(([here, there]) => `${here}=${there}`).join(", ");
+  const more = related.via.length > 3 ? ` (${related.via.length - 3} more)` : "";
+  const share = `${Math.round(related.weight * 100)}% of this table's linked columns`;
+  return `${related.other_table} via ${pairs}${more}; ${share}`
+    + `${related.value_only ? "; value-only (names differ, values match)" : ""}`;
 };
 
 const linkText = (link: EnvAnnotationLink): string =>

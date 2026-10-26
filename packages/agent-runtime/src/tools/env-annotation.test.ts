@@ -302,6 +302,78 @@ describe("DF_ENV_ANNOTATION_LAYERS", () => {
     expect(textOnly.model_descriptions_note).toBeUndefined();
   });
 
+  it("keeps the authors' statements verbatim and apart from titles and ingest notes, past the text cut", () => {
+    const footnote = "Consumers can report multiple types of identity theft. In 2024, 14% of identity "
+      + "theft reports included more than one type of identity theft";
+    const labelled = parseEnvAnnotation({
+      ...exported,
+      author_text: {
+        rain: {
+          table: [
+            { kind: "title", role: "context", text: "Identity Theft Reports by Type" },
+            { kind: "footnote", role: "stated", text: footnote, source: "rain__notes#2" },
+            { kind: "source", role: "context", text: "Source: Consumer Sentinel Network Data Book 2024" }
+          ],
+          columns: { Mar: [{ kind: "column", role: "ingest", text: "Mar: converted from text" }] }
+        }
+      }
+    }, ["author_text", "descriptions"])!;
+    const full = envAnnotationForTables(labelled, ["rain"], 12000) as Record<string, unknown> & {
+      tables: Record<string, Record<string, unknown>>;
+    };
+    // Verbatim, then where it comes from: row 2 of rain__notes.
+    expect(full.tables.rain?.author_stated).toEqual([`${footnote} [footnote, notes#2]`]);
+    expect(full.note).toContain("author_stated lines are the source's own documentation");
+    expect(full.tables.rain?.author_text).toEqual([
+      "Identity Theft Reports by Type",
+      "Source: Consumer Sentinel Network Data Book 2024"
+    ]);
+    expect(full.tables.rain?.ingest_notes).toEqual(["Mar: converted from text"]);
+    expect(full.author_stated_note).toContain("word for word");
+    expect(full.ingest_notes_note).toContain("not by the authors");
+    // Room for the base only: the authors' statement stays, every text layer goes.
+    const baseOnly = {
+      note: full.note,
+      author_stated_note: full.author_stated_note,
+      tables: { rain: { author_stated: [`${footnote} [footnote, notes#2]`] } }
+    };
+    const tight = envAnnotationForTables(labelled, ["rain"], JSON.stringify(baseOnly).length) as {
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(tight).toEqual(baseOnly);
+  });
+
+  it("lists a statement shared by tables once, and drops statements rather than a table", () => {
+    const shared = "Percentages are based on the total number of Sentinel reports in 2024 (6,471,708).";
+    const stated = (text: string, source: string) => ({
+      table: [{ kind: "footnote", role: "stated", text, source }],
+      columns: {}
+    });
+    const labelled = parseEnvAnnotation({
+      ...exported,
+      author_text: { [CLINICAL]: stated(shared, `${CLINICAL}__notes#3`), rain: stated(shared, "rain__notes#2") }
+    }, ["author_text"])!;
+    const full = envAnnotationForTables(labelled, [CLINICAL, "rain"], 12000) as {
+      author_stated_shared?: { text: string; kind?: string; from: string[] }[];
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(full.author_stated_shared).toEqual([
+      { text: shared, kind: "footnote", from: [`${CLINICAL}__notes#3`, "rain__notes#2"] }
+    ]);
+    expect(full.tables[CLINICAL]?.author_stated).toBeUndefined();
+    expect(full.tables.rain).toBeUndefined();  // nothing of its own left to show
+    // Room for both tables' roles but not the statement: the statement goes, no table does.
+    const rolesOnly = envAnnotationForTables(parseEnvAnnotation(exported, [])!, [CLINICAL, "rain"], 12000)!;
+    const tight = envAnnotationForTables(labelled, [CLINICAL, "rain"], JSON.stringify(rolesOnly).length) as {
+      author_stated_shared?: unknown;
+      omitted_tables?: number;
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(tight.omitted_tables).toBeUndefined();
+    expect(tight.author_stated_shared).toBeUndefined();
+    expect(tight.tables[CLINICAL]?.eligibility_flags).toBeDefined();
+  });
+
   it("drops links, then text, before dropping whole tables to fit the cap", () => {
     const layered = parseEnvAnnotation(exported, ["author_text", "descriptions"])!;
     const small = envAnnotationForTables(layered, [CLINICAL, "rain"], 330) as {

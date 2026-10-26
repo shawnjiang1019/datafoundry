@@ -26,8 +26,13 @@ export type EnvAnnotationLink = {
   score?: number | null;
 };
 
-/** Verbatim text from the source's own README / notes tables (deterministic, with its origin). */
-export type EnvAnnotationTextEntry = { kind?: string; text: string; source?: string };
+/**
+ * Verbatim text from the source's own README / notes tables (deterministic, with its origin).
+ * `role` says who wrote it: "stated" (the authors' statements about the data: footnotes, README
+ * rows), "context" (titles, sections, source lines) or "ingest" (notes about ingest's own
+ * conversions). Entries without a role are shown as context.
+ */
+export type EnvAnnotationTextEntry = { kind?: string; text: string; source?: string; role?: string };
 
 /** One model-written sentence: "checked" (numbers/values matched its facts) or "inferred". */
 export type EnvAnnotationClaim = { text: string; verdict?: string };
@@ -84,8 +89,15 @@ const MAX_AUTHOR_TEXT_CHARS = 400;
 const MAX_DESCRIBED_COLUMNS = 8;
 const MAX_RELATED_TABLES = 4;
 const ANNOTATION_NOTE =
-  "D-Trail environment annotation from sampled metadata (advisory; verify against the data).";
-const AUTHOR_TEXT_NOTE = "author_text is copied word for word from the source's own README / notes.";
+  "D-Trail environment annotation. Roles, links and model descriptions come from sampled metadata "
+  + "(advisory; verify against the data); author_stated lines are the source's own documentation.";
+const AUTHOR_STATED_NOTE =
+  "author_stated is the source authors' own statements about the data (footnotes, README rows), "
+  + "copied word for word: facts about how the numbers were counted and defined. Each line ends with "
+  + "[kind, where]: notes#N is row N of the table's <table>__notes companion table.";
+const AUTHOR_TEXT_NOTE = "author_text is the source's titles, sections and source lines, copied word for word.";
+const INGEST_NOTES_NOTE =
+  "ingest_notes were written while loading the files (type conversions, moved rows), not by the authors.";
 const DESCRIPTIONS_NOTE =
   "model_descriptions are model-written readings of the facts, not facts: [inferred] is an "
   + "interpretation; [checked] only had its numbers and quoted values matched to the facts. "
@@ -252,11 +264,16 @@ type TableSummary = {
   eligibility_flags?: { column: string; keep_value?: string }[];
   competing_measures?: string[][];
   identifiers?: string[];
+  /** The authors' statements about the data, verbatim, with kind and origin (author_text layer);
+   * shown as lines by `statedLine`. */
+  author_stated?: EnvAnnotationTextEntry[];
   links?: string[];
   /** Soft table edges, strongest first (table_edges layer). */
   related_tables?: string[];
-  /** Verbatim source text (author_text layer). */
+  /** Titles, sections and source lines, verbatim (author_text layer). */
   author_text?: string[];
+  /** Ingest's notes on its own conversions (author_text layer). */
+  ingest_notes?: string[];
   /** Model-written sentences, each ending in its verdict (descriptions layer). */
   model_descriptions?: { table?: string; columns?: Record<string, string> };
 };
@@ -264,8 +281,10 @@ type TableSummary = {
 /**
  * The annotation for the named tables only, compact and capped at `maxChars`: tables with an
  * eligibility flag come first, then the rest in the given order. To fit, links (and related tables)
- * are dropped first, then the optional text layers, and whole tables only last. A budget above the
- * default also lifts the per-table limits.
+ * are dropped first, then the optional text layers, and whole tables only last. The authors'
+ * statements (`author_stated`) outlast every text layer and are dropped only to avoid dropping a
+ * table; one shared by several shown tables is listed once (`author_stated_shared`). A budget
+ * above the default also lifts the per-table limits.
  * Undefined when no named table has anything to report.
  */
 export const envAnnotationForTables = (
@@ -286,53 +305,76 @@ export const envAnnotationForTables = (
     ...summaries.filter((entry) => entry.summary.eligibility_flags),
     ...summaries.filter((entry) => !entry.summary.eligibility_flags)
   ];
-  const render = (entries: typeof ordered, withLinks: boolean, withText: boolean) => {
+  const render = (entries: typeof ordered, withLinks: boolean, withText: boolean, withStated = true) => {
+    // A statement on several shown tables (a footnote repeated across a report's sections) is
+    // listed once, with where each table's copy comes from, instead of under each.
+    const statedBy = new Map<string, { kind?: string; from: string[] }>();
+    for (const { name, summary } of withStated ? entries : []) {
+      for (const entry of summary.author_stated ?? []) {
+        const seen = statedBy.get(entry.text) ?? { ...(entry.kind ? { kind: entry.kind } : {}), from: [] };
+        statedBy.set(entry.text, { ...seen, from: [...seen.from, entry.source ?? name] });
+      }
+    }
+    const shared = [...statedBy].filter(([, { from }]) => from.length > 1);
     const tables = Object.fromEntries(entries.flatMap(({ name, summary }) => {
-      const { links, related_tables, author_text, model_descriptions, ...rest } = summary;
+      const { author_stated, links, related_tables, author_text, ingest_notes, model_descriptions, ...rest } = summary;
+      const ownStated = (author_stated ?? [])
+        .filter((entry) => (statedBy.get(entry.text)?.from.length ?? 0) === 1)
+        .map((entry) => statedLine(entry, name));
       const shown = {
         ...rest,
+        ...(withStated && ownStated.length ? { author_stated: ownStated } : {}),
         ...(withLinks && links ? { links } : {}),
         ...(withLinks && related_tables ? { related_tables } : {}),
         ...(withText && author_text ? { author_text } : {}),
+        ...(withText && ingest_notes ? { ingest_notes } : {}),
         ...(withText && model_descriptions ? { model_descriptions } : {})
       };
       return Object.keys(shown).length > 0 ? [[name, shown]] : [];
     }));
-    const shownText = (key: "author_text" | "model_descriptions") =>
+    const shownText = (key: "author_text" | "ingest_notes" | "model_descriptions") =>
       withText && entries.some((entry) => entry.summary[key]);
     const omitted = ordered.length - entries.length;
     const shownRelated = withLinks && entries.some((entry) => entry.summary.related_tables);
     return {
       note: ANNOTATION_NOTE,
+      ...(statedBy.size > 0 ? { author_stated_note: AUTHOR_STATED_NOTE } : {}),
+      ...(shared.length > 0
+        ? { author_stated_shared: shared.map(([text, { kind, from }]) => ({ text, ...(kind ? { kind } : {}), from })) }
+        : {}),
       ...(shownRelated ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
       ...(shownText("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
+      ...(shownText("ingest_notes") ? { ingest_notes_note: INGEST_NOTES_NOTE } : {}),
       ...(shownText("model_descriptions") ? { model_descriptions_note: DESCRIPTIONS_NOTE } : {}),
       tables,
       ...(omitted > 0 ? { omitted_tables: omitted, hint: "inspect_schema with table_names shows a table's annotation" } : {})
     };
   };
   const fits = (rendered: unknown): boolean => JSON.stringify(rendered).length <= maxChars;
-  // Full text, then compact text, then the base annotation (links kept) before cutting further,
-  // so enabling a text layer never shows less than the base would.
+  // Full text, then compact text, then the base annotation (links kept), then the base with only
+  // the authors' statements, before cutting further -- so enabling a text layer never shows less
+  // than the base would, and no table is dropped to make room for statements.
   const compact = ordered.map(({ name, summary }) => ({ name, summary: compactText(summary) }));
-  const attempts: Array<[typeof ordered, boolean, boolean]> = [
-    [ordered, true, true],
-    [ordered, false, true],
-    [compact, true, true],
-    [compact, false, true],
-    [ordered, true, false]
+  const attempts: Array<[typeof ordered, boolean, boolean, boolean]> = [
+    [ordered, true, true, true],
+    [ordered, false, true, true],
+    [compact, true, true, true],
+    [compact, false, true, true],
+    [ordered, true, false, true],
+    [ordered, false, false, true],
+    [ordered, true, false, false]
   ];
-  for (const [entries, withLinks, withText] of attempts) {
-    const rendered = render(entries, withLinks, withText);
+  for (const [entries, withLinks, withText, withStated] of attempts) {
+    const rendered = render(entries, withLinks, withText, withStated);
     if (fits(rendered)) {
       return rendered;
     }
   }
   const kept = [...ordered];
-  let rendered = render(kept, false, false);
+  let rendered = render(kept, false, false, false);
   while (kept.length > 1 && !fits(rendered)) {
     kept.pop();
-    rendered = render(kept, false, false);
+    rendered = render(kept, false, false, false);
   }
   return rendered;
 };
@@ -377,43 +419,57 @@ const summarizeTable = (table: EnvAnnotationTable, limits: TableLimits): TableSu
     .sort((a, b) => b.weight - a.weight || a.other_table.localeCompare(b.other_table))
     .slice(0, limits.relatedTables)
     .map(relatedTableText);
-  const authorText = authorTextLines(table.author_text, limits.authorTextChars);
+  const authorStated = authorTextEntries(table.author_text, "stated", limits.authorTextChars);
+  const authorText = authorTextEntries(table.author_text, "context", limits.authorTextChars).map((e) => e.text);
+  const ingestNotes = authorTextEntries(table.author_text, "ingest", limits.authorTextChars).map((e) => e.text);
   const modelDescriptions = describedLines(table.descriptions, table.columns, limits.describedColumns);
   const summary: TableSummary = {
     ...(flags.length ? { eligibility_flags: flags } : {}),
     ...(groups.size ? { competing_measures: [...groups.values()] } : {}),
     ...(identifiers.length ? { identifiers } : {}),
+    ...(authorStated.length ? { author_stated: authorStated } : {}),
     ...(links.length ? { links } : {}),
     ...(relatedTables.length ? { related_tables: relatedTables } : {}),
     ...(authorText.length ? { author_text: authorText } : {}),
+    ...(ingestNotes.length ? { ingest_notes: ingestNotes } : {}),
     ...(modelDescriptions ? { model_descriptions: modelDescriptions } : {})
   };
   return Object.keys(summary).length > 0 ? summary : undefined;
 };
 
-/** Table-level source text, then column notes, verbatim, up to `maxChars` in all. */
-const authorTextLines = (text: EnvAnnotationTable["author_text"], maxChars: number): string[] => {
+/** The entries with `role` (missing roles count as "context"): table-level text, then column
+ * notes, verbatim, whole entries only, up to `maxChars` of text in all. */
+const authorTextEntries = (
+  text: EnvAnnotationTable["author_text"],
+  role: string,
+  maxChars: number
+): EnvAnnotationTextEntry[] => {
   if (!text) {
     return [];
   }
-  const all = [
-    ...text.table.map((entry) => entry.text),
-    ...Object.values(text.columns).flatMap((entries) => entries.map((entry) => entry.text))
-  ];
-  const lines: string[] = [];
+  const hasRole = (entry: EnvAnnotationTextEntry) => (entry.role ?? "context") === role;
+  const all = [...text.table.filter(hasRole), ...Object.values(text.columns).flatMap((entries) => entries.filter(hasRole))];
+  const kept: EnvAnnotationTextEntry[] = [];
   let used = 0;
-  for (const line of all) {
-    if (used + line.length > maxChars) {
-      const room = maxChars - used;
-      if (room > 40) {
-        lines.push(`${line.slice(0, room)}…`);
-      }
-      break;
+  for (const entry of all) {
+    if (used + entry.text.length > maxChars) {
+      break;  // never a cut line: a partial quote would change what the source says
     }
-    lines.push(line);
-    used += line.length;
+    kept.push(entry);
+    used += entry.text.length;
   }
-  return lines;
+  return kept;
+};
+
+/**
+ * An author statement as shown: the verbatim text, then `[kind, where]` -- e.g. `[footnote,
+ * notes#2]` for row 2 of `<table>__notes`; other origins are named in full.
+ */
+const statedLine = (entry: EnvAnnotationTextEntry, table: string): string => {
+  const notesRow = `${table}__notes#`;
+  const where = entry.source?.startsWith(notesRow) ? `notes#${entry.source.slice(notesRow.length)}` : entry.source;
+  const label = [entry.kind, where].filter(Boolean).join(", ");
+  return label ? `${entry.text} [${label}]` : entry.text;
 };
 
 /** Roles whose columns' descriptions are shown first, in this order. */
@@ -450,9 +506,10 @@ const describedLines = (
 };
 
 /** The compact form of a table's text layers: the table sentence, the first two column
- * sentences (already ordered by role), and the first line of author text. */
+ * sentences (already ordered by role), and the first line of author text (the authors'
+ * statements are kept whole; ingest notes are left out). */
 const compactText = (summary: TableSummary): TableSummary => {
-  const { author_text, model_descriptions, ...rest } = summary;
+  const { author_text, ingest_notes: _ingestNotes, model_descriptions, ...rest } = summary;
   const columns = Object.entries(model_descriptions?.columns ?? {}).slice(0, 2);
   const compactDescriptions = model_descriptions
     ? {
@@ -495,6 +552,7 @@ export const envAnnotationDeliveryFromEnvironment = (
 
 export const DESCRIBE_TABLES_SECTIONS = [
   "roles",
+  "author_stated",
   "links",
   "related_tables",
   "author_text",
@@ -504,6 +562,7 @@ export const DESCRIBE_TABLES_SECTIONS = [
 export type DescribeTablesSection = (typeof DESCRIBE_TABLES_SECTIONS)[number];
 const DEFAULT_DESCRIBE_SECTIONS: readonly DescribeTablesSection[] = [
   "roles",
+  "author_stated",
   "links",
   "related_tables",
   "author_text",
@@ -515,7 +574,8 @@ const DESCRIBE_DROP_ORDER: readonly DescribeTablesSection[] = [
   "descriptions",
   "author_text",
   "links",
-  "related_tables"
+  "related_tables",
+  "author_stated"
 ];
 const INDEX_NOTE =
   "Deciding roles are shown inline. `more` lists what else is annotated for a table; read it with "
@@ -536,8 +596,9 @@ const indexLine = (summary: TableSummary | undefined): string | undefined => {
   const described = (descriptions?.table ? 1 : 0) + Object.keys(descriptions?.columns ?? {}).length;
   const parts = [
     ...(summary?.links?.length ? [plural(summary.links.length, "link")] : []),
+    ...(summary?.author_stated?.length ? [plural(summary.author_stated.length, "author statement")] : []),
     ...(summary?.related_tables?.length ? [plural(summary.related_tables.length, "related table")] : []),
-    ...(summary?.author_text?.length ? ["README/notes"] : []),
+    ...(summary?.author_text?.length || summary?.ingest_notes?.length ? ["README/notes"] : []),
     ...(described ? [plural(described, "description")] : [])
   ];
   return parts.length ? `describe_tables: ${parts.join(", ")}` : undefined;
@@ -623,7 +684,7 @@ export const describeTables = (
   for (const name of unique([...tableNames])) {
     const table = lookupTable(annotation, name);
     if (table) {
-      found.push({ name, detail: describeTable(table, sections, options.columns) });
+      found.push({ name, detail: describeTable(name, table, sections, options.columns) });
     } else {
       unknown.push({ name, close_matches: closeTableNames(annotation, name) });
     }
@@ -633,7 +694,9 @@ export const describeTables = (
     const shown = (key: string) => entries.some(({ detail }) => detail[key] !== undefined);
     return {
       note: ANNOTATION_NOTE,
+      ...(shown("author_stated") ? { author_stated_note: AUTHOR_STATED_NOTE } : {}),
       ...(shown("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
+      ...(shown("ingest_notes") ? { ingest_notes_note: INGEST_NOTES_NOTE } : {}),
       ...(shown("descriptions") ? { descriptions_note: DESCRIPTIONS_NOTE } : {}),
       ...(shown("related_tables") ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
       tables: Object.fromEntries(entries.map(({ name, detail }) => [name, detail])),
@@ -649,9 +712,10 @@ export const describeTables = (
     if (fits(render(entries))) {
       return render(entries);
     }
+    const keys = section === "author_text" ? ["author_text", "ingest_notes"] : [section];
     for (const { name, detail } of entries) {
-      if (detail[section] !== undefined) {
-        delete detail[section];
+      if (keys.some((key) => detail[key] !== undefined)) {
+        keys.forEach((key) => delete detail[key]);
         omitted[name] = [...(omitted[name] ?? []), section];
       }
     }
@@ -664,6 +728,7 @@ export const describeTables = (
 };
 
 const describeTable = (
+  name: string,
   table: EnvAnnotationTable,
   sections: readonly DescribeTablesSection[],
   columnFilter: readonly string[] | undefined
@@ -681,9 +746,13 @@ const describeTable = (
   const roles = pickRoles(summary);
   const detail: Record<string, unknown> = {
     ...(sections.includes("roles") && Object.keys(roles).length ? { roles } : {}),
+    ...(sections.includes("author_stated") && summary?.author_stated
+      ? { author_stated: summary.author_stated.map((entry) => statedLine(entry, name)) }
+      : {}),
     ...(sections.includes("links") && summary?.links ? { links: summary.links } : {}),
     ...(sections.includes("related_tables") && summary?.related_tables ? { related_tables: summary.related_tables } : {}),
     ...(sections.includes("author_text") && summary?.author_text ? { author_text: summary.author_text } : {}),
+    ...(sections.includes("author_text") && summary?.ingest_notes ? { ingest_notes: summary.ingest_notes } : {}),
     ...(sections.includes("descriptions") && summary?.model_descriptions ? { descriptions: summary.model_descriptions } : {}),
     ...(sections.includes("columns") && columns.length ? { columns: Object.fromEntries(columns) } : {})
   };

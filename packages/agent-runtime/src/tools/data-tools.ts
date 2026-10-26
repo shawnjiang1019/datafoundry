@@ -13,8 +13,11 @@ import { createTokenUsageCorrelationStore } from "../stream/token-usage-correlat
 import type { AgentRunContext, AgUiEventEmitter } from "../types.js";
 import {
   createEnvAnnotationGuard,
+  envAnnotationDeliveryFromEnvironment,
   envAnnotationForTables,
-  type EnvAnnotation
+  envAnnotationIndexForTables,
+  type EnvAnnotation,
+  type EnvAnnotationDelivery
 } from "./env-annotation.js";
 import { enrichSqlDialectError, validateSqlDialect } from "./sql-dialect-validation.js";
 
@@ -107,6 +110,8 @@ type CreateDataFoundryToolRegistryInput = {
   emitter: AgUiEventEmitter;
   /** D-Trail environment annotation: enriches schema/preview results and guards SQL (advisory). */
   envAnnotation?: EnvAnnotation | undefined;
+  /** `tool`: inspect_schema shows the roles and an index, describe_tables the rest (default: env). */
+  envAnnotationDelivery?: EnvAnnotationDelivery;
   runContext: AgentRunContext;
   tokenUsageCorrelation?: TokenUsageCorrelationStore;
 };
@@ -126,8 +131,18 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
     const warnings = envAnnotationGuard?.check(sql) ?? [];
     return warnings.length > 0 ? { env_annotation_warnings: warnings } : {};
   };
+  const delivery = input.envAnnotationDelivery ?? envAnnotationDeliveryFromEnvironment();
   const annotationForTables = (tableNames: string[]): { env_annotation?: Record<string, unknown> } => {
     const annotation = input.envAnnotation ? envAnnotationForTables(input.envAnnotation, tableNames) : undefined;
+    return annotation ? { env_annotation: annotation } : {};
+  };
+  // Under `tool` delivery the schema result carries the deciding roles and an index; preview_table
+  // keeps the full block for its one table.
+  const annotationForSchema = (tableNames: string[]): { env_annotation?: Record<string, unknown> } => {
+    if (delivery !== "tool" || !input.envAnnotation) {
+      return annotationForTables(tableNames);
+    }
+    const annotation = envAnnotationIndexForTables(input.envAnnotation, tableNames);
     return annotation ? { env_annotation: annotation } : {};
   };
 
@@ -189,7 +204,7 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
       const rawResult = {
         ...result,
         schema_id,
-        ...annotationForTables(result.tables.map((table) => table.name))
+        ...annotationForSchema(result.tables.map((table) => table.name))
       };
       resultMetadata.set(rawResult, { datasourceId, stepId });
       return rawResult;

@@ -480,6 +480,229 @@ const linkText = (link: EnvAnnotationLink): string =>
   `${link.column} -> ${link.other_table}.${link.other_column} (${link.kind}`
   + `${link.signals?.length ? `: ${link.signals.join(", ")}` : ""})`;
 
+/**
+ * How the annotation reaches the agent. `inline` (the default) attaches it to inspect_schema and
+ * preview_table results as before. `tool` keeps only the deciding roles inline in inspect_schema,
+ * adds a one-line index per table, and serves everything else through the describe_tables tool.
+ */
+export const ENV_ANNOTATION_DELIVERY_VARIABLE = "DF_ENV_ANNOTATION_DELIVERY";
+export type EnvAnnotationDelivery = "inline" | "tool";
+
+/** The delivery named by DF_ENV_ANNOTATION_DELIVERY; anything but "tool" is "inline". */
+export const envAnnotationDeliveryFromEnvironment = (
+  env: NodeJS.ProcessEnv = process.env
+): EnvAnnotationDelivery => (env[ENV_ANNOTATION_DELIVERY_VARIABLE]?.trim() === "tool" ? "tool" : "inline");
+
+export const DESCRIBE_TABLES_SECTIONS = [
+  "roles",
+  "links",
+  "related_tables",
+  "author_text",
+  "descriptions",
+  "columns"
+] as const;
+export type DescribeTablesSection = (typeof DESCRIBE_TABLES_SECTIONS)[number];
+const DEFAULT_DESCRIBE_SECTIONS: readonly DescribeTablesSection[] = [
+  "roles",
+  "links",
+  "related_tables",
+  "author_text",
+  "descriptions"
+];
+/** Sections dropped first when a describe_tables result does not fit its budget. */
+const DESCRIBE_DROP_ORDER: readonly DescribeTablesSection[] = [
+  "columns",
+  "descriptions",
+  "author_text",
+  "links",
+  "related_tables"
+];
+const INDEX_NOTE =
+  "Deciding roles are shown inline. `more` lists what else is annotated for a table; read it with "
+  + "describe_tables before querying or joining that table.";
+
+type RoleSummary = Pick<TableSummary, "eligibility_flags" | "competing_measures" | "identifiers">;
+
+const pickRoles = (summary: TableSummary | undefined): RoleSummary => ({
+  ...(summary?.eligibility_flags ? { eligibility_flags: summary.eligibility_flags } : {}),
+  ...(summary?.competing_measures ? { competing_measures: summary.competing_measures } : {}),
+  ...(summary?.identifiers ? { identifiers: summary.identifiers } : {})
+});
+
+/** e.g. `describe_tables: 19 links, 1 related table, README/notes, 4 descriptions` */
+const indexLine = (summary: TableSummary | undefined): string | undefined => {
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const descriptions = summary?.model_descriptions;
+  const described = (descriptions?.table ? 1 : 0) + Object.keys(descriptions?.columns ?? {}).length;
+  const parts = [
+    ...(summary?.links?.length ? [plural(summary.links.length, "link")] : []),
+    ...(summary?.related_tables?.length ? [plural(summary.related_tables.length, "related table")] : []),
+    ...(summary?.author_text?.length ? ["README/notes"] : []),
+    ...(described ? [plural(described, "description")] : [])
+  ];
+  return parts.length ? `describe_tables: ${parts.join(", ")}` : undefined;
+};
+
+/**
+ * The inspect_schema annotation under `tool` delivery: per table, the deciding roles (eligibility
+ * flags, competing measures, identifiers) plus a `more` index line naming what describe_tables
+ * holds. Index lines are dropped before whole tables when even this does not fit.
+ */
+export const envAnnotationIndexForTables = (
+  annotation: EnvAnnotation,
+  tableNames: string[],
+  maxChars = envAnnotationMaxCharsFromEnvironment()
+): Record<string, unknown> | undefined => {
+  const entries = tableNames.flatMap((name) => {
+    const table = lookupTable(annotation, name);
+    const summary = table ? summarizeTable(table, UNLIMITED) : undefined;
+    const roles = pickRoles(summary);
+    const more = indexLine(summary);
+    return Object.keys(roles).length > 0 || more ? [{ name, roles, more }] : [];
+  });
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const ordered = [
+    ...entries.filter((entry) => entry.roles.eligibility_flags),
+    ...entries.filter((entry) => !entry.roles.eligibility_flags)
+  ];
+  const render = (kept: typeof ordered, withMore: boolean) => {
+    const tables = Object.fromEntries(kept.flatMap(({ name, roles, more }) => {
+      const shown = { ...roles, ...(withMore && more ? { more } : {}) };
+      return Object.keys(shown).length > 0 ? [[name, shown]] : [];
+    }));
+    const omitted = ordered.length - kept.length;
+    return {
+      note: ANNOTATION_NOTE,
+      describe_note: INDEX_NOTE,
+      tables,
+      ...(omitted > 0 ? { omitted_tables: omitted, hint: "inspect_schema with table_names shows a table's index" } : {})
+    };
+  };
+  const fits = (rendered: unknown): boolean => JSON.stringify(rendered).length <= maxChars;
+  for (const withMore of [true, false]) {
+    const rendered = render(ordered, withMore);
+    if (fits(rendered)) {
+      return rendered;
+    }
+  }
+  const kept = [...ordered];
+  let rendered = render(kept, false);
+  while (kept.length > 1 && !fits(rendered)) {
+    kept.pop();
+    rendered = render(kept, false);
+  }
+  return rendered;
+};
+
+export type DescribeTablesOptions = {
+  sections?: readonly string[];
+  /** Restricts the `columns` section to these column names (case-insensitive). */
+  columns?: readonly string[];
+  maxChars?: number;
+};
+
+/**
+ * The full annotation for the named tables (the describe_tables tool): each requested section, in
+ * full, with the layer notes that say how far to trust it. To fit `maxChars`, whole sections are
+ * dropped in DESCRIBE_DROP_ORDER and then whole tables, and `omitted` lists what was left out, so
+ * the result is always valid JSON. Unknown names are reported with close matches.
+ */
+export const describeTables = (
+  annotation: EnvAnnotation,
+  tableNames: readonly string[],
+  options: DescribeTablesOptions = {}
+): Record<string, unknown> => {
+  const maxChars = options.maxChars ?? envAnnotationMaxCharsFromEnvironment();
+  const requested = (options.sections ?? []).filter((section): section is DescribeTablesSection =>
+    (DESCRIBE_TABLES_SECTIONS as readonly string[]).includes(section));
+  const sections = requested.length > 0 ? requested : DEFAULT_DESCRIBE_SECTIONS;
+  const found: { name: string; detail: Record<string, unknown> }[] = [];
+  const unknown: { name: string; close_matches: string[] }[] = [];
+  for (const name of unique([...tableNames])) {
+    const table = lookupTable(annotation, name);
+    if (table) {
+      found.push({ name, detail: describeTable(table, sections, options.columns) });
+    } else {
+      unknown.push({ name, close_matches: closeTableNames(annotation, name) });
+    }
+  }
+  const omitted: Record<string, string[]> = {};
+  const render = (entries: typeof found) => {
+    const shown = (key: string) => entries.some(({ detail }) => detail[key] !== undefined);
+    return {
+      note: ANNOTATION_NOTE,
+      ...(shown("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
+      ...(shown("descriptions") ? { descriptions_note: DESCRIPTIONS_NOTE } : {}),
+      ...(shown("related_tables") ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
+      tables: Object.fromEntries(entries.map(({ name, detail }) => [name, detail])),
+      ...(unknown.length > 0 ? { unknown_tables: unknown } : {}),
+      ...(Object.keys(omitted).length > 0
+        ? { omitted, hint: "call describe_tables for fewer tables or specific sections to see what was omitted" }
+        : {})
+    };
+  };
+  const fits = (rendered: unknown): boolean => JSON.stringify(rendered).length <= maxChars;
+  const entries = found.map(({ name, detail }) => ({ name, detail: { ...detail } }));
+  for (const section of DESCRIBE_DROP_ORDER) {
+    if (fits(render(entries))) {
+      return render(entries);
+    }
+    for (const { name, detail } of entries) {
+      if (detail[section] !== undefined) {
+        delete detail[section];
+        omitted[name] = [...(omitted[name] ?? []), section];
+      }
+    }
+  }
+  while (entries.length > 1 && !fits(render(entries))) {
+    const dropped = entries.pop()!;
+    omitted[dropped.name] = ["table"];
+  }
+  return render(entries);
+};
+
+const describeTable = (
+  table: EnvAnnotationTable,
+  sections: readonly DescribeTablesSection[],
+  columnFilter: readonly string[] | undefined
+): Record<string, unknown> => {
+  const summary = summarizeTable(table, UNLIMITED);
+  const wanted = new Set(columnFilter?.map((column) => column.toLowerCase()));
+  const columns = Object.entries(table.columns)
+    .filter(([name]) => wanted.size === 0 || wanted.has(name.toLowerCase()))
+    .map(([name, info]) => [name, {
+      ...(info.type ? { type: info.type } : {}),
+      ...(info.cardinality ? { cardinality: info.cardinality } : {}),
+      ...(info.roles?.length ? { roles: info.roles } : {}),
+      ...(info.value_sample?.length ? { value_sample: info.value_sample } : {})
+    }]);
+  const roles = pickRoles(summary);
+  const detail: Record<string, unknown> = {
+    ...(sections.includes("roles") && Object.keys(roles).length ? { roles } : {}),
+    ...(sections.includes("links") && summary?.links ? { links: summary.links } : {}),
+    ...(sections.includes("related_tables") && summary?.related_tables ? { related_tables: summary.related_tables } : {}),
+    ...(sections.includes("author_text") && summary?.author_text ? { author_text: summary.author_text } : {}),
+    ...(sections.includes("descriptions") && summary?.model_descriptions ? { descriptions: summary.model_descriptions } : {}),
+    ...(sections.includes("columns") && columns.length ? { columns: Object.fromEntries(columns) } : {})
+  };
+  return Object.keys(detail).length > 0 ? detail : { note: "nothing annotated for the requested sections" };
+};
+
+/** Up to five annotated table names that contain, or are contained in, the wanted name. */
+const closeTableNames = (annotation: EnvAnnotation, name: string): string[] => {
+  const wanted = name.toLowerCase().slice(name.lastIndexOf(".") + 1);
+  return Object.keys(annotation.tables)
+    .filter((candidate) => {
+      const lower = candidate.toLowerCase();
+      return lower.includes(wanted) || wanted.includes(lower.split("__").pop() ?? lower);
+    })
+    .slice(0, 5);
+};
+
+const unique = (values: string[]): string[] => [...new Set(values)];
+
 export type EnvAnnotationGuard = {
   /** Advisory warnings for one SQL statement; each warning is returned at most once per guard. */
   check(sql: string): string[];

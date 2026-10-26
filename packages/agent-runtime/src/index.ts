@@ -65,7 +65,13 @@ import {
 } from "./context/inventory/context-source-metadata.js";
 import { GoalRuntimeAdapter, type GoalRequest } from "./memory/goal-runtime-adapter.js";
 import { createDataFoundryToolRegistry } from "./tools/data-tools.js";
-import { envAnnotationFromEnvironment, parseEnvAnnotation, type EnvAnnotation } from "./tools/env-annotation.js";
+import { createDescribeTablesTool, DESCRIBE_TABLES_TOOL_NAME } from "./tools/describe-tables.js";
+import {
+  envAnnotationDeliveryFromEnvironment,
+  envAnnotationFromEnvironment,
+  parseEnvAnnotation,
+  type EnvAnnotation
+} from "./tools/env-annotation.js";
 import { GovernedToolFactory } from "./tools/governed-tool-factory.js";
 import {
   maybeIngestSessionFileOutput,
@@ -154,6 +160,7 @@ export const protocolHandoffInputSchema = z.object({
 const HITL_TOOL_NAMES = ["ask_user", "submit_plan"] as const;
 export const STATIC_AGENT_TOOL_NAMES = [
   "ask_user",
+  "describe_tables",
   "edit_file",
   "execute_command",
   "file_stat",
@@ -513,9 +520,16 @@ export const createDataFoundry = async (
       alwaysAllowTools.add(name);
     }
   }
+  // describe_tables (DF_ENV_ANNOTATION_DELIVERY=tool): off by default, so other runs keep their toolset.
+  const annotationTools: Record<string, ReturnType<typeof createDescribeTablesTool>> = {};
+  if (dataToolsEnabled && envAnnotation && envAnnotationDeliveryFromEnvironment() === "tool") {
+    annotationTools[DESCRIBE_TABLES_TOOL_NAME] = createDescribeTablesTool(envAnnotation);
+    alwaysAllowTools.add(DESCRIBE_TABLES_TOOL_NAME);
+  }
   const toolPlan = buildToolPlan({
     groups: [
       { source: "data", tools: dataToolsEnabled ? registry.mastraTools : {} },
+      { source: "annotation", tools: annotationTools },
       { source: "files", tools: fileAssetTools },
       { source: "knowledge", tools: knowledgeTools },
       { source: "task", tools: taskTools },
@@ -1145,6 +1159,12 @@ export const buildAgentInstructions = (input: AgentInstructionsInput): string =>
       + "datasource must be preceded by an inspect_schema for it; without a valid schema_id the tools fail with "
       + "SCHEMA_REQUIRED. The token enforces inspect-before-query ordering within this run; Data Gateway remains the "
       + "authorization and read-only SQL boundary. Reuse the token instead of repeatedly inspecting the same schema."
+    );
+  }
+  if (enabled(DESCRIBE_TABLES_TOOL_NAME)) {
+    policies.push("Read the table notes before you query. In inspect_schema results, a table with a `more` line "
+      + "has annotation beyond its inline roles: related tables and join columns, the dataset's README notes, and "
+      + "descriptions. Call describe_tables for the tables you plan to query or join before writing SQL against them."
     );
   }
   if (enabled("run_sql_readonly")) {

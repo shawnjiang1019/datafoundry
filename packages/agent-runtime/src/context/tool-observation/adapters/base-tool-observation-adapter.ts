@@ -74,21 +74,28 @@ export abstract class BaseToolObservationAdapter implements ToolObservationAdapt
   }
 }
 
-const boundStructuredValue = (value: unknown, maxChars: number): unknown => {
+/**
+ * Fit a value into `maxChars` of serialized JSON. An oversized value becomes a text `preview` of its
+ * JSON; the preview is shortened until the wrapper itself fits, because the context budget measures
+ * the serialized wrapper, where the preview's quotes and backslashes are escaped a second time.
+ */
+export const boundStructuredValue = (value: unknown, maxChars: number): unknown => {
   const serialized = safeSerialize(value);
   if (serialized.length <= maxChars) {
     return value;
   }
 
   const reservedChars = 160;
-  return {
-    original_chars: serialized.length,
-    preview: serialized.slice(0, Math.max(maxChars - reservedChars, 0)),
-    truncated: true
-  };
+  let keep = Math.max(maxChars - reservedChars, 0);
+  let bounded = { original_chars: serialized.length, preview: serialized.slice(0, keep), truncated: true };
+  while (keep > 0 && safeSerialize(bounded).length > maxChars) {
+    keep = Math.floor(keep * 0.85);
+    bounded = { ...bounded, preview: serialized.slice(0, keep) };
+  }
+  return bounded;
 };
 
-const safeSerialize = (value: unknown): string => {
+export const safeSerialize = (value: unknown): string => {
   try {
     return JSON.stringify(value);
   } catch {

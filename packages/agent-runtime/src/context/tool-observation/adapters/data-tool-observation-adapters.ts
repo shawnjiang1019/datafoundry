@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { asRecord, BaseToolObservationAdapter } from "./base-tool-observation-adapter.js";
+import {
+  asRecord,
+  BaseToolObservationAdapter,
+  boundStructuredValue,
+  safeSerialize
+} from "./base-tool-observation-adapter.js";
 import type { ContextBudget } from "../../inventory/context-budget.js";
 import { createContextItem, type ContextItem } from "../../inventory/context-item.js";
 import { createContextSourceMetadata } from "../../inventory/context-source-metadata.js";
@@ -18,10 +23,63 @@ export class PreviewTableToolObservationAdapter extends BaseToolObservationAdapt
   readonly toolName = "preview_table";
   readonly resultType = "data-preview-table";
 
+  /** Fit the preview by dropping rows, then columns, so the model always gets valid rows. */
+  toContextItems(raw: unknown, budget: ContextBudget): ContextItem[] {
+    return super.toContextItems(fitTablePreview(asRecord(raw), budget.maxChars ?? 12000), budget);
+  }
+
   protected project(raw: unknown): unknown {
     return asRecord(raw);
   }
 }
+
+/** Longest cell text kept in a fitted preview. */
+const PREVIEW_MAX_CELL_CHARS = 200;
+/** Room left for the context package's own wrapping of the item. */
+const PREVIEW_RESERVED_CHARS = 64;
+
+/**
+ * A `{columns, rows, ...}` preview cut to fit `maxChars` as whole rows and columns, never as cut-off
+ * JSON: long cells are shortened first, then rows dropped from the end (at least one is kept),
+ * then columns from the right. Every other field, the env annotation included, is kept whole, and
+ * `rows_shown` / `rows_omitted` / `columns_omitted` say what was left out. A preview that is not
+ * column/row shaped, or that cannot fit even as one column, is returned unchanged for the generic
+ * bound to handle.
+ */
+export const fitTablePreview = (preview: Record<string, unknown>, maxChars: number): Record<string, unknown> => {
+  const budget = Math.max(maxChars - PREVIEW_RESERVED_CHARS, 0);
+  const fits = (value: unknown): boolean => safeSerialize(value).length <= budget;
+  if (fits(preview) || !Array.isArray(preview.columns) || !Array.isArray(preview.rows)) {
+    return preview;
+  }
+  const columns = preview.columns as unknown[];
+  const rows = (preview.rows as unknown[]).map((row) =>
+    Array.isArray(row) ? row.map(shortenCell) : row);
+  const build = (rowCount: number, columnCount: number): Record<string, unknown> => ({
+    ...preview,
+    columns: columns.slice(0, columnCount),
+    rows: rows.slice(0, rowCount).map((row) => (Array.isArray(row) ? row.slice(0, columnCount) : row)),
+    rows_shown: Math.min(rowCount, rows.length),
+    ...(rows.length > rowCount ? { rows_omitted: rows.length - rowCount } : {}),
+    ...(columns.length > columnCount ? { columns_omitted: columns.length - columnCount } : {}),
+    truncated: true
+  });
+  let rowCount = rows.length;
+  while (rowCount > 1 && !fits(build(rowCount, columns.length))) {
+    rowCount -= 1;
+  }
+  let columnCount = columns.length;
+  while (columnCount > 1 && !fits(build(rowCount, columnCount))) {
+    columnCount -= 1;
+  }
+  const fitted = build(rowCount, columnCount);
+  return fits(fitted) ? fitted : preview;
+};
+
+const shortenCell = (cell: unknown): unknown =>
+  typeof cell === "string" && cell.length > PREVIEW_MAX_CELL_CHARS
+    ? `${cell.slice(0, PREVIEW_MAX_CELL_CHARS)}…`
+    : cell;
 
 export class RetrieveKnowledgeToolObservationAdapter extends BaseToolObservationAdapter {
   readonly toolName = "retrieve_knowledge";
@@ -174,28 +232,6 @@ const contentHash = (text: string): string =>
   createHash("sha256").update(normalizeOverlapText(text)).digest("hex");
 
 const normalizeOverlapText = (text: string): string => text.toLowerCase().replaceAll(/\s+/gu, " ").trim();
-
-const safeSerialize = (value: unknown): string => {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-};
-
-const boundStructuredValue = (value: unknown, maxChars: number): unknown => {
-  const serialized = safeSerialize(value);
-  if (serialized.length <= maxChars) {
-    return value;
-  }
-
-  const reservedChars = 160;
-  return {
-    original_chars: serialized.length,
-    preview: serialized.slice(0, Math.max(maxChars - reservedChars, 0)),
-    truncated: true
-  };
-};
 
 const stringField = (record: Record<string, unknown>, key: string): string | undefined => {
   const value = record[key];

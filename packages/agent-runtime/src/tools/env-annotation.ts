@@ -541,14 +541,19 @@ const linkText = (link: EnvAnnotationLink): string =>
  * How the annotation reaches the agent. `inline` (the default) attaches it to inspect_schema and
  * preview_table results as before. `tool` keeps only the deciding roles inline in inspect_schema,
  * adds a one-line index per table, and serves everything else through the describe_tables tool.
+ * `chain` runs describe_tables for the inspected tables as part of every inspect_schema call and
+ * returns it next to the schema (`describe_tables`); the agent can also call the tool itself.
  */
 export const ENV_ANNOTATION_DELIVERY_VARIABLE = "DF_ENV_ANNOTATION_DELIVERY";
-export type EnvAnnotationDelivery = "inline" | "tool";
+export type EnvAnnotationDelivery = "inline" | "tool" | "chain";
 
-/** The delivery named by DF_ENV_ANNOTATION_DELIVERY; anything but "tool" is "inline". */
+/** The delivery named by DF_ENV_ANNOTATION_DELIVERY; anything but "tool" or "chain" is "inline". */
 export const envAnnotationDeliveryFromEnvironment = (
   env: NodeJS.ProcessEnv = process.env
-): EnvAnnotationDelivery => (env[ENV_ANNOTATION_DELIVERY_VARIABLE]?.trim() === "tool" ? "tool" : "inline");
+): EnvAnnotationDelivery => {
+  const named = env[ENV_ANNOTATION_DELIVERY_VARIABLE]?.trim();
+  return named === "tool" || named === "chain" ? named : "inline";
+};
 
 export const DESCRIBE_TABLES_SECTIONS = [
   "roles",

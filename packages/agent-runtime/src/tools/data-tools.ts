@@ -13,6 +13,7 @@ import { createTokenUsageCorrelationStore } from "../stream/token-usage-correlat
 import type { AgentRunContext, AgUiEventEmitter } from "../types.js";
 import {
   createEnvAnnotationGuard,
+  describeTables,
   envAnnotationDeliveryFromEnvironment,
   envAnnotationForTables,
   envAnnotationIndexForTables,
@@ -51,6 +52,8 @@ type SchemaCapability = {
 
 type InspectSchemaResult = SchemaSummary & {
   env_annotation?: Record<string, unknown>;
+  /** `chain` delivery: the describe_tables result for the inspected tables. */
+  describe_tables?: Record<string, unknown>;
   schema_id: string;
 };
 
@@ -136,11 +139,17 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
     const annotation = input.envAnnotation ? envAnnotationForTables(input.envAnnotation, tableNames) : undefined;
     return annotation ? { env_annotation: annotation } : {};
   };
-  // Under `tool` delivery the schema result carries the deciding roles and an index; preview_table
-  // keeps the full block for its one table.
-  const annotationForSchema = (tableNames: string[]): { env_annotation?: Record<string, unknown> } => {
-    if (delivery !== "tool" || !input.envAnnotation) {
+  // Under `tool` delivery the schema result carries the deciding roles and an index; under `chain`
+  // it carries describe_tables for the same tables instead. preview_table keeps the full block for
+  // its one table either way.
+  const annotationForSchema = (
+    tableNames: string[]
+  ): { env_annotation?: Record<string, unknown>; describe_tables?: Record<string, unknown> } => {
+    if (!input.envAnnotation || delivery === "inline") {
       return annotationForTables(tableNames);
+    }
+    if (delivery === "chain") {
+      return { describe_tables: describeTables(input.envAnnotation, tableNames) };
     }
     const annotation = envAnnotationIndexForTables(input.envAnnotation, tableNames);
     return annotation ? { env_annotation: annotation } : {};

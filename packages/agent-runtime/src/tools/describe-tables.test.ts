@@ -209,9 +209,24 @@ describe("tool delivery in inspect_schema", () => {
     expect(preview.env_annotation).toEqual(envAnnotationForTables(annotation, [CLINICAL]));
   });
 
-  it("keeps today's inline block unless tool delivery is asked for", async () => {
+  it("chains describe_tables into inspect_schema under chain delivery", async () => {
+    const registry = createRegistry("chain");
+    const schema = await registry.inspectSchema({ datasource_id: "bio" });
+    expect(schema.env_annotation).toBeUndefined();
+    expect(schema.describe_tables).toEqual(describeTables(annotation, [CLINICAL, PHOSPHO, "plain"]));
+    const chained = schema.describe_tables as { tables: Record<string, Record<string, unknown>> };
+    expect(chained.tables[CLINICAL]).toHaveProperty("links");
+    const preview = await registry.previewTable({ schema_id: schema.schema_id, table: CLINICAL }) as {
+      env_annotation?: unknown;
+    };
+    expect(preview.env_annotation).toEqual(envAnnotationForTables(annotation, [CLINICAL]));
+  });
+
+  it("keeps today's inline block unless tool or chain delivery is asked for", async () => {
     expect(envAnnotationDeliveryFromEnvironment({})).toBe("inline");
     expect(envAnnotationDeliveryFromEnvironment({ DF_ENV_ANNOTATION_DELIVERY: "tool" })).toBe("tool");
+    expect(envAnnotationDeliveryFromEnvironment({ DF_ENV_ANNOTATION_DELIVERY: "chain" })).toBe("chain");
+    expect(envAnnotationDeliveryFromEnvironment({ DF_ENV_ANNOTATION_DELIVERY: "other" })).toBe("inline");
     const schema = await createRegistry("inline").inspectSchema({ datasource_id: "bio" });
     expect(schema.env_annotation).toEqual(envAnnotationForTables(annotation, [CLINICAL, PHOSPHO, "plain"]));
   });
@@ -238,5 +253,12 @@ describe("describe_tables instructions", () => {
     expect(buildAgentInstructions({ ...baseInput, toolNames: [...data, DESCRIBE_TABLES_TOOL_NAME] }))
       .toContain("Call describe_tables for the tables you plan to query or join");
     expect(buildAgentInstructions({ ...baseInput, toolNames: data })).not.toContain("describe_tables");
+  });
+
+  it("says inspect_schema already includes describe_tables under chain delivery", () => {
+    const toolNames = ["inspect_schema", "run_sql_readonly", DESCRIBE_TABLES_TOOL_NAME];
+    const chained = buildAgentInstructions({ ...baseInput, toolNames, envAnnotationDelivery: "chain" });
+    expect(chained).toContain("Every inspect_schema result includes describe_tables");
+    expect(chained).not.toContain("a `more` line");
   });
 });

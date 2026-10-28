@@ -26,10 +26,13 @@ export class ContextBudgetAllocator {
   }
 
   allocate(request: AllocateRequest): ContextBudget {
+    const sourceLimits = this.resolveSourceLimits(request);
+    // A source may carry a block budgeted on its own (inspect_schema's environment annotation);
+    // `additionalMaxChars` admits it on top of the shared cap instead of crowding out the rest.
     return {
       maxTokens: CONTEXT_MAX_TOKENS,
-      maxChars: CONTEXT_MAX_CHARS,
-      sourceLimits: this.resolveSourceLimits(request)
+      maxChars: CONTEXT_MAX_CHARS + (sourceLimits.additionalMaxChars ?? 0),
+      sourceLimits
     };
   }
 

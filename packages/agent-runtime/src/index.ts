@@ -70,7 +70,8 @@ import {
   envAnnotationDeliveryFromEnvironment,
   envAnnotationFromEnvironment,
   parseEnvAnnotation,
-  type EnvAnnotation
+  type EnvAnnotation,
+  type EnvAnnotationDelivery
 } from "./tools/env-annotation.js";
 import { GovernedToolFactory } from "./tools/governed-tool-factory.js";
 import {
@@ -520,9 +521,10 @@ export const createDataFoundry = async (
       alwaysAllowTools.add(name);
     }
   }
-  // describe_tables (DF_ENV_ANNOTATION_DELIVERY=tool): off by default, so other runs keep their toolset.
+  // describe_tables (DF_ENV_ANNOTATION_DELIVERY=tool or chain): off by default, so other runs keep
+  // their toolset. Under `chain` inspect_schema also runs it for the inspected tables.
   const annotationTools: Record<string, ReturnType<typeof createDescribeTablesTool>> = {};
-  if (dataToolsEnabled && envAnnotation && envAnnotationDeliveryFromEnvironment() === "tool") {
+  if (dataToolsEnabled && envAnnotation && envAnnotationDeliveryFromEnvironment() !== "inline") {
     annotationTools[DESCRIBE_TABLES_TOOL_NAME] = createDescribeTablesTool(envAnnotation);
     alwaysAllowTools.add(DESCRIBE_TABLES_TOOL_NAME);
   }
@@ -764,7 +766,8 @@ export const createDataFoundry = async (
       mcpToolNames: input.mcpToolNames ?? [],
       protocolId: protocolState.protocolId,
       analysisRequirements,
-      workspaceAttachments
+      workspaceAttachments,
+      envAnnotationDelivery: envAnnotationDeliveryFromEnvironment()
     }),
     model: input.modelProvider.model as never,
     tools,
@@ -928,6 +931,8 @@ type AgentInstructionsInput = {
   protocolId: string;
   analysisRequirements: AnalysisRequirement[];
   workspaceAttachments: MaterializedWorkspaceAttachment[];
+  /** How the environment annotation is delivered; shapes the describe_tables instruction. */
+  envAnnotationDelivery?: EnvAnnotationDelivery;
 };
 
 type MaterializedWorkspaceAttachment = {
@@ -1162,9 +1167,13 @@ export const buildAgentInstructions = (input: AgentInstructionsInput): string =>
     );
   }
   if (enabled(DESCRIBE_TABLES_TOOL_NAME)) {
-    policies.push("Read the table notes before you query. In inspect_schema results, a table with a `more` line "
-      + "has annotation beyond its inline roles: related tables and join columns, the dataset's README notes, and "
-      + "descriptions. Call describe_tables for the tables you plan to query or join before writing SQL against them."
+    policies.push(input.envAnnotationDelivery === "chain"
+      ? "Read the table notes before you query. Every inspect_schema result includes describe_tables for the "
+        + "inspected tables: the authors' own statements, related tables and join columns, README notes, and "
+        + "descriptions. For other tables, or a section it left out, call describe_tables yourself."
+      : "Read the table notes before you query. In inspect_schema results, a table with a `more` line "
+        + "has annotation beyond its inline roles: related tables and join columns, the dataset's README notes, and "
+        + "descriptions. Call describe_tables for the tables you plan to query or join before writing SQL against them."
     );
   }
   if (enabled("run_sql_readonly")) {

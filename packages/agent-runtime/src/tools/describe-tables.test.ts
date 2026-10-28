@@ -152,12 +152,24 @@ describe("describe_tables", () => {
     expect(full.tables.t0?.author_stated).toEqual([`Table 0 counts each report once; ${"detail ".repeat(12)} [footnote, notes#3]`]);
     const tight = describeTables(wide, names, { maxChars: Math.floor(JSON.stringify(full).length / 2) }) as {
       tables: Record<string, Record<string, unknown>>;
-      omitted?: { sections_dropped_from_tables?: Record<string, number> };
+      omitted?: {
+        sections_dropped_from_tables?: Record<string, number>;
+        tables_trimmed_to_nothing?: string[];
+        tables_dropped?: string[];
+      };
     };
     expect(JSON.stringify(tight).length).toBeLessThanOrEqual(Math.floor(JSON.stringify(full).length / 2));
     expect(tight.tables.t0?.author_stated).toBeDefined();
     expect(tight.tables.t29).toBeUndefined();
     expect(tight.omitted?.sections_dropped_from_tables?.author_stated).toBeGreaterThan(0);
+    // A table left with nothing is named, so every table is shown, named as emptied, or dropped.
+    expect(tight.omitted?.tables_trimmed_to_nothing).toContain("t29");
+    const accounted = new Set([
+      ...Object.keys(tight.tables),
+      ...(tight.omitted?.tables_trimmed_to_nothing ?? []),
+      ...(tight.omitted?.tables_dropped ?? [])
+    ]);
+    expect([...accounted].sort()).toEqual([...names].sort());
   });
 
   it("is exposed as a tool that reads the annotation", () => {

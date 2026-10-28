@@ -710,7 +710,12 @@ export const describeTables = (
   const render = (entries: typeof found) => {
     const shown = (key: string) => entries.some(({ detail }) => detail[key] !== undefined);
     const shared = sharedStatements(entries);
-    const omittedReport = found.length > DESCRIBE_OMITTED_DETAIL_TABLES ? countOmitted(omitted) : omitted;
+    const details = entries.map(({ name, detail }) => [name, withoutShared(detail, shared)] as const);
+    const kept = details.filter(([, detail]) => Object.keys(detail).length > 0 || entries.length === 1);
+    // A table the budget left with nothing is named, not silently absent (per table it already is).
+    const emptied = details.filter(([name, detail]) => Object.keys(detail).length === 0 && omitted[name])
+      .map(([name]) => name);
+    const omittedReport = found.length > DESCRIBE_OMITTED_DETAIL_TABLES ? countOmitted(omitted, emptied) : omitted;
     return {
       note: ANNOTATION_NOTE,
       ...(shown("author_stated") || shared.length > 0 ? { author_stated_note: AUTHOR_STATED_NOTE } : {}),
@@ -719,9 +724,7 @@ export const describeTables = (
       ...(shown("ingest_notes") ? { ingest_notes_note: INGEST_NOTES_NOTE } : {}),
       ...(shown("descriptions") ? { descriptions_note: DESCRIPTIONS_NOTE } : {}),
       ...(shown("related_tables") ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
-      tables: Object.fromEntries(entries
-        .map(({ name, detail }) => [name, withoutShared(detail, shared)] as const)
-        .filter(([, detail]) => Object.keys(detail).length > 0 || entries.length === 1)),
+      tables: Object.fromEntries(kept),
       ...(notAnnotated > 0 ? { tables_without_annotation: notAnnotated } : {}),
       ...(unknown.length > 0 ? { unknown_tables: unknown } : {}),
       ...(Object.keys(omitted).length > 0
@@ -828,8 +831,11 @@ const withoutShared = (
   return own.length > 0 ? { ...rest, author_stated: own } : rest;
 };
 
-/** `omitted` for many tables: how many tables lost each section, and the tables dropped whole. */
-const countOmitted = (omitted: Record<string, string[]>): Record<string, unknown> => {
+/**
+ * `omitted` for many tables: how many tables lost each section, the tables left with nothing to
+ * show (`tables_trimmed_to_nothing`), and the tables dropped whole.
+ */
+const countOmitted = (omitted: Record<string, string[]>, emptied: string[]): Record<string, unknown> => {
   const sections: Record<string, number> = {};
   const tables: string[] = [];
   for (const [name, dropped] of Object.entries(omitted)) {
@@ -841,7 +847,11 @@ const countOmitted = (omitted: Record<string, string[]>): Record<string, unknown
       }
     }
   }
-  return { sections_dropped_from_tables: sections, ...(tables.length > 0 ? { tables_dropped: tables } : {}) };
+  return {
+    sections_dropped_from_tables: sections,
+    ...(emptied.length > 0 ? { tables_trimmed_to_nothing: emptied } : {}),
+    ...(tables.length > 0 ? { tables_dropped: tables } : {})
+  };
 };
 
 /** Up to five annotated table names that contain, or are contained in, the wanted name. */

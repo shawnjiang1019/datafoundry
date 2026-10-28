@@ -132,6 +132,34 @@ describe("describe_tables", () => {
     expect(result.tables[CLINICAL]).toHaveProperty("roles");
   });
 
+  it("lists shared author statements once and keeps the first tables' statements when space runs out", () => {
+    const shared = "Percentages are based on the total number of 2024 reports (6,471,708).";
+    const tables = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`t${i}`, { columns: { x: { type: "int" } }, links: [] }]));
+    const authorText = Object.fromEntries(Object.keys(tables).map((name, i) => [name, {
+      table: [
+        { kind: "footnote", role: "stated", text: shared, source: `${name}__notes#2` },
+        { kind: "footnote", role: "stated", text: `Table ${i} counts each report once; ${"detail ".repeat(12)}`, source: `${name}__notes#3` }
+      ],
+      columns: {}
+    }]));
+    const wide = parseEnvAnnotation({ tables, author_text: authorText }, ["author_text"])!;
+    const names = Object.keys(tables);
+    const full = describeTables(wide, names, { maxChars: 100000 }) as {
+      author_stated_shared?: { text: string; tables: string[] }[];
+      tables: Record<string, Record<string, unknown>>;
+    };
+    expect(full.author_stated_shared).toEqual([{ text: shared, tables: names }]);
+    expect(full.tables.t0?.author_stated).toEqual([`Table 0 counts each report once; ${"detail ".repeat(12)} [footnote, notes#3]`]);
+    const tight = describeTables(wide, names, { maxChars: Math.floor(JSON.stringify(full).length / 2) }) as {
+      tables: Record<string, Record<string, unknown>>;
+      omitted?: { sections_dropped_from_tables?: Record<string, number> };
+    };
+    expect(JSON.stringify(tight).length).toBeLessThanOrEqual(Math.floor(JSON.stringify(full).length / 2));
+    expect(tight.tables.t0?.author_stated).toBeDefined();
+    expect(tight.tables.t29).toBeUndefined();
+    expect(tight.omitted?.sections_dropped_from_tables?.author_stated).toBeGreaterThan(0);
+  });
+
   it("is exposed as a tool that reads the annotation", () => {
     const tool = createDescribeTablesTool(annotation);
     expect(tool.id).toBe(DESCRIBE_TABLES_TOOL_NAME);

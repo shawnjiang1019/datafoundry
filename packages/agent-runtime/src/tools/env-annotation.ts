@@ -664,11 +664,16 @@ export type DescribeTablesOptions = {
   maxChars?: number;
 };
 
+/** Above this many tables, `omitted` counts dropped sections instead of naming them per table. */
+const DESCRIBE_OMITTED_DETAIL_TABLES = 10;
+
 /**
  * The full annotation for the named tables (the describe_tables tool): each requested section, in
  * full, with the layer notes that say how far to trust it. To fit `maxChars`, whole sections are
  * dropped in DESCRIBE_DROP_ORDER and then whole tables, and `omitted` lists what was left out, so
- * the result is always valid JSON. Unknown names are reported with close matches.
+ * the result is always valid JSON. Unknown names are reported with close matches. For several
+ * tables, an author statement they share is listed once (`author_stated_shared`) and tables with
+ * nothing annotated are only counted, so a whole-schema call keeps the authors' statements longer.
  */
 export const describeTables = (
   annotation: EnvAnnotation,
@@ -681,41 +686,67 @@ export const describeTables = (
   const sections = requested.length > 0 ? requested : DEFAULT_DESCRIBE_SECTIONS;
   const found: { name: string; detail: Record<string, unknown> }[] = [];
   const unknown: { name: string; close_matches: string[] }[] = [];
-  for (const name of unique([...tableNames])) {
+  const names = unique([...tableNames]);
+  let notAnnotated = 0;
+  for (const name of names) {
     const table = lookupTable(annotation, name);
-    if (table) {
-      found.push({ name, detail: describeTable(name, table, sections, options.columns) });
-    } else {
+    if (!table) {
       unknown.push({ name, close_matches: closeTableNames(annotation, name) });
+      continue;
+    }
+    const detail = describeTable(name, table, sections, options.columns);
+    if (names.length > 1 && detail.note === NOTHING_ANNOTATED) {
+      notAnnotated += 1;
+    } else {
+      found.push({ name, detail });
     }
   }
   const omitted: Record<string, string[]> = {};
   const render = (entries: typeof found) => {
     const shown = (key: string) => entries.some(({ detail }) => detail[key] !== undefined);
+    const shared = sharedStatements(entries);
+    const omittedReport = found.length > DESCRIBE_OMITTED_DETAIL_TABLES ? countOmitted(omitted) : omitted;
     return {
       note: ANNOTATION_NOTE,
-      ...(shown("author_stated") ? { author_stated_note: AUTHOR_STATED_NOTE } : {}),
+      ...(shown("author_stated") || shared.length > 0 ? { author_stated_note: AUTHOR_STATED_NOTE } : {}),
+      ...(shared.length > 0 ? { author_stated_shared: shared } : {}),
       ...(shown("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
       ...(shown("ingest_notes") ? { ingest_notes_note: INGEST_NOTES_NOTE } : {}),
       ...(shown("descriptions") ? { descriptions_note: DESCRIPTIONS_NOTE } : {}),
       ...(shown("related_tables") ? { related_tables_note: RELATED_TABLES_NOTE } : {}),
-      tables: Object.fromEntries(entries.map(({ name, detail }) => [name, detail])),
+      tables: Object.fromEntries(entries
+        .map(({ name, detail }) => [name, withoutShared(detail, shared)] as const)
+        .filter(([, detail]) => Object.keys(detail).length > 0 || entries.length === 1)),
+      ...(notAnnotated > 0 ? { tables_without_annotation: notAnnotated } : {}),
       ...(unknown.length > 0 ? { unknown_tables: unknown } : {}),
       ...(Object.keys(omitted).length > 0
-        ? { omitted, hint: "call describe_tables for fewer tables or specific sections to see what was omitted" }
+        ? { omitted: omittedReport, hint: "call describe_tables for fewer tables or specific sections to see what was omitted" }
         : {})
     };
   };
   const fits = (rendered: unknown): boolean => JSON.stringify(rendered).length <= maxChars;
   const entries = found.map(({ name, detail }) => ({ name, detail: { ...detail } }));
+  // Each section is dropped table by table from the end of the list, so the first tables keep it
+  // when the rest do not fit, instead of every table losing it at once. A running size estimate
+  // decides when to re-render: a full render per dropped section is too slow for wide schemas.
+  let estimate = JSON.stringify(render(entries)).length;
   for (const section of DESCRIBE_DROP_ORDER) {
-    if (fits(render(entries))) {
-      return render(entries);
-    }
     const keys = section === "author_text" ? ["author_text", "ingest_notes"] : [section];
-    for (const { name, detail } of entries) {
+    for (const { name, detail } of [...entries].reverse()) {
+      if (estimate <= maxChars) {
+        const rendered = render(entries);
+        estimate = JSON.stringify(rendered).length;
+        if (estimate <= maxChars) {
+          return rendered;
+        }
+      }
       if (keys.some((key) => detail[key] !== undefined)) {
-        keys.forEach((key) => delete detail[key]);
+        for (const key of keys) {
+          if (detail[key] !== undefined) {
+            estimate -= JSON.stringify(detail[key]).length + key.length + 4;
+            delete detail[key];
+          }
+        }
         omitted[name] = [...(omitted[name] ?? []), section];
       }
     }
@@ -756,7 +787,56 @@ const describeTable = (
     ...(sections.includes("descriptions") && summary?.model_descriptions ? { descriptions: summary.model_descriptions } : {}),
     ...(sections.includes("columns") && columns.length ? { columns: Object.fromEntries(columns) } : {})
   };
-  return Object.keys(detail).length > 0 ? detail : { note: "nothing annotated for the requested sections" };
+  return Object.keys(detail).length > 0 ? detail : { note: NOTHING_ANNOTATED };
+};
+
+const NOTHING_ANNOTATED = "nothing annotated for the requested sections";
+
+/** An author statement's text without its `[kind, where]` tag, so copies from different rows match. */
+const statedText = (line: string): string => line.replace(/ \[[^\]]*\]$/u, "");
+
+/** Author statements that several of the entries carry, each once with the tables carrying it. */
+const sharedStatements = (
+  entries: { name: string; detail: Record<string, unknown> }[]
+): { text: string; tables: string[] }[] => {
+  const byText = new Map<string, string[]>();
+  for (const { name, detail } of entries) {
+    for (const line of Array.isArray(detail.author_stated) ? detail.author_stated as string[] : []) {
+      const text = statedText(line);
+      byText.set(text, [...new Set([...(byText.get(text) ?? []), name])]);
+    }
+  }
+  return [...byText].filter(([, tables]) => tables.length > 1).map(([text, tables]) => ({ text, tables }));
+};
+
+/** A table's detail without the author statements listed in `author_stated_shared`. */
+const withoutShared = (
+  detail: Record<string, unknown>,
+  shared: { text: string }[]
+): Record<string, unknown> => {
+  if (!Array.isArray(detail.author_stated) || shared.length === 0) {
+    return detail;
+  }
+  const sharedTexts = new Set(shared.map((statement) => statement.text));
+  const own = (detail.author_stated as string[]).filter((line) => !sharedTexts.has(statedText(line)));
+  const { author_stated: _stated, ...rest } = detail;
+  return own.length > 0 ? { ...rest, author_stated: own } : rest;
+};
+
+/** `omitted` for many tables: how many tables lost each section, and the tables dropped whole. */
+const countOmitted = (omitted: Record<string, string[]>): Record<string, unknown> => {
+  const sections: Record<string, number> = {};
+  const tables: string[] = [];
+  for (const [name, dropped] of Object.entries(omitted)) {
+    for (const section of dropped) {
+      if (section === "table") {
+        tables.push(name);
+      } else {
+        sections[section] = (sections[section] ?? 0) + 1;
+      }
+    }
+  }
+  return { sections_dropped_from_tables: sections, ...(tables.length > 0 ? { tables_dropped: tables } : {}) };
 };
 
 /** Up to five annotated table names that contain, or are contained in, the wanted name. */

@@ -217,11 +217,36 @@ export const shownFrameDecisions = (
     .filter((decision) => {
       const checked = decision.options.filter((option) => option.status === "checked");
       return checked.length >= 2 && (countGap(checked.map((option) => option.rows)) >= MIN_COUNT_GAP
-        || countGap(checked.map((option) => option.units)) >= MIN_COUNT_GAP);
+        || countGap(checked.map((option) => option.units)) >= MIN_COUNT_GAP) && strongEvidence(decision);
     })
     .sort((a, b) => ASPECT_PRIORITY[a.aspect] - ASPECT_PRIORITY[b.aspect])
     .slice(0, MAX_SHOWN_DECISIONS)
     .map((decision, index) => ({ id: `F${index + 1}`, decision: shuffle ? shuffledOptions(decision) : decision }));
+};
+
+/** Rows to distinct units below this ratio mean one row is not one unit. */
+const MAX_UNIT_RATIO = 0.9;
+const LINKED_READING = /\b(?:EXISTS|IN)\s*\(\s*SELECT\b/iu;
+const FLAG_COLUMN = /(?:exclu|includ|eligib|flag|valid)/iu;
+
+/**
+ * Whether the data gives a strong reason to show this decision. Readings that merely differ invite the
+ * agent to pick a plausible wrong one when it would have been right alone (archeology-easy-11, 2026-10-16:
+ * "any capital designation", no link, flag or duplicate behind it). The decisions that fixed answers all
+ * had one of these: a population defined through another table (wildfire-hard-17's stations used by fire
+ * records), an exclusion or inclusion flag (biomedical-easy-2's excluded cases), a unit whose rows repeat
+ * (counting rows would double count), or a reading that ignores the question's words and changes the rows
+ * a lot. Simulated on the October 16 frames, this kept every decision behind those wins and hid the
+ * archeology-easy-11 decision.
+ */
+const strongEvidence = (decision: FrameDecision): boolean => {
+  const live = decision.options.filter((option) => option.status === "checked");
+  const where = (option: FrameOption) => option.sqlWhere ?? "";
+  return live.some((option) => LINKED_READING.test(where(option)))
+    || live.some((option) => FLAG_COLUMN.test(where(option)))
+    || (decision.aspect === "unit" && live.some((option) =>
+      option.rows !== undefined && option.rows > 0 && option.units !== undefined && option.units < option.rows * MAX_UNIT_RATIO))
+    || live.some((option) => blockedUnfaithfulWords(decision, option) !== undefined);
 };
 
 /**

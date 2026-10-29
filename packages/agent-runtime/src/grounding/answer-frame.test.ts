@@ -207,7 +207,7 @@ describe("buildAnswerFrame", () => {
       question_phrase: aspect,
       options: [
         { label: "all", table: "loss_bands", sql_where: null, key_columns: [] },
-        { label: "some", table: "loss_bands", sql_where: where, key_columns: [] }
+        { label: "some", table: "loss_bands", sql_where: `"band" IN (SELECT "band" FROM "loss_bands" WHERE ${where})`, key_columns: [] }
       ]
     });
     const frame = await buildAnswerFrame({
@@ -232,7 +232,7 @@ describe("buildAnswerFrame", () => {
         question_phrase: "fraud reporters",
         options: [
           { label: "all reporters", table: "loss_bands", sql_where: null, key_columns: [] },
-          { label: "reporters who lost money", table: "loss_bands", sql_where: "\"band\" <> '$0'", key_columns: [] }
+          { label: "reporters who lost money", table: "loss_bands", sql_where: "\"band\" IN (SELECT \"band\" FROM \"loss_bands\" WHERE \"band\" <> '$0')", key_columns: [] }
         ]
       }])
     });

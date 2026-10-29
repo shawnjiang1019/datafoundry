@@ -64,7 +64,7 @@ describe("answer frame binding", () => {
       aspect: "population",
       questionPhrase: "capital cities",
       options: counts.map((count, index) => ({
-        label: `reading ${index}`, table: "worldcities", sqlWhere: `x = ${index}`, keyColumns: ["iso3"], rows: count, units: count, status: "checked"
+        label: `reading ${index}`, table: "worldcities", sqlWhere: `"valid" = ${index}`, keyColumns: ["iso3"], rows: count, units: count, status: "checked"
       }))
     }] });
 
@@ -74,13 +74,30 @@ describe("answer frame binding", () => {
     expect(renderAnswerFrame(decision([14, 14, 12]), { binding: true })).toBeDefined();
   });
 
+  it("shows a decision only when the data gives a strong reason: a linked population, a flag, repeated units or ignored words", () => {
+    const decision = (aspect: "population" | "unit", options: Array<{ where: string | null; rows: number; units?: number }>): AnswerFrame => ({
+      warnings: [],
+      decisions: [{ aspect, questionPhrase: "capital cities", options: options.map((option, index) => ({
+        label: `reading ${index}`, table: "worldcities", sqlWhere: option.where, keyColumns: ["iso3"],
+        rows: option.rows, units: option.units ?? option.rows, status: "checked" as const
+      })) }]
+    });
+    const shown = (frame: AnswerFrame) => renderAnswerFrame(frame, { binding: true }) !== undefined;
+
+    // archeology-easy-11: two plain filters on one column, nothing behind the choice.
+    expect(shown(decision("population", [{ where: "\"capital\" = 'primary'", rows: 250 }, { where: "\"capital\" IS NOT NULL", rows: 11138 }]))).toBe(false);
+    expect(shown(decision("population", [{ where: null, rows: 2965 }, { where: "EXISTS (SELECT 1 FROM \"fires\" WHERE \"fires\".\"sid\" = \"id\")", rows: 759 }]))).toBe(true);
+    expect(shown(decision("population", [{ where: null, rows: 14 }, { where: "\"Case_excluded\" = 'No'", rows: 12 }]))).toBe(true);
+    expect(shown(decision("unit", [{ where: null, rows: 2965, units: 2136 }, { where: null, rows: 2965, units: 2965 }]))).toBe(true);
+  });
+
   it("does not keep the proposer's ranking: across many decisions, the first option lands in every position", () => {
     const positions = new Set(Array.from({ length: 40 }, (_, index) => {
       const frame: AnswerFrame = { warnings: [], decisions: [{
         aspect: "population",
         questionPhrase: `phrase ${index}`,
         options: ["first", "second", "third"].map((label, rank) => ({
-          label: `${label} ${index}`, table: "t", sqlWhere: `x = ${rank}`, keyColumns: ["k"], rows: 10 + rank, units: 10 + rank, status: "checked"
+          label: `${label} ${index}`, table: "t", sqlWhere: `"flag" = ${rank}`, keyColumns: ["k"], rows: 10 + rank, units: 10 + rank, status: "checked"
         }))
       }] };
       return (renderAnswerFrame(frame, { binding: true }) as BoundFrame).decisions[0]?.options
@@ -196,7 +213,7 @@ describe("answer frame binding", () => {
         aspect: "population",
         questionPhrase: "patients with serous tumor samples",
         options: [
-          { label: "exactly serous", table: "samples", sqlWhere: "\"Histologic_type\" = 'Serous'", keyColumns: ["pid"], rows: 100, units: 100, status: "checked", unappliedWords: [] },
+          { label: "exactly serous", table: "samples", sqlWhere: "\"Histologic_type\" = 'Serous' AND \"Case_excluded\" = 'No'", keyColumns: ["pid"], rows: 100, units: 100, status: "checked", unappliedWords: [] },
           { label: "all samples", table: "samples", sqlWhere: null, keyColumns: ["pid"], rows: looseRows, units: looseRows, status: "checked", unappliedWords: ["serous tumor"] }
         ]
       }] });

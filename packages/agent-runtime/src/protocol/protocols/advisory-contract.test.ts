@@ -42,7 +42,9 @@ const FRAME: AnswerFrame = {
     questionPhrase: "since 2000",
     options: [
       { label: "2000 onward", table: "fires", sqlWhere: "\"year\" >= 2000", keyColumns: ["year"], rows: 25, units: 25, status: "checked" },
-      { label: "after 2000", table: "fires", sqlWhere: "\"year\" > 2000", keyColumns: ["year"], rows: 24, units: 24, status: "checked" }
+      { label: "after 2000", table: "fires", sqlWhere: "\"year\" > 2000", keyColumns: ["year"], rows: 24, units: 24, status: "checked" },
+      // A linked reading gives the decision the strong evidence it needs to be shown.
+      { label: "fires near a station", table: "fires", sqlWhere: "\"year\" >= 2000 AND EXISTS (SELECT 1 FROM \"stations\")", keyColumns: ["year"], rows: 20, units: 20, status: "checked" }
     ]
   }]
 };

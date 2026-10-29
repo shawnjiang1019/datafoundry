@@ -662,11 +662,18 @@ def _load_workbook(con, path: str, name: str) -> int:
     return made
 
 
+# Rounding: official exact-match scoring allows ~0.01% relative error, so -0.008 for -0.008003975 scores 0
+# (biomedical-easy-9) and unrounded 6.326006 for "3 decimals" gets half credit on a list (wildfire-hard-16).
+# The marker line is required even when the answer is written in another language (legal-easy-20 answered
+# in Chinese prose with no marker, and the whole text was graded).
 ANSWER_FORMAT_INSTRUCTION = (
     "\n\nWhen you are done, end your response with one final line exactly of the form\n"
     "FINAL_ANSWER: <answer>\n"
     "where <answer> is only the value: a bare number (no units, no % sign, no thousands separators), "
-    "a short string, or a JSON list such as [\"a\", \"b\"]."
+    "a short string, or a JSON list such as [\"a\", \"b\"]. "
+    "Keep full precision in every intermediate step and round only this final value, exactly as the question "
+    "asks; if the question gives no rounding, give at least 4 significant digits. "
+    "Always write this FINAL_ANSWER line in English, whatever language the rest of the response uses."
 )
 
 _FINAL_ANSWER_RE = re.compile(r"FINAL_ANSWER\s*[:：]\s*(.+)", re.IGNORECASE)

@@ -230,7 +230,31 @@ export const shownFrameDecisions = (
 /** Rows to distinct units below this ratio mean one row is not one unit. */
 const MAX_UNIT_RATIO = 0.9;
 const LINKED_READING = /\b(?:EXISTS|IN)\s*\(\s*SELECT\b/iu;
+const SUBQUERY_TABLE = /\b(?:FROM|JOIN)\s+(?:"([^"]+)"|([A-Za-z_][\w.]*))/giu;
 const FLAG_COLUMN = /(?:exclu|includ|eligib|flag|valid)/iu;
+
+/**
+ * A population defined through another table: a subquery that reads a table other than the option's
+ * own. A subquery on the same table only re-filters it (archeology-easy-11, 2026-10-30: "keep the
+ * largest capital per country" as NOT EXISTS (SELECT 1 FROM "worldcities" "w2" ...) on worldcities).
+ */
+const linkedThroughOtherTable = (option: FrameOption): boolean => {
+  const where = option.sqlWhere ?? "";
+  if (!LINKED_READING.test(where)) return false;
+  const own = option.table.toLowerCase();
+  return [...where.matchAll(SUBQUERY_TABLE)].some((match) => (match[1] ?? match[2] ?? "").toLowerCase() !== own);
+};
+
+/**
+ * Rows repeat per unit, and choosing the unit does not also force a filter: when every option of a unit
+ * decision carries the same guessed filter, choosing any of them binds the guess (archeology-easy-11,
+ * 2026-10-30: both units filtered capital IN ('primary', 'admin'), and the answer counted admin capitals).
+ */
+const repeatedUnit = (decision: FrameDecision, live: FrameOption[]): boolean =>
+  decision.aspect === "unit"
+  && live.some((option) => !option.sqlWhere)
+  && live.some((option) =>
+    option.rows !== undefined && option.rows > 0 && option.units !== undefined && option.units < option.rows * MAX_UNIT_RATIO);
 
 /**
  * Whether the data gives a strong reason to show this decision. Readings that merely differ invite the
@@ -245,10 +269,9 @@ const FLAG_COLUMN = /(?:exclu|includ|eligib|flag|valid)/iu;
 const strongEvidence = (decision: FrameDecision): boolean => {
   const live = decision.options.filter((option) => option.status === "checked");
   const where = (option: FrameOption) => option.sqlWhere ?? "";
-  return live.some((option) => LINKED_READING.test(where(option)))
+  return live.some(linkedThroughOtherTable)
     || live.some((option) => FLAG_COLUMN.test(where(option)))
-    || (decision.aspect === "unit" && live.some((option) =>
-      option.rows !== undefined && option.rows > 0 && option.units !== undefined && option.units < option.rows * MAX_UNIT_RATIO))
+    || repeatedUnit(decision, live)
     || live.some((option) => blockedUnfaithfulWords(decision, option) !== undefined);
 };
 

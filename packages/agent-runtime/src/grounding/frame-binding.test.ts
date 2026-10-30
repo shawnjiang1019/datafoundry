@@ -89,6 +89,14 @@ describe("answer frame binding", () => {
     expect(shown(decision("population", [{ where: null, rows: 2965 }, { where: "EXISTS (SELECT 1 FROM \"fires\" WHERE \"fires\".\"sid\" = \"id\")", rows: 759 }]))).toBe(true);
     expect(shown(decision("population", [{ where: null, rows: 14 }, { where: "\"Case_excluded\" = 'No'", rows: 12 }]))).toBe(true);
     expect(shown(decision("unit", [{ where: null, rows: 2965, units: 2136 }, { where: null, rows: 2965, units: 2965 }]))).toBe(true);
+
+    // archeology-easy-11, 2026-10-30: a subquery on the same table only re-filters it, so it is no link.
+    const largestPerCountry = "\"capital\" = 'primary' AND NOT EXISTS (SELECT 1 FROM \"worldcities\" \"w2\" "
+      + "WHERE \"w2\".\"country\" = \"worldcities\".\"country\" AND \"w2\".\"population\" > \"worldcities\".\"population\")";
+    expect(shown(decision("population", [{ where: "\"capital\" = 'primary'", rows: 250 }, { where: largestPerCountry, rows: 237 }]))).toBe(false);
+    // Units whose every option carries the same guessed filter would bind that filter with the unit.
+    const guess = "\"capital\" IN ('primary', 'admin')";
+    expect(shown(decision("unit", [{ where: guess, rows: 3875 }, { where: guess, rows: 3875, units: 238 }]))).toBe(false);
   });
 
   it("does not keep the proposer's ranking: across many decisions, the first option lands in every position", () => {

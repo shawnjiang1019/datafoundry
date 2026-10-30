@@ -4,6 +4,7 @@ import type { SqlJoinKey, SqlSemanticConstraint } from "../protocol/analysis-con
 import type { SemanticRequest, SemanticResolution } from "../semantic/types.js";
 import type { AgentRunContext } from "../types.js";
 import { buildAnswerFrame, renderAnswerFrame, type AnswerFrameProposer } from "./answer-frame.js";
+import { definedReadings } from "./defined-readings.js";
 import { applyGroundingGate } from "./grounding-gate.js";
 import { readLakeSemantics } from "./lake-semantics.js";
 import { validateCandidates } from "./physical-validator.js";
@@ -35,7 +36,7 @@ export type EvidenceGroundingDeps = {
   /** When set, also list readings of the question and count each one in the data. */
   proposeFrame?: AnswerFrameProposer;
   /** Mark the context so the protocol turns shown joins and/or frame choices into contract rules. */
-  binding?: { joins?: boolean; frame?: boolean };
+  binding?: { joins?: boolean; frame?: boolean; check?: boolean };
 };
 
 /** Semantic candidates → physical validation → gate, for one question. Never throws. */
@@ -62,11 +63,21 @@ export const groundEvidence = async (
         + `${candidate.to.table}.${candidate.to.column}: ${joinCondition(candidate)}`);
     const frame = deps.proposeFrame
       ? await buildAnswerFrame({
-          question, schema, facts: lake.facts, verifiedJoins, probe: deps.probe, propose: deps.proposeFrame
+          question, schema, facts: lake.facts, verifiedJoins, probe: deps.probe, propose: deps.proposeFrame,
+          defined: await definedReadings({
+            question,
+            schema,
+            probe: deps.probe,
+            // Only links names alone would miss: those are the populations the agent does not find itself.
+            links: gated
+              .filter((candidate) => candidate.status === "ACCEPT" && namesAloneWouldMiss(candidate))
+              .map((candidate) => ({ fromTable: candidate.from.table, toTable: candidate.to.table, condition: joinCondition(candidate) }))
+          })
         })
       : undefined;
     const binding = noteBinding(deps.binding);
     return {
+      question,
       facts: lake.facts,
       candidates: gated,
       duplicateTables: lake.duplicateTables,
@@ -80,6 +91,21 @@ export const groundEvidence = async (
   } catch (error) {
     return emptyContext([`EVIDENCE_GROUNDING_FAILED:${error instanceof Error ? error.message : String(error)}`]);
   }
+};
+
+const RESPONSE_FORMAT = /\b(?:final_answer|answer line|respond|response|round(?:ing|ed)?|decimal|significant digits|json list|bare number)\b/iu;
+
+/**
+ * The question without paragraphs that only say how to format the response. Grounding picks the
+ * columns the question's words name; a formatting paragraph adds words such as "precision",
+ * "digits" and "value" that match other columns. On 2026-10-16 the KramaBench answer instruction
+ * grew by two sentences and wildfire-hard-17 went from 24 join candidates (the verified NWS ID link
+ * among them) to none, so every bound run from then on lost the reading the notes exist for.
+ */
+export const questionForGrounding = (text: string): string => {
+  const paragraphs = text.split(/\n\s*\n/u);
+  const kept = [paragraphs[0] ?? "", ...paragraphs.slice(1).filter((paragraph) => !RESPONSE_FORMAT.test(paragraph))];
+  return kept.join("\n\n").trim();
 };
 
 /**
@@ -108,7 +134,8 @@ export class EvidenceGroundingProvider {
     return { ...base, value, capabilities: [...base.capabilities, "evidence-grounding"] };
   }
 
-  private groundOnce(question: string): Promise<EvidenceGroundingContext> {
+  private groundOnce(text: string): Promise<EvidenceGroundingContext> {
+    const question = questionForGrounding(text);
     let pending = this.perQuestion.get(question);
     if (!pending) {
       pending = groundEvidence(question, this.deps);
@@ -127,7 +154,7 @@ export const createEvidenceGroundingProvider = (input: {
   datasourceRevision: string;
   relationships: boolean;
   proposeFrame?: AnswerFrameProposer | undefined;
-  binding?: { joins?: boolean; frame?: boolean } | undefined;
+  binding?: { joins?: boolean; frame?: boolean; check?: boolean } | undefined;
   abortSignal?: AbortSignal | undefined;
 }): EvidenceGroundingProvider => {
   const scope = {
@@ -310,8 +337,12 @@ const cachedLake = (deps: EvidenceGroundingDeps, schema: GroundingSchema): Promi
 };
 
 const noteBinding = (binding: EvidenceGroundingDeps["binding"]): NoteBinding | undefined =>
-  binding?.joins || binding?.frame
-    ? { ...(binding.joins ? { joins: true as const } : {}), ...(binding.frame ? { frame: true as const } : {}) }
+  binding?.joins || binding?.frame || binding?.check
+    ? {
+        ...(binding.joins ? { joins: true as const } : {}),
+        ...(binding.frame ? { frame: true as const } : {}),
+        ...(binding.check ? { check: true as const } : {})
+      }
     : undefined;
 
 const emptyContext = (warnings: string[]): EvidenceGroundingContext =>

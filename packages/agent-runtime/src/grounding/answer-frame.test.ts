@@ -4,6 +4,7 @@ import { createUserAnalysisRequirements } from "../protocol/analysis-requirement
 import { groundingAutomaticActions, projectGroundedSchemaObservation } from "../protocol/data-analysis-hooks.js";
 import { createDataAnalysisProtocol, reduceDataAnalysisAction } from "../protocol/protocols/data-analysis.js";
 import { answerFramePrompt, buildAnswerFrame, renderAnswerFrame } from "./answer-frame.js";
+import { flagPopulations, linkedPopulations } from "./defined-readings.js";
 import type { GroundingSchema, GroundingSqlProbe } from "./types.js";
 
 type DuckConnection = { all(sql: string, callback: (error: Error | null, rows: Record<string, unknown>[]) => void): void };
@@ -55,6 +56,33 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => database.close(() => resolve()));
+});
+
+describe("defined readings", () => {
+  it("turns an exclusion flag in a table the question names into a fixed population reading", async () => {
+    const [decision] = await flagPopulations("How many patients have samples in the study?", schema, probe);
+
+    expect(decision?.options.map((option) => [option.label, option.sqlWhere])).toEqual([
+      ["every row of samples, whatever excluded says", null],
+      ["only rows not marked excluded by excluded", "(\"excluded\" IS NULL OR TRIM(CAST(\"excluded\" AS VARCHAR)) NOT IN ('Yes'))"]
+    ]);
+    // A question that shares no word with the table gets no flag reading.
+    expect(await flagPopulations("What share of fraud reporters lost money?", schema, probe)).toEqual([]);
+  });
+
+  it("keeps the readings the data defines when the model's proposal fails, and counts them", async () => {
+    const frame = await buildAnswerFrame({
+      question: "How many patients have samples in the study?",
+      schema, facts: [], probe,
+      propose: async () => "not json",
+      defined: await flagPopulations("How many patients have samples in the study?", schema, probe)
+    });
+
+    expect(frame.warnings.at(0)).toMatch(/^ANSWER_FRAME_PROPOSAL_FAILED/u);
+    expect(frame.decisions.at(0)?.options.map((option) => option.rows)).toEqual([4, 3]);
+    expect(linkedPopulations([{ fromTable: "fires", toTable: "stations", condition: "\"fires\".\"sid\" = \"stations\".\"id\"" }])
+      .at(0)?.options.at(1)?.sqlWhere).toBe("EXISTS (SELECT 1 FROM \"fires\" WHERE \"fires\".\"sid\" = \"stations\".\"id\")");
+  });
 });
 
 describe("buildAnswerFrame", () => {

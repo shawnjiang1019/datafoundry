@@ -27,6 +27,8 @@ export type FrameOption = {
   error?: string;
   /** Words of the question this reading leaves unapplied, as the proposer reports them. */
   unappliedWords?: string[];
+  /** Set on readings the data itself defines (defined-readings.ts): what defines them. */
+  definedBy?: { kind: "link"; fromTable: string } | { kind: "flag"; column: string };
 };
 
 export type FrameDecision = {
@@ -57,6 +59,8 @@ export const buildAnswerFrame = async (input: {
   verifiedJoins?: string[];
   probe: GroundingSqlProbe;
   propose: AnswerFrameProposer;
+  /** Readings the data itself defines (defined-readings.ts); shown first and kept if the proposal fails. */
+  defined?: FrameDecision[];
 }): Promise<AnswerFrame> => {
   let decisions: FrameDecision[] | undefined;
   let lastError: unknown;
@@ -69,17 +73,16 @@ export const buildAnswerFrame = async (input: {
       lastError = error;
     }
   }
-  if (!decisions) {
-    const reason = lastError instanceof Error ? lastError.message : String(lastError);
-    return { decisions: [], warnings: [`ANSWER_FRAME_PROPOSAL_FAILED:${reason}`] };
-  }
+  const defined = input.defined ?? [];
+  const warnings = decisions ? [] : [`ANSWER_FRAME_PROPOSAL_FAILED:${lastError instanceof Error ? lastError.message : String(lastError)}`];
+  const all = [...defined, ...(decisions ?? [])];
   const tables = new Set(input.schema.tables.map((table) => table.name));
-  for (const decision of decisions) {
+  for (const decision of all) {
     for (const option of decision.options) {
       Object.assign(option, await checkOption(option, tables, input.probe));
     }
   }
-  return { decisions, warnings: decisions.length === 0 ? ["ANSWER_FRAME_NO_DECISIONS"] : [] };
+  return { decisions: all, warnings: all.length === 0 && decisions ? ["ANSWER_FRAME_NO_DECISIONS"] : warnings };
 };
 
 /** A tool-free helper on the run's own model, like the analysis contract grounder. */

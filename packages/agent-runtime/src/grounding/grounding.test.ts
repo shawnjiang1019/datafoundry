@@ -15,8 +15,7 @@ import {
   groundEvidence,
   renderGroundingForAgent,
   summarizeGrounding,
-  verifiedJoinRules
-} from "./evidence-grounding-provider.js";
+  verifiedJoinRules, questionForGrounding } from "./evidence-grounding-provider.js";
 import { readLakeSemantics } from "./lake-semantics.js";
 import type { GroundingCandidate, GroundingSchema, GroundingSqlProbe, PhysicalEvidence } from "./types.js";
 
@@ -141,6 +140,18 @@ describe("groundEvidence", () => {
     expect(context.candidates.some((candidate) => candidate.from.table === "fires_copy")).toBe(false);
   });
 
+  it("grounds the question without the paragraphs that only format the response", async () => {
+    const instruction = "\n\nWhen you are done, end your response with one final line exactly of the form\nFINAL_ANSWER: <answer>\n"
+      + "where <answer> is only the value. Keep full precision in every intermediate step and round only this final value; "
+      + "give at least 4 significant digits. Always write this FINAL_ANSWER line in English.";
+
+    expect(questionForGrounding(QUESTION + instruction)).toBe(QUESTION);
+    expect(questionForGrounding("First part.\n\nSecond part about stations.")).toBe("First part.\n\nSecond part about stations.");
+    const plain = await groundEvidence(QUESTION, { inspectSchema: schemaOf, probe });
+    const withInstruction = await groundEvidence(questionForGrounding(QUESTION + instruction), { inspectSchema: schemaOf, probe });
+    expect(withInstruction.candidates.length).toBe(plain.candidates.length);
+  });
+
   it("gives the answer frame the joins grounding verified", async () => {
     let framePrompt = "";
     const context = await groundEvidence(QUESTION, {
@@ -152,7 +163,12 @@ describe("groundEvidence", () => {
       }
     });
 
-    expect(context.frame?.warnings).toEqual(["ANSWER_FRAME_NO_DECISIONS"]);
+    // The model proposed nothing, yet the verified hidden link still defines a population reading,
+    // counted through the matching join condition (wildfire-hard-17's stations used by fire records).
+    const linked = context.frame?.decisions.find((decision) => decision.options.some((option) => option.sqlWhere?.startsWith("EXISTS")));
+    expect(context.frame?.warnings).toEqual([]);
+    expect(linked?.options.map((option) => [option.table, option.status])).toEqual([["raws_registry", "checked"], ["raws_registry", "checked"]]);
+    expect(linked?.options.at(1)?.sqlWhere).toContain("\"raws_registry\".\"NWS ID\"");
     expect(framePrompt).toContain("VERIFIED JOINS (checked against the data)");
     expect(framePrompt).toContain(
       "- fires.station_ref -> raws_registry.NWS ID: TRY_CAST(TRIM(CAST(\"fires\".\"station_ref\" AS VARCHAR)) AS DOUBLE) = "

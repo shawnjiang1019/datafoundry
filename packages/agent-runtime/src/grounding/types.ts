@@ -57,7 +57,8 @@ export type LakeSemantics = {
   duplicateTables: Array<[string, string]>;
 };
 
-export type NoteBinding = { joins?: true; frame?: true };
+/** joins/frame: enforce shown notes. check: hide the frame and check the final answer against it instead. */
+export type NoteBinding = { joins?: true; frame?: true; check?: true };
 
 export type EvidenceGroundingContext = {
   facts: SemanticFact[];
@@ -67,6 +68,8 @@ export type EvidenceGroundingContext = {
   frame?: AnswerFrame;
   /** Note binding: which shown notes become rules the SQL gate enforces (verified joins, frame choices). */
   binding?: NoteBinding;
+  /** The question the notes were made for (without response-format paragraphs). */
+  question?: string;
   warnings: string[];
 };
 

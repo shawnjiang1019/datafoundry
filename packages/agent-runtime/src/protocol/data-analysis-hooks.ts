@@ -133,9 +133,10 @@ export const projectGroundedSchemaObservation = (
     ? observation as Record<string, unknown>
     : { schema: observation };
   const groundedRelationships = renderGroundingForAgent(state.evidenceGrounding);
-  const answerFrame = renderAnswerFrame(state.evidenceGrounding?.frame, {
-    binding: state.evidenceGrounding?.binding?.frame === true
-  });
+  // In check mode the agent works without the frame; the frame only checks its final answer.
+  const answerFrame = state.evidenceGrounding?.binding?.check
+    ? undefined
+    : renderAnswerFrame(state.evidenceGrounding?.frame, { binding: state.evidenceGrounding?.binding?.frame === true });
   return {
     ...schemaObservation,
     ...(groundedRelationships ? { grounded_relationships: groundedRelationships } : {}),
@@ -303,9 +304,11 @@ const withRenderedGrounding = (resolution: unknown): unknown => {
   }
   const { evidence_grounding: _full, ...rest } = value as Record<string, unknown>;
   const rendered = renderGroundingForAgent(grounding as EvidenceGroundingContext);
-  const frame = renderAnswerFrame((grounding as EvidenceGroundingContext).frame, {
-    binding: (grounding as EvidenceGroundingContext).binding?.frame === true
-  });
+  const frame = (grounding as EvidenceGroundingContext).binding?.check
+    ? undefined
+    : renderAnswerFrame((grounding as EvidenceGroundingContext).frame, {
+        binding: (grounding as EvidenceGroundingContext).binding?.frame === true
+      });
   const capabilities = recordValue(resolution, "capabilities");
   return {
     ...(resolution as Record<string, unknown>),

@@ -1,3 +1,4 @@
+import { checkAnswer } from "../grounding/answer-check.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { ProtocolRunState } from "./types.js";
 
@@ -50,6 +51,47 @@ export const createAnswerCommitCheck = (input: { getState: () => ProtocolRunStat
       if (!nudge) return { score: 1 };
       nudges += 1;
       return { score: 0, reason: reason as string };
+    }
+  };
+};
+
+const DEFAULT_MAX_CHALLENGES = 2;
+
+/** The query the answer came from: the last one that ran and was verified, else the last that ran. */
+export const finalAnswerSql = (domain: DataAnalysisState): string | undefined => {
+  const ran = domain.queryAttempts.filter((attempt) => attempt.sql && (attempt.status === "evidenced" || attempt.status === "executed"));
+  return (ran.filter((attempt) => attempt.status === "evidenced").at(-1) ?? ran.at(-1))?.sql;
+};
+
+/**
+ * Multi-stage notes: in check mode the agent never sees the frame. When it tries to finish, its final
+ * query is checked against the readings counted in the data, and on strong evidence of a conflict it is
+ * sent back once with one specific reason (at most `maxChallenges` times). An answer with no conflict goes
+ * out as the agent wrote it.
+ */
+export const createAnswerCheck = (input: { getState: () => ProtocolRunState; maxChallenges?: number }) => {
+  let challenges = 0;
+  return {
+    id: "answer-check",
+    name: "Answer checked against the notes",
+    run: async (): Promise<{ score: number; reason?: string }> => {
+      let reason: string | undefined;
+      try {
+        const state = input.getState();
+        const domain = state.domain as DataAnalysisState | undefined;
+        if (state.protocolId !== "data-analysis" || !domain?.evidenceGrounding?.binding?.check) return { score: 1 };
+        const sql = finalAnswerSql(domain);
+        if (!sql) return { score: 1 };
+        const challenge = checkAnswer({ question: domain.evidenceGrounding.question ?? "", sql, grounding: domain.evidenceGrounding });
+        reason = challenge ? `${challenge.code}: ${challenge.message}` : undefined;
+        console.warn(`[answer-check] run=${state.runId} challenge=${challenge?.code ?? "none"} challenges=${challenges}`);
+      } catch (error) {
+        console.warn(`[answer-check] state unreadable: ${error instanceof Error ? error.message : String(error)}`);
+        return { score: 1 };
+      }
+      if (!reason || challenges >= (input.maxChallenges ?? DEFAULT_MAX_CHALLENGES)) return { score: 1 };
+      challenges += 1;
+      return { score: 0, reason };
     }
   };
 };

@@ -76,6 +76,8 @@ ANSWER_FRAME = os.environ.get("DF_ANSWER_FRAME", "0") == "1"
 # DF_BINDING=1 is the shortcut for both kinds of binding.
 JOIN_BINDING = os.environ.get("DF_JOIN_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
 FRAME_BINDING = os.environ.get("DF_FRAME_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
+# Multi-stage notes: the frame is computed but hidden, and the final answer is checked against it.
+ANSWER_CHECK = os.environ.get("DF_ANSWER_CHECK", "0") == "1"
 # Applies to every arm when set, so baseline and note arms run against the same contract behavior.
 ADVISORY_CONTRACT = os.environ.get("DF_ADVISORY_CONTRACT", "0") == "1"
 
@@ -200,6 +202,8 @@ class DataFoundryClient:
             run_config["joinBinding"] = True
         if FRAME_BINDING:
             run_config["frameBinding"] = True
+        if ANSWER_CHECK:
+            run_config["answerCheck"] = True
         if ADVISORY_CONTRACT:
             run_config["advisoryContract"] = True
         payload = {

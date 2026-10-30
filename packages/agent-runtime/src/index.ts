@@ -91,7 +91,7 @@ import {
 } from "./tools/tool-plan.js";
 import type { ProtocolClassifier, ProtocolIdentity } from "./protocol/protocol-router.js";
 import { createModelProtocolClassifier } from "./protocol/model-protocol-classifier.js";
-import { createAnswerCommitCheck } from "./protocol/answer-commit-check.js";
+import { createAnswerCheck, createAnswerCommitCheck } from "./protocol/answer-commit-check.js";
 import {
   createModelAnalysisRequirementExtractor,
   type AnalysisRequirementExtractor
@@ -536,7 +536,8 @@ export const createDataFoundry = async (
             : undefined,
           binding: {
             joins: input.runContext.join_binding === true,
-            frame: input.runContext.frame_binding === true
+            frame: input.runContext.frame_binding === true,
+            check: input.runContext.answer_check === true
           },
           abortSignal: input.abortSignal
         })
@@ -723,6 +724,8 @@ export const createDataFoundry = async (
       // With frame binding on, an answer left uncommitted skips the frame check: send the agent back.
       isTaskComplete: {
         scorers: [createAnswerCommitCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never, createAnswerCheck({
           getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
         }) as never]
       },

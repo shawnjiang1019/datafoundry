@@ -37,6 +37,8 @@ export type AgentRunContext = {
   join_binding?: boolean;
   /** Make the agent choose answer-frame readings and enforce them in the SQL gate (experiment flag). */
   frame_binding?: boolean;
+  /** Hide the answer frame and check the final answer against it instead (multi-stage notes). */
+  answer_check?: boolean;
   /** Contract-model rules warn instead of block; only verified joins, frame choices and the answer value block. */
   advisory_contract?: boolean;
 };

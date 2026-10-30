@@ -62,6 +62,8 @@ export type EffectiveRunConfig = {
   joinBinding?: boolean;
   /** Enforce the agent's answer-frame choices in the SQL gate (experiment flag; needs answerFrame). */
   frameBinding?: boolean;
+  /** Hide the answer frame and check the final answer against it (multi-stage notes; needs answerFrame). */
+  answerCheck?: boolean;
   /** Treat the contract model's rules as warnings; block only verified joins, frame choices and the answer value. */
   advisoryContract?: boolean;
   /**
@@ -145,6 +147,7 @@ export const extractEffectiveRunConfig = (
   const joinBinding = noteBinding || booleanFromAliases(runConfig, ["joinBinding", "join_binding"], false);
   const frameBinding = noteBinding || booleanFromAliases(runConfig, ["frameBinding", "frame_binding"], false);
   const advisoryContract = booleanFromAliases(runConfig, ["advisoryContract", "advisory_contract"], false);
+  const answerCheck = booleanFromAliases(runConfig, ["answerCheck", "answer_check"], false);
 
   if (
     activeDatasourceId
@@ -178,6 +181,7 @@ export const extractEffectiveRunConfig = (
     ...(answerFrame ? { answerFrame } : {}),
     ...(joinBinding ? { joinBinding } : {}),
     ...(frameBinding ? { frameBinding } : {}),
+    ...(answerCheck ? { answerCheck } : {}),
     ...(advisoryContract ? { advisoryContract } : {}),
     evidenceRefs
   };

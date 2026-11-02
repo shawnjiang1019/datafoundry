@@ -67,6 +67,14 @@ import { GoalRuntimeAdapter, type GoalRequest } from "./memory/goal-runtime-adap
 import { createDataFoundryToolRegistry } from "./tools/data-tools.js";
 import { createDescribeTablesTool, DESCRIBE_TABLES_TOOL_NAME } from "./tools/describe-tables.js";
 import {
+  CONCLUDE_STAGE_TOOL_NAME,
+  createConcludeStageTool,
+  fetchStagePlan,
+  renderStagePlan,
+  stagePlanConfigFromEnvironment,
+  type StagePlan
+} from "./tools/stage-plan.js";
+import {
   envAnnotationDeliveryFromEnvironment,
   envAnnotationFromEnvironment,
   parseEnvAnnotation,
@@ -161,6 +169,7 @@ export const protocolHandoffInputSchema = z.object({
 const HITL_TOOL_NAMES = ["ask_user", "submit_plan"] as const;
 export const STATIC_AGENT_TOOL_NAMES = [
   "ask_user",
+  "conclude_stage",
   "describe_tables",
   "edit_file",
   "execute_command",
@@ -528,10 +537,25 @@ export const createDataFoundry = async (
     annotationTools[DESCRIBE_TABLES_TOOL_NAME] = createDescribeTablesTool(envAnnotation);
     alwaysAllowTools.add(DESCRIBE_TABLES_TOOL_NAME);
   }
+  // conclude_stage (DF_STAGE_PLAN_URL): D-Trail splits the question into stages and checks each
+  // stage's reported outputs. Without the variable, or without a plan, the run is unchanged.
+  const stagePlanConfig = stagePlanConfigFromEnvironment();
+  const planEnvironmentId = envAnnotation?.environment_id;
+  const stagePlan = dataToolsEnabled && stagePlanConfig && planEnvironmentId
+    ? await fetchStagePlan(stagePlanConfig, planEnvironmentId, input.runContext.run_id,
+      input.runContext.user_input)
+    : undefined;
+  const planTools: Record<string, ReturnType<typeof createConcludeStageTool>> = {};
+  if (stagePlan && stagePlanConfig && planEnvironmentId) {
+    planTools[CONCLUDE_STAGE_TOOL_NAME] = createConcludeStageTool(
+      stagePlanConfig, planEnvironmentId, input.runContext.run_id);
+    alwaysAllowTools.add(CONCLUDE_STAGE_TOOL_NAME);
+  }
   const toolPlan = buildToolPlan({
     groups: [
       { source: "data", tools: dataToolsEnabled ? registry.mastraTools : {} },
       { source: "annotation", tools: annotationTools },
+      { source: "plan", tools: planTools },
       { source: "files", tools: fileAssetTools },
       { source: "knowledge", tools: knowledgeTools },
       { source: "task", tools: taskTools },
@@ -767,7 +791,8 @@ export const createDataFoundry = async (
       protocolId: protocolState.protocolId,
       analysisRequirements,
       workspaceAttachments,
-      envAnnotationDelivery: envAnnotationDeliveryFromEnvironment()
+      envAnnotationDelivery: envAnnotationDeliveryFromEnvironment(),
+      ...(stagePlan ? { stagePlan } : {})
     }),
     model: input.modelProvider.model as never,
     tools,
@@ -933,6 +958,8 @@ type AgentInstructionsInput = {
   workspaceAttachments: MaterializedWorkspaceAttachment[];
   /** How the environment annotation is delivered; shapes the describe_tables instruction. */
   envAnnotationDelivery?: EnvAnnotationDelivery;
+  /** D-Trail's stage plan for this question, when one was fetched (DF_STAGE_PLAN_URL). */
+  stagePlan?: StagePlan;
 };
 
 type MaterializedWorkspaceAttachment = {
@@ -1175,6 +1202,9 @@ export const buildAgentInstructions = (input: AgentInstructionsInput): string =>
         + "has annotation beyond its inline roles: related tables and join columns, the dataset's README notes, and "
         + "descriptions. Call describe_tables for the tables you plan to query or join before writing SQL against them."
     );
+  }
+  if (input.stagePlan && enabled(CONCLUDE_STAGE_TOOL_NAME)) {
+    policies.push(renderStagePlan(input.stagePlan));
   }
   if (enabled("run_sql_readonly")) {
     policies.push("Write read-only SQL only. Generate SELECT or WITH queries and run them through run_sql_readonly. "

@@ -11,6 +11,15 @@ import { createActivitySnapshot, createArtifactEvent, createCustomEvent } from "
 import { SQL_MAX_EXECUTION_COUNT } from "../runtime-limits.js";
 import { createTokenUsageCorrelationStore } from "../stream/token-usage-correlation.js";
 import type { AgentRunContext, AgUiEventEmitter } from "../types.js";
+import {
+  createEnvAnnotationGuard,
+  describeTables,
+  envAnnotationDeliveryFromEnvironment,
+  envAnnotationForTables,
+  envAnnotationIndexForTables,
+  type EnvAnnotation,
+  type EnvAnnotationDelivery
+} from "./env-annotation.js";
 import { enrichSqlDialectError, validateSqlDialect } from "./sql-dialect-validation.js";
 
 type DataToolExecutionOptions = {
@@ -42,11 +51,15 @@ type SchemaCapability = {
 };
 
 type InspectSchemaResult = SchemaSummary & {
+  env_annotation?: Record<string, unknown>;
+  /** `chain` delivery: the describe_tables result for the inspected tables. */
+  describe_tables?: Record<string, unknown>;
   schema_id: string;
 };
 
 type RawSqlToolResult = {
   cache_hit?: boolean;
+  env_annotation_warnings?: string[];
   result: SqlExecutionResult;
   sql: string;
 };
@@ -98,6 +111,10 @@ type CreateDataFoundryToolRegistryInput = {
   abortSignal?: AbortSignal | undefined;
   dataGateway: DataGateway;
   emitter: AgUiEventEmitter;
+  /** D-Trail environment annotation: enriches schema/preview results and guards SQL (advisory). */
+  envAnnotation?: EnvAnnotation | undefined;
+  /** `tool`: inspect_schema shows the roles and an index, describe_tables the rest (default: env). */
+  envAnnotationDelivery?: EnvAnnotationDelivery;
   runContext: AgentRunContext;
   tokenUsageCorrelation?: TokenUsageCorrelationStore;
 };
@@ -112,6 +129,31 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
   };
   const resultMetadata = new WeakMap<object, { datasourceId: string; stepId: string }>();
   const sqlResultCache = new Map<string, RawSqlToolResult>();
+  const envAnnotationGuard = input.envAnnotation ? createEnvAnnotationGuard(input.envAnnotation) : undefined;
+  const annotationWarnings = (sql: string): { env_annotation_warnings?: string[] } => {
+    const warnings = envAnnotationGuard?.check(sql) ?? [];
+    return warnings.length > 0 ? { env_annotation_warnings: warnings } : {};
+  };
+  const delivery = input.envAnnotationDelivery ?? envAnnotationDeliveryFromEnvironment();
+  const annotationForTables = (tableNames: string[]): { env_annotation?: Record<string, unknown> } => {
+    const annotation = input.envAnnotation ? envAnnotationForTables(input.envAnnotation, tableNames) : undefined;
+    return annotation ? { env_annotation: annotation } : {};
+  };
+  // Under `tool` delivery the schema result carries the deciding roles and an index; under `chain`
+  // it carries describe_tables for the same tables instead. preview_table keeps the full block for
+  // its one table either way.
+  const annotationForSchema = (
+    tableNames: string[]
+  ): { env_annotation?: Record<string, unknown>; describe_tables?: Record<string, unknown> } => {
+    if (!input.envAnnotation || delivery === "inline") {
+      return annotationForTables(tableNames);
+    }
+    if (delivery === "chain") {
+      return { describe_tables: describeTables(input.envAnnotation, tableNames) };
+    }
+    const annotation = envAnnotationIndexForTables(input.envAnnotation, tableNames);
+    return annotation ? { env_annotation: annotation } : {};
+  };
 
   const listDataSources = async (toolInput: { enabled_only?: boolean } = {}): Promise<unknown> => {
     throwIfAborted(input.abortSignal);
@@ -168,7 +210,11 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
         ...(result.dialect ? { dialect: result.dialect } : {}),
         schema_id
       });
-      const rawResult = { ...result, schema_id };
+      const rawResult = {
+        ...result,
+        schema_id,
+        ...annotationForSchema(result.tables.map((table) => table.name))
+      };
       resultMetadata.set(rawResult, { datasourceId, stepId });
       return rawResult;
     } catch (error) {
@@ -203,7 +249,7 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
     const cacheKey = sqlCacheKey(toolInput);
     const cached = sqlResultCache.get(cacheKey);
     if (cached) {
-      const rawResult = { ...cached, cache_hit: true as const };
+      const rawResult = { ...cached, cache_hit: true as const, ...annotationWarnings(toolInput.sql) };
       resultMetadata.set(rawResult, { datasourceId, stepId: `sql-cache-${randomUUID()}` });
       return rawResult;
     }
@@ -252,8 +298,8 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
         state.artifact_ids.push(result.artifact_id);
       }
       emitSqlReferences(input, datasourceId, result);
-      const rawResult = { result, sql: toolInput.sql };
-      sqlResultCache.set(cacheKey, rawResult);
+      sqlResultCache.set(cacheKey, { result, sql: toolInput.sql });
+      const rawResult = { result, sql: toolInput.sql, ...annotationWarnings(toolInput.sql) };
       resultMetadata.set(rawResult, { datasourceId, stepId });
       return rawResult;
     } catch (error) {
@@ -280,7 +326,12 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
       ...(toolInput.limit ? { limit: toolInput.limit } : {}),
       ...(input.abortSignal ? { signal: input.abortSignal } : {})
     });
-    return { datasource_id: capability.datasource_id, table: toolInput.table, ...result };
+    return {
+      datasource_id: capability.datasource_id,
+      table: toolInput.table,
+      ...result,
+      ...annotationForTables([toolInput.table])
+    };
   };
 
   const onGovernedResult = (governed: GovernedResultInput): void => {

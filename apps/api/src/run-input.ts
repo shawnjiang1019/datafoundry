@@ -1,5 +1,5 @@
 import type { RunAgentInput } from "@ag-ui/client";
-import type { AssumptionReceipt } from "@datafoundry/agent-runtime";
+import type { AssumptionReceipt, EnvAnnotation } from "@datafoundry/agent-runtime";
 import type { EvidenceKind, EvidenceRef, EvidenceSelection } from "@datafoundry/contracts";
 import type { ConfigResourceKind, MetadataStore } from "@datafoundry/metadata";
 import type { SkillMode, SkillPolicyConfig } from "@datafoundry/skills";
@@ -57,6 +57,8 @@ export type EffectiveRunConfig = {
   };
   /** D-Trail assumption receipt checked before the run; shown to the agent as its assumption ledger. */
   assumptionReceipt?: AssumptionReceipt;
+  /** D-Trail environment annotation (agent export); enriches schema results and guards SQL. */
+  envAnnotation?: EnvAnnotation;
   /**
    * Resources silently dropped from `enabled*Ids` because `default_enabled=false` (R-020).
    * The run continues; this list is surfaced in `run.config.resolved` for diagnostics.
@@ -132,6 +134,7 @@ export const extractEffectiveRunConfig = (
   const evidenceRefs = evidenceRefsFromAliases(runConfig, ["evidenceRefs", "evidence_refs"]);
   const protocol = protocolSelectionFromRunConfig(runConfig);
   const assumptionReceipt = assumptionReceiptFromRunConfig(runConfig);
+  const envAnnotation = envAnnotationFromRunConfig(runConfig);
 
   if (
     activeDatasourceId
@@ -162,6 +165,7 @@ export const extractEffectiveRunConfig = (
     ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
     ...(protocol ? { protocol } : {}),
     ...(assumptionReceipt ? { assumptionReceipt } : {}),
+    ...(envAnnotation ? { envAnnotation } : {}),
     evidenceRefs
   };
 };
@@ -435,6 +439,24 @@ const assumptionReceiptFromRunConfig = (runConfig: Record<string, unknown>): Ass
     return undefined;
   }
   return receipt as AssumptionReceipt;
+};
+
+export const ENV_ANNOTATION_MAX_CHARS = 2_000_000;
+
+/** Advisory input like the receipt: anything but an exported `{tables: {...}}` file is ignored. */
+const envAnnotationFromRunConfig = (runConfig: Record<string, unknown>): EnvAnnotation | undefined => {
+  const value = runConfig.envAnnotation ?? runConfig.env_annotation;
+  if (!isRecord(value) || Array.isArray(value) || !isRecord(value.tables) || Array.isArray(value.tables)) {
+    return undefined;
+  }
+  try {
+    if (JSON.stringify(value).length > ENV_ANNOTATION_MAX_CHARS) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return value as EnvAnnotation;
 };
 
 /** Payload for the `assumptions.loaded` run event: what the agent's ledger was built from. */

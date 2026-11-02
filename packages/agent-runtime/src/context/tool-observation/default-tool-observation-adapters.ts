@@ -14,6 +14,7 @@ import {
   SkillSearchToolObservationAdapter
 } from "./adapters/skill-tool-observation-adapters.js";
 import { SqlResultToolObservationAdapter } from "./adapters/sql-result-tool-observation-adapter.js";
+import { ConcludeStageToolObservationAdapter } from "./adapters/stage-plan-tool-observation-adapter.js";
 import {
   TaskCheckToolObservationAdapter,
   TaskCompleteToolObservationAdapter,
@@ -78,6 +79,7 @@ const defaultToolObservationAdapters = (
   new TaskCheckToolObservationAdapter(),
   new AskUserToolObservationAdapter(),
   new SubmitPlanToolObservationAdapter(),
+  new ConcludeStageToolObservationAdapter(),
   ...(input.mcpToolNames ?? []).map((name) => new McpToolObservationAdapter(name)),
   ...(input.additionalAdapters ?? [])
 ];

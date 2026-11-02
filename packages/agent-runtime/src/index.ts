@@ -65,6 +65,22 @@ import {
 } from "./context/inventory/context-source-metadata.js";
 import { GoalRuntimeAdapter, type GoalRequest } from "./memory/goal-runtime-adapter.js";
 import { createDataFoundryToolRegistry } from "./tools/data-tools.js";
+import { createDescribeTablesTool, DESCRIBE_TABLES_TOOL_NAME } from "./tools/describe-tables.js";
+import {
+  CONCLUDE_STAGE_TOOL_NAME,
+  createConcludeStageTool,
+  fetchStagePlan,
+  renderStagePlan,
+  stagePlanConfigFromEnvironment,
+  type StagePlan
+} from "./tools/stage-plan.js";
+import {
+  envAnnotationDeliveryFromEnvironment,
+  envAnnotationFromEnvironment,
+  parseEnvAnnotation,
+  type EnvAnnotation,
+  type EnvAnnotationDelivery
+} from "./tools/env-annotation.js";
 import { GovernedToolFactory } from "./tools/governed-tool-factory.js";
 import {
   maybeIngestSessionFileOutput,
@@ -153,6 +169,8 @@ export const protocolHandoffInputSchema = z.object({
 const HITL_TOOL_NAMES = ["ask_user", "submit_plan"] as const;
 export const STATIC_AGENT_TOOL_NAMES = [
   "ask_user",
+  "conclude_stage",
+  "describe_tables",
   "edit_file",
   "execute_command",
   "file_stat",
@@ -216,6 +234,12 @@ export {
 export { resolvePythonRuntime } from "./tools/python-runtime.js";
 export { createDataFoundryToolRegistry, type ToolRegistry } from "./tools/data-tools.js";
 export {
+  ENV_ANNOTATION_PATH_VARIABLE,
+  envAnnotationFromEnvironment,
+  parseEnvAnnotation,
+  type EnvAnnotation
+} from "./tools/env-annotation.js";
+export {
   GoalRuntimeAdapter,
   type GoalRequest,
   type GoalSnapshot
@@ -267,6 +291,11 @@ export type CreateDataFoundryInput = {
   evidenceContextItems?: AgentContextItem[];
   /** D-Trail receipt checked before the run; rendered as the always-present assumption ledger. */
   assumptionReceipt?: AssumptionReceipt;
+  /**
+   * D-Trail environment annotation (`dtrail-annotate --export-agent-json`). Falls back to the file
+   * named by DF_ENV_ANNOTATION_PATH; absent both, schema/SQL tool results are unchanged.
+   */
+  envAnnotation?: EnvAnnotation;
   messages: Message[];
   modelSettings?: {
     frequencyPenalty?: number;
@@ -373,10 +402,12 @@ export const createDataFoundry = async (
   const governedMessages = normalizeIngressMessages(input.messages);
 
   const tokenUsageCorrelation = createTokenUsageCorrelationStore();
+  const envAnnotation = parseEnvAnnotation(input.envAnnotation) ?? envAnnotationFromEnvironment();
   const registry = createDataFoundryToolRegistry({
     ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     dataGateway: input.dataGateway,
     emitter: input.emitter,
+    ...(envAnnotation ? { envAnnotation } : {}),
     runContext: input.runContext,
     tokenUsageCorrelation,
   });
@@ -499,9 +530,32 @@ export const createDataFoundry = async (
       alwaysAllowTools.add(name);
     }
   }
+  // describe_tables (DF_ENV_ANNOTATION_DELIVERY=tool or chain): off by default, so other runs keep
+  // their toolset. Under `chain` inspect_schema also runs it for the inspected tables.
+  const annotationTools: Record<string, ReturnType<typeof createDescribeTablesTool>> = {};
+  if (dataToolsEnabled && envAnnotation && envAnnotationDeliveryFromEnvironment() !== "inline") {
+    annotationTools[DESCRIBE_TABLES_TOOL_NAME] = createDescribeTablesTool(envAnnotation);
+    alwaysAllowTools.add(DESCRIBE_TABLES_TOOL_NAME);
+  }
+  // conclude_stage (DF_STAGE_PLAN_URL): D-Trail splits the question into stages and checks each
+  // stage's reported outputs. Without the variable, or without a plan, the run is unchanged.
+  const stagePlanConfig = stagePlanConfigFromEnvironment();
+  const planEnvironmentId = envAnnotation?.environment_id;
+  const stagePlan = dataToolsEnabled && stagePlanConfig && planEnvironmentId
+    ? await fetchStagePlan(stagePlanConfig, planEnvironmentId, input.runContext.run_id,
+      input.runContext.user_input)
+    : undefined;
+  const planTools: Record<string, ReturnType<typeof createConcludeStageTool>> = {};
+  if (stagePlan && stagePlanConfig && planEnvironmentId) {
+    planTools[CONCLUDE_STAGE_TOOL_NAME] = createConcludeStageTool(
+      stagePlanConfig, planEnvironmentId, input.runContext.run_id);
+    alwaysAllowTools.add(CONCLUDE_STAGE_TOOL_NAME);
+  }
   const toolPlan = buildToolPlan({
     groups: [
       { source: "data", tools: dataToolsEnabled ? registry.mastraTools : {} },
+      { source: "annotation", tools: annotationTools },
+      { source: "plan", tools: planTools },
       { source: "files", tools: fileAssetTools },
       { source: "knowledge", tools: knowledgeTools },
       { source: "task", tools: taskTools },
@@ -736,7 +790,9 @@ export const createDataFoundry = async (
       mcpToolNames: input.mcpToolNames ?? [],
       protocolId: protocolState.protocolId,
       analysisRequirements,
-      workspaceAttachments
+      workspaceAttachments,
+      envAnnotationDelivery: envAnnotationDeliveryFromEnvironment(),
+      ...(stagePlan ? { stagePlan } : {})
     }),
     model: input.modelProvider.model as never,
     tools,
@@ -900,6 +956,10 @@ type AgentInstructionsInput = {
   protocolId: string;
   analysisRequirements: AnalysisRequirement[];
   workspaceAttachments: MaterializedWorkspaceAttachment[];
+  /** How the environment annotation is delivered; shapes the describe_tables instruction. */
+  envAnnotationDelivery?: EnvAnnotationDelivery;
+  /** D-Trail's stage plan for this question, when one was fetched (DF_STAGE_PLAN_URL). */
+  stagePlan?: StagePlan;
 };
 
 type MaterializedWorkspaceAttachment = {
@@ -1132,6 +1192,19 @@ export const buildAgentInstructions = (input: AgentInstructionsInput): string =>
       + "SCHEMA_REQUIRED. The token enforces inspect-before-query ordering within this run; Data Gateway remains the "
       + "authorization and read-only SQL boundary. Reuse the token instead of repeatedly inspecting the same schema."
     );
+  }
+  if (enabled(DESCRIBE_TABLES_TOOL_NAME)) {
+    policies.push(input.envAnnotationDelivery === "chain"
+      ? "Read the table notes before you query. Every inspect_schema result includes describe_tables for the "
+        + "inspected tables: the authors' own statements, related tables and join columns, README notes, and "
+        + "descriptions. For other tables, or a section it left out, call describe_tables yourself."
+      : "Read the table notes before you query. In inspect_schema results, a table with a `more` line "
+        + "has annotation beyond its inline roles: related tables and join columns, the dataset's README notes, and "
+        + "descriptions. Call describe_tables for the tables you plan to query or join before writing SQL against them."
+    );
+  }
+  if (input.stagePlan && enabled(CONCLUDE_STAGE_TOOL_NAME)) {
+    policies.push(renderStagePlan(input.stagePlan));
   }
   if (enabled("run_sql_readonly")) {
     policies.push("Write read-only SQL only. Generate SELECT or WITH queries and run them through run_sql_readonly. "

@@ -1,0 +1,22 @@
+{
+  "name": "@datafoundry/notes-mcp",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "datafoundry-notes-mcp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit false",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@datafoundry/agent-runtime": "0.2.0",
+    "@datafoundry/data-gateway": "0.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.2.1"
+  }
+}

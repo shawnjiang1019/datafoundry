@@ -1,10 +1,14 @@
+import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { acquireDuckDb, duckDbClose, duckDbRun } from "@datafoundry/data-gateway/dist/adapters/duckdb-runtime.js";
+
+const execFileAsync = promisify(execFile);
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { duckDbDatasource } from "./datasource.js";
@@ -31,10 +35,9 @@ beforeAll(async () => {
   const registry = STATIONS.map((station, index) =>
     `(${index + 1}, ${16777000 + index}, ${19000000 + index}, '0${station}', 'STATION ${index}', ${1000 + index * 50})`);
   const patients = Array.from({ length: 20 }, (_, index) => `('P${index}', ${40 + index}, '${index < 4 ? "Yes" : "No"}')`);
-  // The data gateway shares one DuckDB handle per file in this process, so the lake is written through it.
-  const handle = await acquireDuckDb(path);
-  const connection = handle.database.connect();
-  for (const statement of [
+  // The service opens the lake read-only, and DuckDB will not open one file both writable and
+  // read-only in one process, so another process writes it.
+  const statements = [
     "CREATE TABLE fires (incident_number VARCHAR, state VARCHAR, station_ref BIGINT, acres BIGINT)",
     `INSERT INTO fires VALUES ${fires.join(", ")}`,
     "CREATE TABLE fires_dictionary (\"Variable Name\" VARCHAR, \"Description\" VARCHAR)",
@@ -48,12 +51,30 @@ beforeAll(async () => {
     `INSERT INTO raws_registry VALUES ${registry.join(", ")}`,
     "CREATE TABLE patients (patient_id VARCHAR, age BIGINT, excluded VARCHAR)",
     `INSERT INTO patients VALUES ${patients.join(", ")}`
-  ]) {
-    await duckDbRun(connection, statement);
-  }
-  await duckDbClose(connection);
-  await handle.release();
+  ];
+  execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import duckdb from "duckdb";
+    const database = new duckdb.Database(${JSON.stringify(path)}, (error) => {
+      if (error) throw error;
+      database.exec(${JSON.stringify(statements.join(";\n"))}, (failure) => {
+        if (failure) throw failure;
+        database.close(() => undefined);
+      });
+    });
+  `]);
 });
+
+/** Counts the fire records from a separate process, opening the lake read-only as the service does. */
+const countFromAnotherProcess = async (): Promise<string> => (await execFileAsync(process.execPath, ["--input-type=module", "-e", `
+  import duckdb from "duckdb";
+  const database = new duckdb.Database(${JSON.stringify(path)}, duckdb.OPEN_READONLY, (error) => {
+    if (error) { console.error(String(error)); process.exit(1); }
+    database.all("SELECT COUNT(*)::INTEGER AS n FROM fires", (failure, rows) => {
+      if (failure) { console.error(String(failure)); process.exit(1); }
+      console.log(rows[0].n);
+    });
+  });
+`])).stdout.trim();
 
 describe("notes tools", () => {
   it("finds the link column names alone would miss, and rejects the decoy keys", async () => {
@@ -129,6 +150,20 @@ describe("notes tools", () => {
   it("reports caller mistakes as tool errors", async () => {
     await expect(tools().ground({ question: "q", datasource: "nope" })).rejects.toBeInstanceOf(NotesToolError);
     await expect(tools().runSql({ notes_id: "n-missing", sql: "SELECT 1" })).rejects.toThrow(/Call ground first/u);
+  });
+});
+
+describe("read-only data", () => {
+  it("refuses writes at the database, not only at the SQL guard", async () => {
+    const handle = await acquireDuckDb(path, { readOnly: true });
+    const connection = handle.database.connect();
+    await expect(duckDbRun(connection, "CREATE TABLE written AS SELECT 1 AS a")).rejects.toThrow(/read-only/iu);
+    await duckDbClose(connection);
+  });
+
+  it("lets separate processes read one file while this one has it open (two lanes, one domain)", async () => {
+    expect(await tools().runSql({ datasource: "wildfire", sql: "SELECT COUNT(*) AS n FROM fires" })).toMatchObject({ rows: [[60]] });
+    expect(await Promise.all([countFromAnotherProcess(), countFromAnotherProcess()])).toEqual(["60", "60"]);
   });
 });
 

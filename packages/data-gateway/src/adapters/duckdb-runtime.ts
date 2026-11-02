@@ -14,16 +14,27 @@ export const loadDuckDb = async (): Promise<typeof DuckDbModule> => {
   return loaded.default ?? loaded;
 };
 
-export const openDuckDb = async (path: string): Promise<DuckDbModule.Database> => {
+export type DuckDbOpenOptions = {
+  /**
+   * Open the file read-only. Any number of processes can then read it at once, as long as
+   * none holds it open read-write; writable opens allow one process per file.
+   */
+  readOnly?: boolean;
+};
+
+export const openDuckDb = async (path: string, options: DuckDbOpenOptions = {}): Promise<DuckDbModule.Database> => {
   const duckdb = await loadDuckDb();
   return await new Promise<DuckDbModule.Database>((resolve, reject) => {
-    const database = new duckdb.Database(path, (error) => {
+    const settle = (error: Error | null) => {
       if (error) {
         reject(error);
         return;
       }
       resolve(database);
-    });
+    };
+    const database = options.readOnly
+      ? new duckdb.Database(path, duckdb.OPEN_READONLY, settle)
+      : new duckdb.Database(path, settle);
   });
 };
 
@@ -50,29 +61,32 @@ export type DuckDbHandle = {
 const shared = new Map<string, Promise<DuckDbModule.Database>>();
 const noRelease = async (): Promise<void> => undefined;
 
-export const acquireDuckDb = async (path: string): Promise<DuckDbHandle> => {
+export const acquireDuckDb = async (path: string, options: DuckDbOpenOptions = {}): Promise<DuckDbHandle> => {
   if (path === ":memory:") {
     const database = await openDuckDb(path);
     return { database, release: async () => duckDbCloseDatabase(database) };
   }
-  let pending = shared.get(path);
+  const key = sharedKey(path, options);
+  let pending = shared.get(key);
   if (!pending) {
-    pending = openDuckDb(path);
-    shared.set(path, pending);
+    pending = openDuckDb(path, options);
+    shared.set(key, pending);
     // A failed open must not be cached, so the next call can retry.
-    pending.catch(() => shared.delete(path));
+    pending.catch(() => shared.delete(key));
   }
   return { database: await pending, release: noRelease };
 };
+
+/** Read-only and writable handles to one file are different databases to DuckDB, so they are cached apart. */
+const sharedKey = (path: string, options: DuckDbOpenOptions): string => options.readOnly ? `${path}\u0000readonly` : path;
 
 /**
  * Close shared handles (shutdown, tests). The paths stay unusable in this process
  * afterwards, since DuckDB will not reopen a file it has already opened.
  */
 export const closeSharedDuckDb = async (path?: string): Promise<void> => {
-  const entries = path
-    ? (shared.has(path) ? [[path, shared.get(path) as Promise<DuckDbModule.Database>] as const] : [])
-    : [...shared.entries()];
+  const entries = [...shared.entries()]
+    .filter(([key]) => !path || key === sharedKey(path, {}) || key === sharedKey(path, { readOnly: true }));
   for (const [key, pending] of entries) {
     shared.delete(key);
     await pending.then((database) => duckDbCloseDatabase(database)).catch(() => undefined);

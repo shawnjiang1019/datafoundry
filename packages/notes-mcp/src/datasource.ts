@@ -21,11 +21,13 @@ export class ReadonlySqlError extends Error {}
  * sees the same tables, names and types a DataFoundry run on the same file sees (the KramaBench
  * eval builds one such file per domain).
  *
- * DuckDB lets one process hold a file open for writing: while a DataFoundry server has the file
- * open, point the service at a copy.
+ * The file is opened read-only, so any number of service processes can share it (on 2026-11-02 two
+ * services on one file, each opening it writable, failed each other's queries on DuckDB's lock). A
+ * process holding the file open writable, such as a DataFoundry server, still locks everyone out:
+ * then point the service at a copy.
  */
 export const duckDbDatasource = (path: string): NotesDatasource => {
-  const adapter = new DuckDbAdapter({ path });
+  const adapter = new DuckDbAdapter({ path, read_only: true });
   return {
     id: path,
     inspectSchema: async () => {

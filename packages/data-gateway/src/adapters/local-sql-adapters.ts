@@ -101,7 +101,8 @@ export class DuckDbAdapter implements DataSourceAdapter {
   }
 
   private async query(sql: string, signal?: AbortSignal | undefined): Promise<Record<string, unknown>[]> {
-    const handle = await acquireDuckDb(stringConfig(this.config, "path"));
+    // `read_only: true` lets several processes read one file at once (the notes MCP service).
+    const handle = await acquireDuckDb(stringConfig(this.config, "path"), { readOnly: this.config.read_only === true });
     const connection = handle.database.connect();
     try {
       const rows = await duckDbAll(connection, sql, signal);

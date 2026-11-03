@@ -1,3 +1,4 @@
+import { computesAggregate, filtersOnColumn } from "../protocol/sql-semantic-validator.js";
 import { blockedUnfaithfulWords, type FrameDecision, type FrameOption } from "./answer-frame.js";
 import type { EvidenceGroundingContext } from "./types.js";
 import { intersect, terms } from "./vocabulary.js";
@@ -46,7 +47,7 @@ export const checkAnswer = (input: {
           evidence: { table: option.table, allRows: whole.rows, linkedRows: option.rows, linkedFrom: defined.fromTable }
         };
       }
-      if (defined?.kind === "flag" && whole && !mentions(sql, defined.column)
+      if (defined?.kind === "flag" && whole && !appliesFlag(sql, defined.column, input.question)
         && whole.rows !== undefined && option.rows !== undefined && whole.rows > 0
         && (whole.rows - option.rows) / whole.rows >= MIN_FLAGGED_SHARE) {
         return {
@@ -91,6 +92,27 @@ const appliesAny = (sql: string, option: FrameOption): boolean => {
   const identifiers = [...(option.sqlWhere ?? "").matchAll(/"([^"]+)"/gu)].map((match) => match[1] ?? "")
     .filter((name) => name && name !== option.table);
   return identifiers.some((name) => mentions(sql, name));
+};
+
+/** Questions answered by a calculation over many rows, not by looking up one. */
+const AGGREGATE_QUESTION = /\b(?:average|mean|median|sum|total|count|how many|number of|percent(?:age)?|proportion|share|ratio|rate)\b/iu;
+
+/**
+ * Whether the answer's query took the flag into account.
+ *
+ * Where the flag decides which rows count, it sits in a filter (WHERE, JOIN ON, HAVING, CASE, GROUP BY).
+ * A query that only lists it is enough for a lookup: biomedical-hard-3 (2026-11-03) read one patient's
+ * Case_excluded to see whether to keep that patient, and was right. It is not enough when the answer is a
+ * calculation the query does not do: biomedical-easy-2 listed the 14 serous rows with their flag and
+ * averaged all of them, excluded ones included. SQL the parser cannot read falls back to "mentions the
+ * column", so an unreadable query is never challenged for it.
+ */
+const appliesFlag = (sql: string, column: string, question: string): boolean => {
+  const filtered = filtersOnColumn(sql, "duckdb", column);
+  if (filtered === undefined) return mentions(sql, column);
+  if (filtered) return true;
+  const listingForALookup = computesAggregate(sql, "duckdb") === false && !AGGREGATE_QUESTION.test(question);
+  return listingForALookup && mentions(sql, column);
 };
 
 const gap = (all: number | undefined, part: number | undefined): number =>

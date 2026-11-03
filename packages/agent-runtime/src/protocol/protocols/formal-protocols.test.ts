@@ -440,7 +440,7 @@ describe("formal protocols", () => {
         values: [{ name: "order_count", value: 3 }]
       }]
     })).toThrow(
-      "ANALYSIS_CLAIM_VALUE_NOT_VERIFIED:R1:gmv_total: execute and bind evidence for assertion R1.A2 before committing"
+      "ANALYSIS_CLAIM_VALUE_NOT_VERIFIED:R1:gmv_total: no bound SQL result for assertion R1.A2 produced column"
     );
   });
 

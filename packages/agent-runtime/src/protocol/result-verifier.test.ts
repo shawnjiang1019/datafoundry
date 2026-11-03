@@ -208,5 +208,37 @@ describe("analysis result verifier", () => {
     expect(verification.valid).toBe(false);
     expect(verification.verifiedValues).toEqual([]);
     expect(verification.findings[0]?.code).toBe("RESULT_CLAIM_VALUE_MISSING:orders");
+    expect(verification.findings[0]?.message).toContain("read from column order_count (or orders)");
+    expect(verification.findings[0]?.message).toContain("the result has columns total");
+  });
+
+  it("finds a claim value under its own name, a different case, or the alias the SQL used", () => {
+    const assertions = createAnalysisAssertions("R1", [{
+      kind: "grain",
+      description: "selected patient",
+      resultChecks: [{ kind: "not_null", fields: ["idx"], required: true }],
+      claimValues: [{ name: "selected_patient_idx", field: "idx", required: true }]
+    }]);
+    const byName = verifyAnalysisResult({ columns: ["selected_patient_idx"], rows: [["S019"]], rowCount: 1 }, assertions);
+    expect(byName.valid).toBe(true);
+    expect(byName.verifiedValues).toMatchObject([{ name: "selected_patient_idx", value: "S019" }]);
+
+    const byCase = verifyAnalysisResult({ columns: ["IDX"], rows: [["S019"]], rowCount: 1 }, assertions);
+    expect(byCase.verifiedValues).toMatchObject([{ value: "S019" }]);
+
+    const byAlias = verifyAnalysisResult({ columns: ["patient"], rows: [["S019"]], rowCount: 1 }, assertions,
+      { aliases: { idx: "patient" } });
+    expect(byAlias.verifiedValues).toMatchObject([{ value: "S019" }]);
+  });
+
+  it("does not guess when the value is genuinely absent", () => {
+    const assertions = createAnalysisAssertions("R1", [{
+      kind: "grain",
+      description: "selected patient",
+      claimValues: [{ name: "selected_patient_idx", field: "idx", required: true }]
+    }]);
+    const verification = verifyAnalysisResult({ columns: ["age"], rows: [[60]], rowCount: 1 }, assertions);
+    expect(verification.valid).toBe(false);
+    expect(verification.verifiedValues).toEqual([]);
   });
 });

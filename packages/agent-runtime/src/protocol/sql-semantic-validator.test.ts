@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createAnalysisAssertions } from "./analysis-contract.js";
-import { validateSqlSemantics } from "./sql-semantic-validator.js";
+import { aliasMapFromFindings, validateSqlSemantics } from "./sql-semantic-validator.js";
 
 describe("SQL semantic validator", () => {
   it("accepts SQL that satisfies source, aggregate, grain and inclusive end-date constraints", () => {
@@ -74,7 +74,7 @@ describe("SQL semantic validator", () => {
     expect(findings[0]?.message).toContain("observed SUM(amount) AS order_count");
   });
 
-  it("reports the exact expected and observed aliases for aggregate mismatches", () => {
+  it("accepts the same aggregate under another alias as a warning and records the mapping", () => {
     const assertions = createAnalysisAssertions("R1", [{
       kind: "metric",
       description: "统计订单数",
@@ -87,8 +87,21 @@ describe("SQL semantic validator", () => {
       assertions
     );
 
-    expect(findings[0]?.message).toContain("Expected COUNT(*) AS total_orders");
-    expect(findings[0]?.message).toContain("observed COUNT(*) AS order_count");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ code: "SQL_SEMANTIC_ALIAS_DIFFERS:total_orders=order_count", severity: "warning" });
+    expect(aliasMapFromFindings(findings)).toEqual({ total_orders: "order_count" });
+  });
+
+  it("still rejects a different aggregate even when the alias matches", () => {
+    const assertions = createAnalysisAssertions("R1", [{
+      kind: "metric",
+      description: "统计订单数",
+      sqlConstraints: [{ kind: "aggregate", function: "COUNT", column: "*", alias: "total_orders" }]
+    }]);
+
+    const findings = validateSqlSemantics("SELECT SUM(amount) AS total_orders FROM orders", "sqlite", assertions);
+
+    expect(findings[0]).toMatchObject({ code: "SQL_SEMANTIC_AGGREGATE_MISSING:COUNT", severity: "error" });
   });
 
   it("rejects a missing group-by grain", () => {
@@ -122,9 +135,10 @@ describe("SQL semantic validator", () => {
     expect(findings.map((finding) => finding.code)).toContain("SQL_SEMANTIC_TIME_END_MISSING:order_date");
   });
 
-  it("returns a stable finding for unparseable SQL", () => {
+  it("returns a stable non-blocking finding for SQL the checker cannot parse", () => {
     const findings = validateSqlSemantics("SELECT FROM", "sqlite", []);
 
     expect(findings[0]?.code).toBe("SQL_SEMANTIC_PARSE_FAILED");
+    expect(findings[0]?.severity).toBe("warning");
   });
 });

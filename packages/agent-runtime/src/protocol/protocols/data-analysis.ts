@@ -577,7 +577,8 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
       assertion.required && assertion.kind !== "manual"
         ? assertion.claimValues.filter((spec) => spec.required).map((spec) => ({
             assertionId: assertion.id,
-            name: spec.name
+            name: spec.name,
+            field: spec.field
           }))
         : []);
     for (const spec of requiredValueSpecs) {
@@ -585,8 +586,10 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
         value.assertionId === spec.assertionId && value.name === spec.name);
       if (!verified) {
         throw new Error(
-          `ANALYSIS_CLAIM_VALUE_NOT_VERIFIED:${requirementId}:${spec.name}: execute and bind evidence for assertion `
-          + `${spec.assertionId} before committing.`
+          `ANALYSIS_CLAIM_VALUE_NOT_VERIFIED:${requirementId}:${spec.name}: no bound SQL result for assertion `
+          + `${spec.assertionId} produced column ${spec.field}`
+          + `${spec.field && spec.field !== spec.name ? ` (or ${spec.name})` : ""} in a single row. Run SQL with `
+          + `assertion_ids [${spec.assertionId}] that returns it, then cite that result's artifact.`
         );
       }
     }

@@ -595,6 +595,9 @@ export const createDataFoundry = async (
     await runWorkspace.destroy();
     throw error;
   }
+  // Lets the pre-action verifier see how earlier actions in this run ended (repeated-failure rule).
+  preActionPolicy?.attachHistory(() =>
+    protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId).actions);
   const governedToolFactory = new GovernedToolFactory(
     dispatcher,
     onGovernedResultWithSessionOutput,

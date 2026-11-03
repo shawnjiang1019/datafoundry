@@ -28,6 +28,7 @@ import {
 } from "./protocol-router.js";
 import { ProtocolRuntime, type ProtocolRuntimeOptions } from "./protocol-runtime.js";
 import { verifyAnalysisResult } from "./result-verifier.js";
+import { aliasMapFromFindings } from "./sql-semantic-validator.js";
 import {
   createDataAnalysisProtocol,
   reduceDataAnalysisAction,
@@ -874,7 +875,7 @@ const validateAnalysisResult = (
         columns: columns.filter((column): column is string => typeof column === "string"),
         rows,
         rowCount
-      }, attempt?.assertions ?? [])
+      }, attempt?.assertions ?? [], { aliases: aliasMapFromFindings(attempt?.validationFindings ?? []) })
     : { valid: false, findings: [], verifiedValues: [] };
   const validationFindings = [...structuralFindings, ...verification.findings];
   return {

@@ -21,11 +21,18 @@ export type AnalysisResultVerification = {
 /** Verify deterministic result invariants and extract claimable values. */
 export const verifyAnalysisResult = (
   result: AnalysisTabularResult,
-  assertions: AnalysisAssertion[]
+  assertions: AnalysisAssertion[],
+  options: { aliases?: Record<string, string> } = {}
 ): AnalysisResultVerification => {
   const rows = normalizeRows(result);
+  const aliases = options.aliases ?? {};
+  const resolveOperand = (operand: AnalysisValueOperand, rowsToRead: Array<Record<string, AnalysisScalar>>,
+    alternateNames: string[] = []) => resolveOperandIn(operand, rowsToRead, aliases, alternateNames);
   const findings: AnalysisValidationFinding[] = [];
   for (const assertion of assertions) {
+    // Inside one assertion a field and the claim values read from it name the same thing.
+    const namesFor = (field: string): string[] =>
+      assertion.claimValues.filter((spec) => spec.field === field).map((spec) => spec.name);
     for (const check of assertion.resultChecks) {
       if (check.kind === "non_empty") {
         if (rows.length === 0) {
@@ -53,7 +60,10 @@ export const verifyAnalysisResult = (
       }
       if (check.kind === "not_null") {
         for (const field of check.fields) {
-          if (rows.some((row) => !Object.hasOwn(row, field) || row[field] === null)) {
+          if (rows.some((row) => {
+            const key = findField(row, field, aliases, namesFor(field));
+            return key === undefined || row[key] === null;
+          })) {
             findings.push({
               code: `RESULT_CHECK_NOT_NULL_FAILED:${field}`,
               message: `Field ${field} contains missing or null values for assertion ${assertion.id}.`,
@@ -156,12 +166,15 @@ export const verifyAnalysisResult = (
     const value = resolveOperand({
       field: spec.field,
       ...(spec.selector ? { selector: spec.selector } : {})
-    }, rows);
+    }, rows, [spec.name]);
     if (value === undefined) {
       if (spec.required) {
         findings.push({
           code: `RESULT_CLAIM_VALUE_MISSING:${spec.name}`,
-          message: `Claim value ${spec.name} is missing for assertion ${assertion.id}.`,
+          message: `Claim value ${spec.name} for assertion ${assertion.id} is read from column ${spec.field}`
+            + `${spec.field === spec.name ? "" : ` (or ${spec.name})`}, but the result has columns `
+            + `${result.columns.join(", ") || "none"}`
+            + `${rows.length === 1 ? "" : ` and ${rows.length} rows (one row is required)`}.`,
           severity: "error",
           assertionId: assertion.id
         });
@@ -191,19 +204,46 @@ const normalizeRows = (result: AnalysisTabularResult): Array<Record<string, Anal
   return Object.fromEntries(result.columns.map((column, index) => [column, asScalar(row[index])]));
 });
 
-const resolveOperand = (
+/**
+ * The row key holding a contract field: the exact name, the alias the SQL used for it, a
+ * case-insensitive match, or one of the alternate names (a claim value's own name). Contracts are
+ * written before the SQL, so the value is located by meaning, not only by one exact spelling.
+ */
+const findField = (
+  row: Record<string, AnalysisScalar>,
+  field: string,
+  aliases: Record<string, string>,
+  alternateNames: string[] = []
+): string | undefined => {
+  const keys = Object.keys(row);
+  for (const candidate of [field, aliases[field], ...alternateNames]) {
+    if (!candidate) continue;
+    if (Object.hasOwn(row, candidate)) return candidate;
+    const folded = keys.find((key) => key.toLowerCase() === candidate.toLowerCase());
+    if (folded) return folded;
+  }
+  return undefined;
+};
+
+const resolveOperandIn = (
   operand: AnalysisValueOperand,
-  rows: Array<Record<string, AnalysisScalar>>
+  rows: Array<Record<string, AnalysisScalar>>,
+  aliases: Record<string, string>,
+  alternateNames: string[] = []
 ): AnalysisScalar | undefined => {
   if (Object.hasOwn(operand, "literal")) return operand.literal;
   if (!operand.field) return undefined;
+  const field = operand.field;
   const matchingRows = operand.selector
-    ? rows.filter((row) => Object.entries(operand.selector ?? {}).every(([field, value]) => row[field] === value))
+    ? rows.filter((row) => Object.entries(operand.selector ?? {}).every(([name, value]) => {
+        const key = findField(row, name, aliases);
+        return key !== undefined && row[key] === value;
+      }))
     : rows;
   if (matchingRows.length !== 1) return undefined;
-  return Object.hasOwn(matchingRows[0] as object, operand.field)
-    ? matchingRows[0]?.[operand.field]
-    : undefined;
+  const row = matchingRows[0] as Record<string, AnalysisScalar>;
+  const key = findField(row, field, aliases, alternateNames);
+  return key === undefined ? undefined : row[key];
 };
 
 const asScalar = (value: unknown): AnalysisScalar =>

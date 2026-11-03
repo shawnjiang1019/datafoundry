@@ -37,9 +37,14 @@ export const validateSqlSemantics = (
   try {
     parsed = parser.parse(sql, { database: parserDialect(dialect) }) as SqlParseResult;
   } catch (error) {
+    // A checker that cannot read the SQL must not block it: the query runs and its result is
+    // still verified against the assertion's result checks and claim values.
     return [finding(
       "SQL_SEMANTIC_PARSE_FAILED",
-      `SQL semantic parsing failed: ${error instanceof Error ? error.message : String(error)}`
+      `SQL could not be parsed for contract checks (${error instanceof Error ? error.message : String(error)}); `
+      + "it will run and be verified on its result instead.",
+      undefined,
+      "warning"
     )];
   }
   if (Array.isArray(parsed.ast)) {
@@ -90,10 +95,24 @@ const validateConstraint = (
       : [finding(`SQL_SEMANTIC_COLUMN_MISSING:${constraint.column}`, `Required column ${constraint.column} is missing.`, assertionId)];
   }
   if (constraint.kind === "aggregate") {
+    const sameAggregate = (aggregate: SqlAggregate) => aggregate.name === constraint.function.toLowerCase()
+      && (!constraint.column || aggregate.column === normalizeIdentifier(constraint.column));
     const matches = sql.aggregates.some((aggregate) =>
-      aggregate.name === constraint.function.toLowerCase()
-      && (!constraint.column || aggregate.column === normalizeIdentifier(constraint.column))
-      && (!constraint.alias || aggregate.alias === normalizeIdentifier(constraint.alias)));
+      sameAggregate(aggregate) && (!constraint.alias || aggregate.alias === normalizeIdentifier(constraint.alias)));
+    // Same function and column under another alias is the same computation: accept it and record
+    // the mapping so result checks read the value from the alias the SQL actually used.
+    const renamed = !matches && constraint.alias
+      ? sql.aggregates.find((aggregate) => sameAggregate(aggregate) && aggregate.alias)
+      : undefined;
+    if (renamed?.alias && constraint.alias) {
+      return [finding(
+        `${SQL_ALIAS_DIFFERS}:${normalizeIdentifier(constraint.alias)}=${renamed.alias}`,
+        `${constraint.function.toUpperCase()} is aliased ${renamed.alias}; the contract name is `
+        + `${normalizeIdentifier(constraint.alias)}. Results are read from ${renamed.alias}.`,
+        assertionId,
+        "warning"
+      )];
+    }
     return matches ? [] : [finding(
       `SQL_SEMANTIC_AGGREGATE_MISSING:${constraint.function}`,
       `Expected ${formatAggregate({
@@ -239,9 +258,25 @@ const parserDialect = (dialect: string | undefined): string => {
 const normalizeIdentifier = (value: string): string => value.replace(/^[`"[]|[`"\]]$/gu, "").toLowerCase();
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
-const finding = (code: string, message: string, assertionId?: string): AnalysisValidationFinding => ({
+const finding = (
+  code: string,
+  message: string,
+  assertionId?: string,
+  severity: AnalysisValidationFinding["severity"] = "error"
+): AnalysisValidationFinding => ({
   code,
   message,
-  severity: "error",
+  severity,
   ...(assertionId ? { assertionId } : {})
 });
+
+/** Finding code prefix for an accepted alias difference: `SQL_SEMANTIC_ALIAS_DIFFERS:<expected>=<used>`. */
+export const SQL_ALIAS_DIFFERS = "SQL_SEMANTIC_ALIAS_DIFFERS";
+
+/** Expected-to-used alias map from a query attempt's validation findings. */
+export const aliasMapFromFindings = (findings: readonly AnalysisValidationFinding[]): Record<string, string> =>
+  Object.fromEntries(findings.flatMap((item) => {
+    if (!item.code.startsWith(`${SQL_ALIAS_DIFFERS}:`)) return [];
+    const [expected, used] = item.code.slice(SQL_ALIAS_DIFFERS.length + 1).split("=");
+    return expected && used ? [[expected, used]] : [];
+  }));

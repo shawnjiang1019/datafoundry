@@ -13,27 +13,53 @@
  *   or by naming a file as a table (`FROM '/path/answers.csv'`). Those reach outside the
  *   registered datasource, so they are blocked.
  * - datasource_scope: a `datasource_id` argument must be one of the run's enabled datasources.
+ * - repeated_failure: an action that failed the same way several times in a row is stopped, so
+ *   the agent changes approach instead of burning steps (for example guessing ids in a loop).
+ *   Failures are compared by error class, the reason code before its first ":". After a few
+ *   blocked attempts one real attempt is let through, in case the agent fixed the cause.
  *
  * Opt-in: set DF_PRE_ACTION_VERIFY=1. Without it the router keeps its default allow-all policy.
+ * DF_PRE_ACTION_MAX_REPEATED_FAILURES sets the streak that triggers a block (default 5, 0 = off).
  */
 
-import type { ProtocolGuardResult } from "../protocol/types.js";
+import type { ProtocolActionRecord, ProtocolGuardResult } from "../protocol/types.js";
 
 export const PRE_ACTION_VERIFY_VARIABLE = "DF_PRE_ACTION_VERIFY";
+export const PRE_ACTION_MAX_REPEATED_FAILURES_VARIABLE = "DF_PRE_ACTION_MAX_REPEATED_FAILURES";
+export const DEFAULT_MAX_REPEATED_FAILURES = 5;
+/** Blocked attempts after which one real attempt is allowed again. */
+export const REPEATED_FAILURE_COOLDOWN = 3;
+/**
+ * Error classes the agent cannot cause or fix by changing its approach: the checker could not
+ * read the SQL, or the model provider failed. They never count toward a repeated-failure streak.
+ */
+export const NON_AGENT_ERROR_CLASSES = new Set([
+  "SQL_SEMANTIC_PARSE_FAILED",
+  "MODEL_UNAVAILABLE",
+  "RATE_LIMIT",
+  "AI_APICallError",
+  "PROTOCOL_COMMIT_CONTENTION"
+]);
 
-export type PreActionRule = "external_access" | "datasource_scope";
+export type PreActionRule = "external_access" | "datasource_scope" | "repeated_failure";
 
 export const PRE_ACTION_REASON_CODES: Record<PreActionRule, string> = {
   external_access: "PRE_ACTION_EXTERNAL_ACCESS",
-  datasource_scope: "PRE_ACTION_DATASOURCE_SCOPE"
+  datasource_scope: "PRE_ACTION_DATASOURCE_SCOPE",
+  repeated_failure: "PRE_ACTION_REPEATED_FAILURE"
 };
 
 export type PreActionVerifierOptions = {
   /** The run's enabled datasources; when empty or absent the scope rule does not apply. */
   enabledDatasourceIds?: readonly string[];
+  /** Consecutive same-class failures of one action that trigger a block; 0 turns the rule off. */
+  maxRepeatedFailures?: number;
 };
 
-export type PreActionPolicy = (input: { actionName: string; input: unknown }) => ProtocolGuardResult;
+export type PreActionPolicy = ((input: { actionName: string; input: unknown }) => ProtocolGuardResult) & {
+  /** Connect the run's action history (the protocol state), available once the run's protocol exists. */
+  attachHistory(history: () => readonly ProtocolActionRecord[]): void;
+};
 
 /** DuckDB table and scalar functions that read files, URLs, other databases, env or run SQL text. */
 const EXTERNAL_FUNCTIONS = [
@@ -83,7 +109,10 @@ const FILE_LIKE_PATTERN =
 
 export const createPreActionVerifier = (options: PreActionVerifierOptions = {}): PreActionPolicy => {
   const enabledDatasources = new Set(options.enabledDatasourceIds ?? []);
-  return ({ actionName, input }) => {
+  const maxRepeated = options.maxRepeatedFailures ?? DEFAULT_MAX_REPEATED_FAILURES;
+  let history: () => readonly ProtocolActionRecord[] = () => [];
+
+  const policy = (({ actionName, input }) => {
     const args = isRecord(input) ? input : {};
 
     if (typeof args.sql === "string") {
@@ -102,8 +131,77 @@ export const createPreActionVerifier = (options: PreActionVerifierOptions = {}):
       return reject("datasource_scope", `${actionName}: datasource '${args.datasource_id}' is not enabled for this run`);
     }
 
+    if (maxRepeated > 0) {
+      const streak = repeatedFailureStreak(safeHistory(history), actionName);
+      if (streak.failures >= maxRepeated && streak.blockedSince < REPEATED_FAILURE_COOLDOWN) {
+        // The agent only sees the reason code, so the code itself names the error it keeps hitting.
+        return {
+          allowed: false,
+          reasonCode: `${PRE_ACTION_REASON_CODES.repeated_failure}:${streak.errorClass}`,
+          message: `${actionName} failed ${streak.failures} times in a row with ${streak.errorClass}; `
+            + "change approach instead of retrying the same step"
+        };
+      }
+    }
+
     return { allowed: true };
+  }) as PreActionPolicy;
+  policy.attachHistory = (source) => {
+    history = source;
   };
+  return policy;
+};
+
+/**
+ * The latest run of same-class failures for one action, newest first. Blocks by this rule extend
+ * the streak but are counted separately (`blockedSince`), so a cooldown can let one attempt through.
+ * A success, or a failure of a different class, ends the streak.
+ */
+export const repeatedFailureStreak = (
+  actions: readonly ProtocolActionRecord[],
+  actionName: string
+): { failures: number; blockedSince: number; errorClass: string } => {
+  const blockCode = PRE_ACTION_REASON_CODES.repeated_failure;
+  let failures = 0;
+  let blockedSince = 0;
+  let errorClass = "";
+  let sawRealOutcome = false;
+  for (let index = actions.length - 1; index >= 0; index -= 1) {
+    const action = actions[index];
+    if (!action || action.actionName !== actionName || action.status === "requested") {
+      continue;
+    }
+    if (action.status === "succeeded") {
+      break;
+    }
+    const cls = errorClassOf(action.reasonCode);
+    if (cls === blockCode) {
+      if (!sawRealOutcome) {
+        blockedSince += 1;
+      }
+      continue;
+    }
+    if (NON_AGENT_ERROR_CLASSES.has(cls)) {
+      continue;
+    }
+    sawRealOutcome = true;
+    if (errorClass && cls !== errorClass) {
+      break;
+    }
+    errorClass = cls;
+    failures += 1;
+  }
+  return { failures, blockedSince, errorClass };
+};
+
+const errorClassOf = (reasonCode: string | undefined): string => (reasonCode ?? "UNKNOWN").split(":", 1)[0] ?? "UNKNOWN";
+
+const safeHistory = (history: () => readonly ProtocolActionRecord[]): readonly ProtocolActionRecord[] => {
+  try {
+    return history();
+  } catch {
+    return [];
+  }
 };
 
 /** Returns why the SQL reaches outside the registered datasource, or undefined when it does not. */
@@ -131,8 +229,15 @@ export const findExternalAccess = (sql: string): string | undefined => {
 export const preActionVerifierFromEnvironment = (
   env: Record<string, string | undefined>,
   options: PreActionVerifierOptions = {}
-): PreActionPolicy | undefined =>
-  env[PRE_ACTION_VERIFY_VARIABLE] === "1" ? createPreActionVerifier(options) : undefined;
+): PreActionPolicy | undefined => {
+  if (env[PRE_ACTION_VERIFY_VARIABLE] !== "1") {
+    return undefined;
+  }
+  const raw = env[PRE_ACTION_MAX_REPEATED_FAILURES_VARIABLE];
+  const parsed = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
+  const maxRepeatedFailures = Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_REPEATED_FAILURES;
+  return createPreActionVerifier({ maxRepeatedFailures, ...options });
+};
 
 const reject = (rule: PreActionRule, message: string): ProtocolGuardResult => ({
   allowed: false,

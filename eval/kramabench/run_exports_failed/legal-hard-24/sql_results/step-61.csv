@@ -1,0 +1,9 @@
+tbl,c0,c1,c2,c3,c4,c5
+MetAreas_IDT,368,"State College, PA Metropolitan Statistical Area",109,172,,
+MetAreas_Fraud,331,"State College, PA Metropolitan Statistical Area",787,"1,244",,
+MetAreas_Fraud,"Metropolitan Areas are defined by the Office of Management and Budget, and population estimates are based on 2023 U.S. Census figures. Metropolitan Areas are ranked based on the number of reports per 100,000 population.  Reports exclude state-specific data contributor reports.",,,,,
+DetailedCats,2022,Miscellaneous Reports,Real Estate,"23,665",0.45%,
+DetailedCats,2023,Miscellaneous Reports,Real Estate,"20,059",0.36%,
+DetailedCats,2024,Miscellaneous Reports,Real Estate,"20,140",0.31%,
+DataContrib,State Law Enforcement Agencies,Data Contributor,# of Reports,%,,
+DataContrib,2022,Florida Department of Agriculture and Consumer Services,987,0.02%,,

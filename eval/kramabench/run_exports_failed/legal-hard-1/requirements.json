@@ -1,0 +1,414 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "分析范围限定为 2023 年人口超过一百万的大都会区，其余区域不纳入统计。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "counterfactual",
+      "description": "当某大都会区没有 2023 年人口数据时，使用已知的两次人口普查（或普查估计值）所在年份的人口数，在两年之间做线性插值，估算该区域 2023 年的人口规模。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "对大都会区名称做稳健匹配：只取城市与州部分，忽略 'Metropolitan Statistical Area'、'MSA' 等后缀，并对标点符号进行规范化。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "剔除在 HTML 来源的欺诈报告数据中没有名称匹配的大都会区条目，这些条目不得进入统计。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "计算所有符合条件的大都会区（2023 年人口超过一百万且名称在欺诈报告数据中匹配成功）的身份盗窃报告数量的平均值。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "最终平均数结果需四舍五入保留 4 位小数后报告。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "segmentation",
+      "description": "分析范围限定为 2023 年人口超过一百万的大都会区，其余区域不纳入统计。",
+      "acceptanceCriteria": [
+        "仅包含 2023 年人口规模严格大于 1,000,000 的大都会区；人口等于或小于该阈值的区域被排除",
+        "用于筛选的人口口径为 2023 年当年人口；缺失 2023 年人口的区域必须先按估算规则得到 2023 年估计人口后再参与筛选"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "分析范围限定为 2023 年人口超过一百万的大都会区，其余区域不纳入统计。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21"
+      ],
+      "evidenceBindingIds": [
+        "E12",
+        "E14",
+        "E16",
+        "E19"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "counterfactual",
+      "description": "当某大都会区没有 2023 年人口数据时，使用已知的两次人口普查（或普查估计值）所在年份的人口数，在两年之间做线性插值，估算该区域 2023 年的人口规模。",
+      "acceptanceCriteria": [
+        "缺失 2023 年人口的大都会区必须用两个已知人口（普查或普查估计）年份做线性插值得到 2023 年人口估计值，不得直接排除或用其他年份人口替代",
+        "插值所用的两个年份的人口数据必须属于同一个大都会区，且与该区域匹配后的名称一致"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "当某大都会区没有 2023 年人口数据时，使用已知的两次人口普查（或普查估计值）所在年份的人口数，在两年之间做线性插值，估算该区域 2023 年的人口规模。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q5",
+        "Q7",
+        "Q14",
+        "Q15",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E10",
+        "E13",
+        "E15",
+        "E17",
+        "E20"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "对大都会区名称做稳健匹配：只取城市与州部分，忽略 'Metropolitan Statistical Area'、'MSA' 等后缀，并对标点符号进行规范化。",
+      "acceptanceCriteria": [
+        "名称匹配前必须剥离 'Metropolitan Statistical Area'、'MSA' 等大都会区类后缀，仅保留城市与州部分",
+        "名称比较前必须对两边的标点符号做规范化，确保标点差异不影响匹配结果"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "对大都会区名称做稳健匹配：只取城市与州部分，忽略 'Metropolitan Statistical Area'、'MSA' 等后缀，并对标点符号进行规范化。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q18",
+        "Q19",
+        "Q22",
+        "Q23",
+        "Q27"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E11",
+        "E18",
+        "E21",
+        "E23",
+        "E30"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "剔除在 HTML 来源的欺诈报告数据中没有名称匹配的大都会区条目，这些条目不得进入统计。",
+      "acceptanceCriteria": [
+        "按规范化后的城市+州名称匹配后，任何在欺诈报告数据中找不到对应条目的大都会区必须被完全剔除，既不计入分子也不计入分母"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "剔除在 HTML 来源的欺诈报告数据中没有名称匹配的大都会区条目，这些条目不得进入统计。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q12",
+        "Q13",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30"
+      ],
+      "evidenceBindingIds": [
+        "E9",
+        "E22",
+        "E24",
+        "E25",
+        "E26",
+        "E28",
+        "E31",
+        "E32"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "计算所有符合条件的大都会区（2023 年人口超过一百万且名称在欺诈报告数据中匹配成功）的身份盗窃报告数量的平均值。",
+      "acceptanceCriteria": [
+        "平均值等于纳入范围的大都会区的身份盗窃报告数量之和除以纳入范围的大都会区数量",
+        "参与平均的每个大都会区必须同时满足人口筛选和名称匹配两条准入规则"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "计算所有符合条件的大都会区（2023 年人口超过一百万且名称在欺诈报告数据中匹配成功）的身份盗窃报告数量的平均值。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q26",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33"
+      ],
+      "evidenceBindingIds": [
+        "E27",
+        "E29",
+        "E33",
+        "E35"
+      ],
+      "reportedClaimIds": [
+        "C6"
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "最终平均数结果需四舍五入保留 4 位小数后报告。",
+      "acceptanceCriteria": [
+        "最终报告的平均值必须四舍五入到小数点后 4 位"
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "最终平均数结果需四舍五入保留 4 位小数后报告。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35"
+      ],
+      "evidenceBindingIds": [
+        "E34",
+        "E36",
+        "E37"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: Unterminated string in JSON at position 4569 (line 1 column 4570)"
+    }
+  ]
+}

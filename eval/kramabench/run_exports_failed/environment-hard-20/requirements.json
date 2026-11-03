@@ -1,0 +1,335 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "将2015年夏季（6月、7月、8月）期间每个城市的降雨量量化为可比较的聚合度量值。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "在所有城市中比较2015年夏季降雨量，确定降雨量最少的城市。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "对选出的降雨最少城市中的各海滩，量化2015年的污染水平为可排序的度量值。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "将该城市内的海滩按污染度量从高到低排序，选出污染最严重的前三个海滩。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "需确认降雨数据与污染数据在所需时间和范围内完整可用。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "验证分析链条的内部一致性：城市筛选与海滩排名均基于2015年同一时间框架。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "将2015年夏季（6月、7月、8月）期间每个城市的降雨量量化为可比较的聚合度量值。",
+      "acceptanceCriteria": [
+        "降雨量按城市聚合，每个城市对应一个可比较的夏季降雨度量值",
+        "时间范围严格限定为2015年的6月、7月、8月三个月"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "将2015年夏季（6月、7月、8月）期间每个城市的降雨量量化为可比较的聚合度量值。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1"
+      ],
+      "evidenceBindingIds": [
+        "E1"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "在所有城市中比较2015年夏季降雨量，确定降雨量最少的城市。",
+      "acceptanceCriteria": [
+        "所有城市按夏季降雨量进行排序比较",
+        "唯一确定降雨量最小的城市",
+        "该城市成为后续海滩污染分析的限定范围"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "在所有城市中比较2015年夏季降雨量，确定降雨量最少的城市。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1"
+      ],
+      "evidenceBindingIds": [
+        "E2"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "对选出的降雨最少城市中的各海滩，量化2015年的污染水平为可排序的度量值。",
+      "acceptanceCriteria": [
+        "污染度量按海滩聚合，每个海滩对应一个污染度量值",
+        "仅包含限定城市范围内的海滩",
+        "污染数据的时间范围与2015年一致"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "对选出的降雨最少城市中的各海滩，量化2015年的污染水平为可排序的度量值。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2"
+      ],
+      "evidenceBindingIds": [
+        "E4"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "将该城市内的海滩按污染度量从高到低排序，选出污染最严重的前三个海滩。",
+      "acceptanceCriteria": [
+        "海滩按污染度量降序排列",
+        "恰好选出排名前三的三个海滩",
+        "结果中的三个海滩均为污染度量最高的三个"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "将该城市内的海滩按污染度量从高到低排序，选出污染最严重的前三个海滩。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "需确认降雨数据与污染数据在所需时间和范围内完整可用。",
+      "acceptanceCriteria": [
+        "夏季降雨数据覆盖所选城市的2015年6月、7月、8月",
+        "污染数据覆盖限定城市内在2015年有记录的海滩"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "需确认降雨数据与污染数据在所需时间和范围内完整可用。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "验证分析链条的内部一致性：城市筛选与海滩排名均基于2015年同一时间框架。",
+      "acceptanceCriteria": [
+        "城市选择所用的降雨量与海滩排名所用的污染数据均来自2015年",
+        "最终三个海滩确实位于降雨最少的城市范围内"
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "验证分析链条的内部一致性：城市筛选与海滩排名均基于2015年同一时间框架。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2"
+      ],
+      "evidenceBindingIds": [
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C6"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: Unexpected end of JSON input"
+    }
+  ]
+}

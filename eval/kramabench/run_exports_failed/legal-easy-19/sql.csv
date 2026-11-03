@@ -1,0 +1,22 @@
+﻿step,created_at,status,rows,elapsed_ms,error,sql,audit_log_id
+6,2026-09-21T08:09:47.009Z,blocked,,0,Dangerous keyword blocked: REPLACE.,"SELECT
+  ""Fraud Reports by Amount Lost"" AS row_label,
+  REPLACE(TRIM(column1), ',', '')::BIGINT AS reports_count,
+  CASE
+    WHEN ""Fraud Reports by Amount Lost"" IN ('$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500') THEN 'numerator_in_1_500'
+    ELSE 'outside_1_500'
+  END AS range_group
+FROM ""2024_CSN_Fraud_Reports_by_Amount_Lost""
+WHERE ""Fraud Reports by Amount Lost"" IN (
+  'Number of Fraud Reports',
+  'Reports with $ Loss',
+  '$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500',
+  '$501 - $600', '$601 - $700', '$701 - $800', '$801 - $900', '$901 - $1,000',
+  '$1,001 - $2,000', '$2,001 - $3,000', '$3,001 - $4,000', '$4,001 - $5,000',
+  '$5,001 - $6,000', '$6,001 - $7,000', '$7,001 - $8,000', '$8,001 - $9,000',
+  '$9,001 - $10,000', 'More than $10,000'
+)
+ORDER BY range_group, reports_count",9ac332d3-5774-4553-8371-7618c3794e8e
+9,2026-09-21T08:10:17.272Z,succeeded,22,106,,"SELECT ""Fraud Reports by Amount Lost"" AS row_label, TRANSLATE(TRIM(column1), ',', '')::BIGINT AS reports_count, CASE WHEN ""Fraud Reports by Amount Lost"" IN ('$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500') THEN 'numerator_in_1_500' ELSE 'outside_1_500' END AS range_group FROM ""2024_CSN_Fraud_Reports_by_Amount_Lost"" WHERE ""Fraud Reports by Amount Lost"" IN ( 'Number of Fraud Reports', 'Reports with $ Loss', '$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500', '$501 - $600', '$601 - $700', '$701 - $800', '$801 - $900', '$901 - $1,000', '$1,001 - $2,000', '$2,001 - $3,000', '$3,001 - $4,000', '$4,001 - $5,000', '$5,001 - $6,000', '$6,001 - $7,000', '$7,001 - $8,000', '$8,001 - $9,000', '$9,001 - $10,000', 'More than $10,000' ) ORDER BY range_group, reports_count",5d10aad2-482c-4e28-be5d-ae5ad783ec13
+10,2026-09-21T08:10:17.441Z,failed,,176,Connection was already closed,"WITH parsed AS ( SELECT ""Fraud Reports by Amount Lost"" AS row_label, TRANSLATE(TRIM(column1), ',', '')::BIGINT AS reports FROM ""2024_CSN_Fraud_Reports_by_Amount_Lost"" WHERE column1 IS NOT NULL AND TRY_CAST(TRANSLATE(TRIM(column1), ',', '') AS BIGINT) IS NOT NULL ), num AS ( SELECT SUM(reports) AS numerator FROM parsed WHERE row_label IN ('$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500') ), den AS ( SELECT MAX(CASE WHEN row_label = 'Number of Fraud Reports' THEN reports END) AS denominator, MAX(CASE WHEN row_label = 'Reports with $ Loss' THEN reports END) AS reports_with_loss FROM parsed ) SELECT n.numerator AS numerator_1_500, d.denominator AS denominator_all_reports, CASE WHEN d.denominator > 0 AND n.numerator <= d.denominator THEN 'valid' ELSE 'invalid' END AS num_le_den_check, ROUND(n.numerator::DOUBLE / d.denominator, 6) AS ratio_raw, ROUND(n.numerator::DOUBLE / d.denominator, 3) AS ratio_rounded_3dp, d.reports_with_loss AS reports_with_loss, d.denominator - d.reports_with_loss AS reports_no_loss FROM num n, den d",df27561d-adb6-4e40-92e9-25cdbc039948
+12,2026-09-21T08:10:31.842Z,succeeded,1,21,,"WITH parsed AS ( SELECT ""Fraud Reports by Amount Lost"" AS row_label, TRANSLATE(TRIM(column1), ',', '')::BIGINT AS reports FROM ""2024_CSN_Fraud_Reports_by_Amount_Lost"" WHERE column1 IS NOT NULL AND TRY_CAST(TRANSLATE(TRIM(column1), ',', '') AS BIGINT) IS NOT NULL ), num AS ( SELECT SUM(reports) AS numerator FROM parsed WHERE row_label IN ('$1 - $100', '$101 - $200', '$201 - $300', '$301 - $400', '$401 - $500') ), den AS ( SELECT MAX(CASE WHEN row_label = 'Number of Fraud Reports' THEN reports END) AS denominator, MAX(CASE WHEN row_label = 'Reports with $ Loss' THEN reports END) AS reports_with_loss FROM parsed ) SELECT n.numerator AS numerator_1_500, d.denominator AS denominator_all_reports, CASE WHEN d.denominator > 0 AND n.numerator <= d.denominator THEN 'valid' ELSE 'invalid' END AS num_le_den_check, ROUND(n.numerator::DOUBLE / d.denominator, 6) AS ratio_raw, ROUND(n.numerator::DOUBLE / d.denominator, 3) AS ratio_rounded_3dp, d.reports_with_loss AS reports_with_loss, d.denominator - d.reports_with_loss AS reports_no_loss FROM num n, den d",ab77feaa-cfe3-47ba-9d09-1526383d861a

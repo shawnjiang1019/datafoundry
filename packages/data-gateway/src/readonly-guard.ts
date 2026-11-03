@@ -35,6 +35,16 @@ const DANGEROUS_SQL_KEYWORDS = [
   "LOAD"
 ];
 
+/**
+ * Blocked words that are also standard scalar functions. `REPLACE(x, ',', '')` is
+ * string replacement, not `CREATE OR REPLACE`: a keyword immediately followed by "("
+ * is a function call and stays allowed. The statement forms are unaffected, because
+ * `REPLACE INTO` / `CREATE OR REPLACE` never have a parenthesis there, and CREATE is
+ * blocked on its own. Keywords whose statement form does take a parenthesis (CALL,
+ * EXEC, ...) are deliberately not listed here.
+ */
+const FUNCTION_SAFE_KEYWORDS = new Set(["REPLACE"]);
+
 export const stripSqlComments = (sql: string): string => {
   let result = "";
   let inSingleQuote = false;
@@ -127,7 +137,8 @@ export const guardReadonlySql = (sql: string): SqlGuardResult => {
     return { allowed: false, normalized_sql: normalizedSql, reason: "Only SELECT/WITH statements are allowed." };
   }
 
-  const dangerousKeyword = DANGEROUS_SQL_KEYWORDS.find((keyword) => new RegExp(`\\b${keyword}\\b`, "u").test(upperSql));
+  const dangerousKeyword = DANGEROUS_SQL_KEYWORDS.find((keyword) =>
+    new RegExp(`\\b${keyword}\\b${FUNCTION_SAFE_KEYWORDS.has(keyword) ? "(?!\\s*\\()" : ""}`, "u").test(upperSql));
 
   if (dangerousKeyword) {
     return { allowed: false, normalized_sql: normalizedSql, reason: `Dangerous keyword blocked: ${dangerousKeyword}.` };

@@ -54,6 +54,18 @@ export type EffectiveRunConfig = {
     protocolId: string;
     protocolVersion: string;
   };
+  /** Check candidate join keys against the data during semantic grounding (experiment flag). */
+  evidenceGrounding?: boolean;
+  /** List readings of the question (unit, population, denominator) with data counts (experiment flag). */
+  answerFrame?: boolean;
+  /** Enforce verified joins as contract rules in the SQL gate (experiment flag; needs evidenceGrounding). */
+  joinBinding?: boolean;
+  /** Enforce the agent's answer-frame choices in the SQL gate (experiment flag; needs answerFrame). */
+  frameBinding?: boolean;
+  /** Hide the answer frame and check the final answer against it (multi-stage notes; needs answerFrame). */
+  answerCheck?: boolean;
+  /** Treat the contract model's rules as warnings; block only verified joins, frame choices and the answer value. */
+  advisoryContract?: boolean;
   /**
    * Resources silently dropped from `enabled*Ids` because `default_enabled=false` (R-020).
    * The run continues; this list is surfaced in `run.config.resolved` for diagnostics.
@@ -128,6 +140,14 @@ export const extractEffectiveRunConfig = (
   const pinnedPaths = pinnedPathsFromAliases(runConfig, ["pinnedPaths", "pinned_paths"]);
   const evidenceRefs = evidenceRefsFromAliases(runConfig, ["evidenceRefs", "evidence_refs"]);
   const protocol = protocolSelectionFromRunConfig(runConfig);
+  const evidenceGrounding = booleanFromAliases(runConfig, ["evidenceGrounding", "evidence_grounding"], false);
+  const answerFrame = booleanFromAliases(runConfig, ["answerFrame", "answer_frame"], false);
+  // noteBinding is the shortcut for both kinds of binding.
+  const noteBinding = booleanFromAliases(runConfig, ["noteBinding", "note_binding"], false);
+  const joinBinding = noteBinding || booleanFromAliases(runConfig, ["joinBinding", "join_binding"], false);
+  const frameBinding = noteBinding || booleanFromAliases(runConfig, ["frameBinding", "frame_binding"], false);
+  const advisoryContract = booleanFromAliases(runConfig, ["advisoryContract", "advisory_contract"], false);
+  const answerCheck = booleanFromAliases(runConfig, ["answerCheck", "answer_check"], false);
 
   if (
     activeDatasourceId
@@ -157,6 +177,12 @@ export const extractEffectiveRunConfig = (
     ...(mentioned ? { mentioned } : {}),
     ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
     ...(protocol ? { protocol } : {}),
+    ...(evidenceGrounding ? { evidenceGrounding } : {}),
+    ...(answerFrame ? { answerFrame } : {}),
+    ...(joinBinding ? { joinBinding } : {}),
+    ...(frameBinding ? { frameBinding } : {}),
+    ...(answerCheck ? { answerCheck } : {}),
+    ...(advisoryContract ? { advisoryContract } : {}),
     evidenceRefs
   };
 };

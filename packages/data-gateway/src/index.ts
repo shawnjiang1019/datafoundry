@@ -74,6 +74,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export { createDemoDuckDbConfig, demoDuckDbPath } from "./demo-duckdb.js";
+export { DuckDbAdapter } from "./adapters/local-sql-adapters.js";
+export { guardReadonlySql } from "./readonly-guard.js";
+export type { SqlGuardResult } from "./readonly-guard.js";
 
 export type {
   AdapterExecutionInput,
@@ -186,7 +189,7 @@ export class LocalDataGateway implements DataGateway {
       ),
       signal: input.signal
     });
-    return maskTableResult(result, resourcePolicy.maskFields);
+    return normalizeTableResult(maskTableResult(result, resourcePolicy.maskFields));
   }
 
   async runSqlReadonly(input: RunSqlReadonlyInput): Promise<SqlExecutionResult> {

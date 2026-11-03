@@ -1,0 +1,17 @@
+function_name,function_type
+array_zip,scalar
+formatReadableDecimalSize,scalar
+formatReadableSize,scalar
+list_zip,scalar
+read_blob,table
+read_csv,table
+read_csv_auto,table
+read_json,table
+read_json_auto,table
+read_json_objects,table
+read_json_objects_auto,table
+read_ndjson,table
+read_ndjson_auto,table
+read_ndjson_objects,table
+read_parquet,table
+read_text,table

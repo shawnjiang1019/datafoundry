@@ -1,0 +1,12 @@
+kind,ord,detail
+MAX,1,1979:ssn=220.1:prominence=205.1
+MAX,2,1989:ssn=211.1:prominence=196.3
+MAX,3,2000:ssn=173.9:prominence=162.3
+MAX,4,1968:ssn=150.0:prominence=131.6
+MAX,5,2014:ssn=113.3:prominence=109.1
+MIN,1,2008:ssn=4.2:prominence=109.1
+MIN,2,1996:ssn=11.6:prominence=162.3
+MIN,3,1986:ssn=14.8:prominence=196.3
+MIN,4,1964:ssn=15.0:prominence=144.0
+MIN,5,1976:ssn=18.4:prominence=131.6
+SUMMARY,0,"n_rows=61, missing_years=0, n_max=5, n_min=5, overlap=0, period_max_yr=11.5, period_min_yr=11.0, period_overall_yr=11.25"

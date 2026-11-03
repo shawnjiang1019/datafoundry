@@ -1,0 +1,259 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Estimate the total count of major altitude change events for satellite 48445 during the full year 2024, based on TLE history.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "A major altitude change is strictly defined as an altitude change greater than 1000m occurring within a 12-hour interval.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "Altitude at each TLE epoch must be estimated using skifield's itrf_xyz applied to the TLE history.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "The TLE history basis must adequately cover satellite 48445 across 2024 so that the estimated count reflects the whole year.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Estimate the total count of major altitude change events for satellite 48445 during the full year 2024, based on TLE history.",
+      "acceptanceCriteria": [
+        "The final result is a single numeric total count of qualifying altitude-change events for satellite 48445 in 2024.",
+        "The count is scoped exclusively to satellite 48445.",
+        "The count covers the entire 2024 calendar year, not a partial-year subset."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Estimate the total count of major altitude change events for satellite 48445 during the full year 2024, based on TLE history.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "validation",
+      "description": "A major altitude change is strictly defined as an altitude change greater than 1000m occurring within a 12-hour interval.",
+      "acceptanceCriteria": [
+        "Only altitude differences strictly exceeding 1000m between TLE epochs no more than 12 hours apart qualify as events.",
+        "Altitude changes of 1000m or less, or measured over intervals longer than 12 hours, are excluded from the count.",
+        "Each qualifying event contributes exactly once to the total; no double counting and no counting of non-qualifying transitions."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "A major altitude change is strictly defined as an altitude change greater than 1000m occurring within a 12-hour interval.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15"
+      ],
+      "evidenceBindingIds": [
+        "E12"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "Altitude at each TLE epoch must be estimated using skifield's itrf_xyz applied to the TLE history.",
+      "acceptanceCriteria": [
+        "Altitude per TLE epoch is derived by converting/propagating the TLE via skifield's itrf_xyz and computing altitude from the resulting position vector.",
+        "No alternative altitude source or precomputed altitude value is substituted for the itrf_xyz-derived estimate."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "Altitude at each TLE epoch must be estimated using skifield's itrf_xyz applied to the TLE history.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q15"
+      ],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "The TLE history basis must adequately cover satellite 48445 across 2024 so that the estimated count reflects the whole year.",
+      "acceptanceCriteria": [
+        "The computation relies only on TLE history records for satellite 48445 within 2024.",
+        "The >1000m within 12h rule is applied uniformly across the year, and data coverage limitations do not silently relax or tighten the event definition."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "The TLE history basis must adequately cover satellite 48445 across 2024 so that the estimated count reflects the whole year.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E13"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.1.assertions.1.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.1.assertions.1.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.1.assertions.1.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.description: Too big: expected string to have <=500 characters; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.1.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.1.assertions.1.description: Too big: expected string to have <=500 characters; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.3.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    }
+  ]
+}

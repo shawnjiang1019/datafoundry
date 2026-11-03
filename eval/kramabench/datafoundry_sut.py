@@ -15,6 +15,8 @@ Prereqs (env vars):
     DF_API=http://127.0.0.1:8787   DF_EMAIL=...   DF_PASSWORD=...
     DF_LLM_PROFILE=server-default  (must point at a reachable model)
     DF_RUN_TIMEOUT=180             (fail slow/un-runnable tasks fast)
+    DF_RETRY_ATTEMPTS=4            (retries for provider rate limits / unreachable API)
+    DF_RETRY_BASE_S=30             (first backoff delay; doubles each attempt)
 DataFoundry must be running (npm run start) with a verified account + working model profile.
 """
 
@@ -25,6 +27,7 @@ import glob
 import json
 import os
 import pathlib
+import random
 import re
 import sys
 import time
@@ -36,6 +39,18 @@ try:
     import duckdb
 except ImportError:
     duckdb = None
+
+# The ingest package ships alongside this SUT file (eval/kramabench/ds_ingest,
+# and copied to KramaBench/systems/ with the SUT). Make it importable from the
+# direct smoke path and from inside the harness.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from ds_ingest import load_by_extension
+    from ds_ingest.registry import DEFAULT_TABLE_NAME, SUPPORTED_EXTENSIONS
+except ImportError:  # the SUT still imports standalone for --smoke without the package
+    load_by_extension = None
+    DEFAULT_TABLE_NAME = {}
+    SUPPORTED_EXTENSIONS = frozenset()
 
 # KramaBench's base class when run inside the harness; a shim for standalone --smoke.
 try:
@@ -50,6 +65,62 @@ except Exception:
 API = os.environ.get("DF_API", "http://127.0.0.1:8787").rstrip("/")
 LLM_PROFILE = os.environ.get("DF_LLM_PROFILE", "server-default")
 RUN_TIMEOUT_S = int(os.environ.get("DF_RUN_TIMEOUT", "180"))
+RETRY_ATTEMPTS = int(os.environ.get("DF_RETRY_ATTEMPTS", "4"))
+RETRY_BASE_S = float(os.environ.get("DF_RETRY_BASE_S", "30"))
+RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
+DTRAIL_API_URL = os.environ.get("DTRAIL_API_URL", "").rstrip("/")
+DTRAIL_TOKEN = os.environ.get("DTRAIL_TOKEN", "")
+DTRAIL_ASSUME = os.environ.get("DTRAIL_ASSUME", "0") == "1"
+GROUNDING = os.environ.get("DF_GROUNDING", "0") == "1"
+ANSWER_FRAME = os.environ.get("DF_ANSWER_FRAME", "0") == "1"
+# DF_BINDING=1 is the shortcut for both kinds of binding.
+JOIN_BINDING = os.environ.get("DF_JOIN_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
+FRAME_BINDING = os.environ.get("DF_FRAME_BINDING", os.environ.get("DF_BINDING", "0")) == "1"
+# Multi-stage notes: the frame is computed but hidden, and the final answer is checked against it.
+ANSWER_CHECK = os.environ.get("DF_ANSWER_CHECK", "0") == "1"
+# Applies to every arm when set, so baseline and note arms run against the same contract behavior.
+ADVISORY_CONTRACT = os.environ.get("DF_ADVISORY_CONTRACT", "0") == "1"
+
+# A failed run is reported as answer text, not raised, so retry decisions read the
+# text. Gate on these prefixes first: a task answer may legitimately contain the
+# word "rate limit", but only a failure report starts with one of these.
+FAILURE_PREFIXES = ("[DataFoundry run failed]", "[DataFoundry error]")
+
+# Provider-side faults that a later attempt can plausibly survive. Deliberately
+# excludes "terminated" (a 30-minute stream death) and model/SQL mistakes, which
+# repeat deterministically and would just burn the budget twice.
+TRANSIENT_MARKERS = (
+    ("rate limit", "rate limited"),
+    ("too many requests", "rate limited"),
+    # GLM (bigmodel.cn) reports its limiter in Chinese: 速率限制 = rate limit, 请求频率 = request rate.
+    ("速率限制", "rate limited"),
+    ("请求频率", "rate limited"),
+    ("getaddrinfo", "provider unreachable"),
+    ("cannot connect to api", "provider unreachable"),
+    ("econnreset", "connection reset"),
+    ("socket hang up", "connection dropped"),
+)
+
+
+# A spent plan quota lasts hours or days, so retrying in place cannot help.
+# GLM: 使用上限 = usage cap ("weekly/monthly usage cap reached, resets at ...").
+QUOTA_MARKERS = ("使用上限", "quota exceeded", "insufficient_quota")
+
+
+def quota_exhausted(text: str) -> bool:
+    lowered = text.lower()
+    return text.startswith(FAILURE_PREFIXES) and any(marker in lowered for marker in QUOTA_MARKERS)
+
+
+def transient_failure_reason(text: str) -> str | None:
+    """Return why `text` is a retryable provider failure, or None if it is an answer."""
+    if not text.startswith(FAILURE_PREFIXES):
+        return None
+    lowered = text.lower()
+    for marker, reason in TRANSIENT_MARKERS:
+        if marker in lowered:
+            return reason
+    return None
 
 
 def _unwrap(resp):
@@ -68,6 +139,7 @@ class DataFoundryClient:
     def __init__(self, api_base: str, email: str, password: str):
         self.api = api_base.rstrip("/")
         self.s = requests.Session()
+        self._last_thread_id: str | None = None
         self._login(email, password)
 
     def _login(self, email: str, password: str) -> None:
@@ -112,6 +184,28 @@ class DataFoundryClient:
 
     def run(self, question: str, datasource_id: str) -> str:
         thread_id = f"kb-{uuid.uuid4().hex[:8]}"
+        run_config = {
+            "activeDatasourceId": datasource_id,
+            "enabledDatasourceIds": [datasource_id],
+            "activeLlmProfileId": LLM_PROFILE,
+            "enabledKnowledgeIds": [],
+            "enabledMcpServerIds": [],
+            "enabledSkillIds": [],
+        }
+        if DTRAIL_ASSUME:
+            run_config["assumeVerification"] = True
+        if GROUNDING:
+            run_config["evidenceGrounding"] = True
+        if ANSWER_FRAME:
+            run_config["answerFrame"] = True
+        if JOIN_BINDING:
+            run_config["joinBinding"] = True
+        if FRAME_BINDING:
+            run_config["frameBinding"] = True
+        if ANSWER_CHECK:
+            run_config["answerCheck"] = True
+        if ADVISORY_CONTRACT:
+            run_config["advisoryContract"] = True
         payload = {
             "method": "agent/run",
             "params": {"agentId": "dataFoundry"},
@@ -122,16 +216,10 @@ class DataFoundryClient:
                 "messages": [{"id": f"m-{uuid.uuid4().hex[:8]}", "role": "user", "content": question}],
                 "tools": [],
                 "context": [],
-                "forwardedProps": {"run_config": {
-                    "activeDatasourceId": datasource_id,
-                    "enabledDatasourceIds": [datasource_id],
-                    "activeLlmProfileId": LLM_PROFILE,
-                    "enabledKnowledgeIds": [],
-                    "enabledMcpServerIds": [],
-                    "enabledSkillIds": [],
-                }},
+                "forwardedProps": {"run_config": run_config},
             },
         }
+        self._last_thread_id = thread_id
         headers = {**self._mutate_headers(), "accept": "text/event-stream"}
         with self.s.post(f"{self.api}/api/copilotkit", json=payload,
                          headers=headers, stream=True, timeout=RUN_TIMEOUT_S) as resp:
@@ -140,10 +228,19 @@ class DataFoundryClient:
                 pass  # drain the AG-UI SSE stream to completion
         return self._final_answer(thread_id)
 
-    def _final_answer(self, thread_id: str) -> str:
+    def _conversation(self, thread_id: str) -> dict:
         r = self.s.get(f"{self.api}/api/v1/sessions/{thread_id}/conversation")
         r.raise_for_status()
-        conv = _unwrap(r)
+        return _unwrap(r)
+
+    def _final_answer(self, thread_id: str) -> str:
+        conv = self._conversation(thread_id)
+        # A run that fails partway (e.g. a provider rate limit at step 40) still has the agent's
+        # earlier text; report the failure, not that text, so it is retried instead of scored.
+        failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
+                  if cp.get("status") == "failed"]
+        if failed:
+            return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}"
         msgs = conv.get("messages", conv) if isinstance(conv, dict) else conv
         texts: list[str] = []
         for m in msgs if isinstance(msgs, list) else []:
@@ -153,12 +250,43 @@ class DataFoundryClient:
                     c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
                 if isinstance(c, str) and c.strip():
                     texts.append(c.strip())
-        if texts:
-            return texts[-1]
-        # No assistant text: surface the run failure instead of dumping the whole conversation.
-        failed = [cp for cp in (conv.get("checkpoints") or [] if isinstance(conv, dict) else [])
-                  if cp.get("status") == "failed"]
-        return f"[DataFoundry run failed] {failed[-1].get('errorMessage')}" if failed else "[DataFoundry] no answer"
+        return texts[-1] if texts else "[DataFoundry] no answer"
+
+    def read_assumptions(self) -> dict | None:
+        """Best-effort readback of the d-trail assumptions receipt for the last run.
+
+        The receipt is advisory and only present when d-trail classified assumptions
+        (`DTRAIL_ASSUME=1` with a configured service); missing metadata yields None.
+        """
+        if not (DTRAIL_ASSUME and DTRAIL_API_URL) or not self._last_thread_id:
+            return None
+        task_id = self._find_dtrail_task_id(self._conversation(self._last_thread_id))
+        if not task_id:
+            return None
+        headers = {"Accept": "application/json"}
+        if DTRAIL_TOKEN:
+            headers["Authorization"] = f"Bearer {DTRAIL_TOKEN}"
+        r = requests.get(f"{DTRAIL_API_URL}/runs/{task_id}/assumptions", headers=headers, timeout=30)
+        return r.json() if r.status_code == 200 else None
+
+    @staticmethod
+    def _find_dtrail_task_id(conv: dict) -> str | None:
+        candidates = []
+        for cp in conv.get("checkpoints") or []:
+            md = cp.get("metadata") if isinstance(cp, dict) else None
+            if isinstance(md, dict):
+                candidates.append(md.get("dtrail_task_id"))
+        for m in conv.get("messages") or [] if isinstance(conv, dict) else []:
+            content = m.get("content", "")
+            if not isinstance(content, str):
+                continue
+            found = re.search(r'"dtrail_task_id"\s*:\s*"([^"]+)"', content)
+            if found:
+                candidates.append(found.group(1))
+        for c in candidates:
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+        return None
 
 
 # ── Domain-lake ingestion ─────────────────────────────────────────────────────
@@ -173,9 +301,11 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
         raise SystemExit("pip install duckdb")
     files = [p for p in sorted(glob.glob(os.path.join(dataset_directory, "**", "*"), recursive=True))
              if not os.path.isdir(p)]
-    names = _unique_table_names(files)
     con = duckdb.connect(out_path)
     made, skipped = 0, []
+    files, grouped = _group_file_families(con, files, dataset_directory)
+    made += grouped
+    names = _unique_table_names(files)
     for path in files:
         name = names[path]
         rel = os.path.relpath(path, dataset_directory)
@@ -185,6 +315,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 try:
                     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                 "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
+                    _fix_csv_header(con, name, path)
                 except duckdb.InvalidInputException:
                     # Several KramaBench CSVs are Windows-1252 (curly quotes, en dashes in 0x80-0x9F),
                     # which DuckDB's latin-1 reader rejects; transcode to a UTF-8 copy first.
@@ -195,6 +326,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                     try:
                         con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                     "SELECT * FROM read_csv_auto(?, sample_size=-1)", [utf8_copy])
+                        _fix_csv_header(con, name, utf8_copy)
                     finally:
                         os.remove(utf8_copy)
                 made += 1
@@ -206,6 +338,14 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 made += 1
             elif ext in (".xlsx", ".xls"):
                 made += _load_workbook(con, path, name)  # one table per sheet; sheet 1 is often a README
+            elif ext in (".html", ".htm"):
+                made += _load_html_tables(con, path, name)
+            elif load_by_extension is not None and ext in SUPPORTED_EXTENSIONS:
+                outcome = _load_special(con, path, rel)
+                if outcome < 0:
+                    skipped.append(f"{rel} (no data rows parsed)")
+                else:
+                    made += outcome
             else:
                 skipped.append(rel)
         except Exception as e:  # noqa: BLE001 — a load failure is also a finding
@@ -215,6 +355,142 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
     for s in skipped[:50]:
         print("   skip:", s)
     return out_path
+
+
+def _load_special(con, path: str, rel: str) -> int:
+    """Ingest a file type with no native DuckDB reader (tle/sp3/lst/dat/npz/cdf).
+
+    Same-family files (OMNI2 .dat, TLE, POD .sp3) append to one table keyed by
+    the extension's default name; ``source_file`` is stamped with the relative
+    path so SQL can isolate a specific year/satellite.  Files that parse to no
+    rows (e.g. a non-OMNI .dat) return -1 and are recorded as skipped rather
+    than creating an empty table.
+    """
+    suffix = pathlib.Path(path).suffix.lower()
+    rows = load_by_extension(path)
+    if not rows:
+        return -1
+    table = _special_table_name(suffix, rel)
+    for row in rows:
+        row["source_file"] = rel
+    import pandas as pd
+
+    frame = pd.DataFrame(rows)
+    con.register("_special", frame)
+    identifier = f'"{_safe_ident(table)}"'
+    existing = {t[0].lower() for t in con.execute(
+        "select table_name from information_schema.tables where table_schema='main'").fetchall()}
+    if table.lower() in existing:
+        con.execute(f"INSERT INTO {identifier} SELECT * FROM _special")
+    else:
+        con.execute(f"CREATE TABLE {identifier} AS SELECT * FROM _special")
+    con.unregister("_special")
+    return 1
+
+
+def _special_table_name(suffix: str, rel: str) -> str:
+    """Table name for a ds_ingest file: stem for one-offs, fixed family name otherwise."""
+    if suffix in (".npz", ".cdf"):
+        return _safe_ident(pathlib.Path(rel).stem)
+    return DEFAULT_TABLE_NAME.get(suffix, "special")
+
+
+FAMILY_MIN_FILES = 3
+
+
+def _family_key(path: str, dataset_directory: str) -> tuple[str, str, str]:
+    """(directory, shape, extension) for a file, where shape drops dates and ids.
+
+    'Sat_Density/swarma-wu113-20141230_to_20150102.csv' and its 714 siblings share a
+    shape; 'water-body-testing-2002.csv' and its 21 siblings do too.
+    """
+    relative = os.path.relpath(path, dataset_directory)
+    directory = os.path.dirname(relative)
+    stem = pathlib.Path(relative).stem
+    shape = re.sub(r"\d{4}-\d{2}-\d{2}", "<date>", stem)
+    shape = re.sub(r"\d{8}", "<date>", shape)
+    shape = re.sub(r"\d{4,}", "<num>", shape)
+    shape = re.sub(r"(?<=[A-Za-z_])\d{2,3}\b", "<id>", shape)
+    return directory, shape, pathlib.Path(relative).suffix.lower()
+
+
+def _family_table_name(directory: str, shape: str) -> str:
+    """Readable table name for a family: the shape without placeholders, folder-qualified."""
+    base = re.sub(r"<[a-z]+>", " ", shape)
+    base = _safe_ident(" ".join(base.split()).strip(" _-")) or "files"
+    folder = _safe_ident(os.path.basename(directory))
+    if folder and folder.lower() not in ("", ".", "input") and folder.lower() != base.lower():
+        return f"{folder}__{base}"
+    return base
+
+
+def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple[list[str], int]:
+    """Union same-shaped files into one table each; return the files left to ingest singly.
+
+    A lake often ships one logical table cut into shards — 715 `swarma-*` files for one
+    satellite series, 104 `State_MSA_*` files one per state, 22 `water-body-testing-<year>`
+    files. One table per file makes the obvious question ("average density in 2015") a
+    walk over hundreds of tables, which is how an astronomy run spent 40 queries and hit
+    the run timeout without reaching any analysis.
+
+    Only files that share a directory, a name shape and an exact column signature are
+    merged (`union_by_name=false` makes DuckDB refuse a mismatch, and the family then
+    falls back to one table per file). Each row keeps its `source_file`.
+    """
+    # A subdirectory usually holds one dataset cut into pieces, whatever the pieces are
+    # called ('State MSA Fraud and Other data/Alabama.csv'), so files there group by
+    # directory. At the top level, where unrelated datasets sit side by side, only files
+    # that share a name shape group ('water-body-testing-<year>.csv').
+    by_directory: dict[tuple[str, str], list[str]] = {}
+    for path in files:
+        directory, _, extension = _family_key(path, dataset_directory)
+        by_directory.setdefault((directory, extension), []).append(path)
+
+    groups: dict[tuple[str, str, str], list[str]] = {}
+    for (directory, extension), members in by_directory.items():
+        if directory and len(members) >= FAMILY_MIN_FILES:
+            groups[(directory, os.path.basename(directory), extension)] = members
+            continue
+        for path in members:
+            groups.setdefault(_family_key(path, dataset_directory), []).append(path)
+
+    remaining, made = [], 0
+    for (directory, shape, extension), members in groups.items():
+        if len(members) < FAMILY_MIN_FILES or extension not in (".csv", ".tsv", ".txt", ".parquet", ".pq"):
+            remaining.extend(members)
+            continue
+        table = _family_table_name(directory, shape)
+        reader = "read_parquet" if extension in (".parquet", ".pq") else "read_csv_auto"
+        options = "filename = true, union_by_name = false" + ("" if reader == "read_parquet" else ", sample_size = -1")
+        listed = ", ".join("'" + member.replace("'", "''") + "'" for member in sorted(members))
+        try:
+            con.execute(f'CREATE OR REPLACE TABLE "{table}" AS '
+                        f"SELECT * FROM {reader}([{listed}], {options})")
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN filename TO source_file')
+            rows = con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+            print(f"[ingest] {table}: {len(members)} files unioned into one table ({rows} rows)")
+            made += 1
+        except Exception as error:  # noqa: BLE001 — mixed schemas stay one table per file
+            print(f"[ingest] {table}: kept {len(members)} files separate ({str(error).splitlines()[0][:90]})")
+            remaining.extend(members)
+    return sorted(remaining), made
+
+
+def _load_html_tables(con, path: str, name: str) -> int:
+    """Load every table in an HTML page (legal's metropolitan_statistics.html, for example)."""
+    import pandas as pd
+
+    frames = [frame for frame in pd.read_html(path) if frame.shape[0] >= 5 and frame.shape[1] >= 2]
+    for index, frame in enumerate(frames):
+        frame.columns = [str(column) for column in frame.columns]
+        for column in frame.columns[frame.dtypes == object]:
+            frame[column] = frame[column].astype("string")
+        table = name if len(frames) == 1 else f"{name}__t{index + 1}"
+        con.register("_html", frame)
+        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _html')
+        con.unregister("_html")
+    print(f"[ingest] {name}: {len(frames)} HTML table(s)")
+    return len(frames)
 
 
 def _unique_table_names(files: list[str]) -> dict[str, str]:
@@ -241,20 +517,145 @@ def _unique_table_names(files: list[str]) -> dict[str, str]:
     return names
 
 
+HEADER_SCAN_ROWS = 25
+
+
+def _split_csv_line(line: str, delimiter: str) -> list[str]:
+    """Split on the delimiter, honouring simple double-quoted fields."""
+    cells, cell, quoted = [], "", False
+    for char in line.rstrip("\r\n"):
+        if char == '"':
+            quoted = not quoted
+        elif char == delimiter and not quoted:
+            cells.append(cell.strip().strip('"'))
+            cell = ""
+        else:
+            cell += char
+    cells.append(cell.strip().strip('"'))
+    return cells
+
+
+def _best_delimiter(lines: list[str]) -> str:
+    """The delimiter that splits every line into the same number of fields.
+
+    Frequency alone is wrong for files like nifc_wildfires.csv: it is tab separated but
+    its numbers contain thousands separators, so commas outnumber tabs and the sniffer
+    shreds each row. Consistency of the field count identifies the true delimiter.
+    """
+    def score(delimiter: str) -> tuple[int, int]:
+        counts = [len(_split_csv_line(line, delimiter)) for line in lines if line.strip()]
+        if not counts:
+            return (0, 0)
+        common = max(set(counts), key=counts.count)
+        return (counts.count(common) if common > 1 else 0, common)
+
+    return max([",", "\t", ";", "|"], key=score)
+
+
+def _fix_csv_header(con, name: str, path: str) -> None:
+    """Re-read a CSV whose header or delimiter DuckDB got wrong.
+
+    Two shapes appear in the KramaBench lakes: title/licence lines before the header
+    (noaa_wildfires_monthly_stats.csv), and a tab-separated file whose values contain
+    commas (nifc_wildfires.csv). Both leave the real header sitting in the data.
+    """
+    columns = [r[0] for r in con.execute(
+        "select column_name from information_schema.columns where table_name = ?", [name]).fetchall()]
+    degenerate = (
+        len(columns) <= 1
+        or sum(1 for c in columns if re.fullmatch(r"column\d+", c)) > len(columns) / 2
+        or any("\t" in c for c in columns)
+        or sum(1 for c in columns if _looks_numeric(c)) > len(columns) / 2
+    )
+    if not degenerate:
+        return
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        lines = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
+    if not lines:
+        return
+    delimiter = _best_delimiter(lines)
+    rows = [_split_csv_line(line, delimiter) for line in lines]
+    skip = detect_header_row(rows)
+    # A file of pure data (e.g. the SILSO sunspot series) has no header-like row at all;
+    # reading one anyway would consume a data row and name the columns after its values.
+    headed = _header_row_score(rows[skip]) > 0 if skip < len(rows) else False
+    try:
+        con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM '
+                    "read_csv_auto(?, sample_size=-1, delim=?, skip=?, header=?)",
+                    [path, delimiter, skip if headed else 0, headed])
+    except Exception as error:  # noqa: BLE001 — keep whatever the first read produced
+        print(f"[ingest] {name}: kept the sniffed layout ({str(error).splitlines()[0][:80]})")
+        return
+    print(f"[ingest] {name}: re-read with delimiter {delimiter!r}"
+          + (f", skipping {skip} preamble row(s)" if headed and skip else "")
+          + ("" if headed else ", no header row (columns named positionally)"))
+
+
+def _header_row_score(values: list) -> float:
+    """How much a row looks like a header: wide, textual, and all names distinct.
+
+    Title and unit rows lose out: a title fills one cell (narrow), a unit row such as
+    '(ppm) (ppm) (ppm)' repeats itself (not distinct), and a data row is mostly numeric.
+    """
+    cells = [v for v in values if v is not None and str(v).strip() != "" and str(v) != "nan"]
+    if len(cells) < 2:
+        return 0.0
+    labels = [str(v).strip() for v in cells]
+    textual = sum(1 for v in cells if isinstance(v, str) and not _looks_numeric(v))
+    distinct = len(set(labels)) / len(labels)
+    return len(cells) * (textual / len(cells)) * distinct
+
+
+def _looks_numeric(value: str) -> bool:
+    try:
+        float(str(value).replace(",", ""))
+        return True
+    except ValueError:
+        return False
+
+
+def detect_header_row(rows: list[list]) -> int:
+    """Index of the most header-like row among the first HEADER_SCAN_ROWS, else 0.
+
+    KramaBench workbooks (climateMeasurements.xlsx, for example) carry a title, a note
+    and a units row before the real header. Reading row 0 as the header turns every
+    column into 'Unnamed: N' and buries the real names in the data, which forces the
+    agent to guess which column is which.
+    """
+    best_index, best_score = 0, 0.0
+    for index, row in enumerate(rows[:HEADER_SCAN_ROWS]):
+        score = _header_row_score(list(row))
+        # A header must be followed by data.
+        if score > best_score and index + 1 < len(rows) and _header_row_score(list(rows[index + 1])) >= 0:
+            best_index, best_score = index, score
+    return best_index
+
+
 def _load_workbook(con, path: str, name: str) -> int:
     """Load every sheet of an Excel workbook as its own table; returns tables created."""
     import pandas as pd  # openpyxl engine; KramaBench's biomedical workbooks put a README on sheet 1
 
-    sheets = pd.read_excel(path, sheet_name=None)
+    raw_sheets = pd.read_excel(path, sheet_name=None, header=None)
     made = 0
-    for sheet, df in sheets.items():
-        table = name if len(sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
-        if df.shape[1] == 1:
-            # One-column sheets are bare lists (e.g. gene names) with no header row; read_excel
-            # would promote the first item to a column name and drop it from the data.
-            first = df.columns[0]
-            df = pd.concat([pd.DataFrame({"value": [first]}), df.rename(columns={first: "value"})],
-                           ignore_index=True)
+    for sheet, raw in raw_sheets.items():
+        table = name if len(raw_sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
+        if raw.shape[1] == 1:
+            # One-column sheets are bare lists (e.g. gene names) with no header row.
+            df = raw.rename(columns={raw.columns[0]: "value"})
+        else:
+            rows = raw.values.tolist()
+            header_index = detect_header_row(rows)
+            if rows and _header_row_score(rows[header_index]) == 0:
+                # No header-like row: keep every row as data and name columns positionally.
+                df = raw.rename(columns={c: f"col_{c}" for c in raw.columns})
+            else:
+                # Re-read through pandas so duplicate names get its .1/.2 suffixes, which is
+                # what the KramaBench reference pipelines refer to (e.g. 'Age_ky.1').
+                df = pd.read_excel(path, sheet_name=sheet, header=header_index)
+                df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
+                if header_index > 0:
+                    print(f"[ingest] {table}: header row {header_index} "
+                          f"({', '.join(str(c) for c in df.columns[:6])}…)")
         df.columns = [str(c) for c in df.columns]
         for col in df.columns[df.dtypes == object]:
             df[col] = df[col].astype("string")  # mixed-type columns break DuckDB's type inference
@@ -265,11 +666,18 @@ def _load_workbook(con, path: str, name: str) -> int:
     return made
 
 
+# Rounding: official exact-match scoring allows ~0.01% relative error, so -0.008 for -0.008003975 scores 0
+# (biomedical-easy-9) and unrounded 6.326006 for "3 decimals" gets half credit on a list (wildfire-hard-16).
+# The marker line is required even when the answer is written in another language (legal-easy-20 answered
+# in Chinese prose with no marker, and the whole text was graded).
 ANSWER_FORMAT_INSTRUCTION = (
     "\n\nWhen you are done, end your response with one final line exactly of the form\n"
     "FINAL_ANSWER: <answer>\n"
     "where <answer> is only the value: a bare number (no units, no % sign, no thousands separators), "
-    "a short string, or a JSON list such as [\"a\", \"b\"]."
+    "a short string, or a JSON list such as [\"a\", \"b\"]. "
+    "Keep full precision in every intermediate step and round only this final value, exactly as the question "
+    "asks; if the question gives no rounding, give at least 4 significant digits. "
+    "Always write this FINAL_ANSWER line in English, whatever language the rest of the response uses."
 )
 
 _FINAL_ANSWER_RE = re.compile(r"FINAL_ANSWER\s*[:：]\s*(.+)", re.IGNORECASE)
@@ -320,19 +728,53 @@ class DataFoundrySUT(System):
         self._ds_id = client.register_duckdb_datasource(f"kb-{tag}", f"KramaBench {tag}", duckdb_path)
         self.dataset_directory = dataset_directory
 
-    def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
+    def _run_with_backoff(self, question: str) -> str:
+        """Run one task, retrying provider rate limits with exponential backoff.
+
+        Without this a single 429 cascades: the limiter stays tripped, KramaBench
+        immediately starts the next task into it, and a whole domain dies in
+        seconds (8 astronomy tasks were lost in 8s this way). Retrying in place
+        spends wall time instead of tasks.
+        """
         client = self._ensure_client()
+        assert self._ds_id is not None
+        full_text = ""
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                full_text = client.run(question, self._ds_id)
+            except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
+                full_text = f"[DataFoundry error] {e}"
+            if quota_exhausted(full_text):
+                # Every later task would fail in a second and be logged as done; stop the
+                # batch so a resumable runner picks up from here once the quota resets.
+                raise SystemExit(f"[DataFoundry] provider quota exhausted, stopping: {full_text}")
+            reason = transient_failure_reason(full_text)
+            if reason is None or attempt == RETRY_ATTEMPTS:
+                break
+            # Equal jitter: half the delay is fixed so a tripped limiter always gets
+            # real recovery time, half is random so parallel domains do not retry in
+            # lockstep and re-trip it together.
+            ceiling = min(RETRY_MAX_DELAY_S, RETRY_BASE_S * 2 ** (attempt - 1))
+            delay = ceiling / 2 + random.uniform(0, ceiling / 2)
+            print(f"[retry] {reason} (attempt {attempt}/{RETRY_ATTEMPTS}); "
+                  f"sleeping {delay:.0f}s", file=sys.stderr, flush=True)
+            time.sleep(delay)
+        return full_text
+
+    def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
+        self._ensure_client()
         if self._ds_id is None:
             raise RuntimeError("process_dataset must run before serve_query")
-        try:
-            full_text = client.run(query + ANSWER_FORMAT_INSTRUCTION, self._ds_id)
-        except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
-            full_text = f"[DataFoundry error] {e}"
+        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION)
         answer = extract_final_answer(full_text)
+        explanation = {"answer": answer, "id": query_id, "full_response": full_text}
+        assumptions = self.client.read_assumptions()
+        if assumptions is not None:
+            explanation["assumptions"] = assumptions
         if self.verbose:
             print(f"DataFoundrySUT: {query_id} -> {answer!r}")
         return {
-            "explanation": {"answer": answer, "id": query_id, "full_response": full_text},
+            "explanation": explanation,
             "pipeline_code": "",   # DataFoundry emits SQL+artifacts, not a Python pipeline (use --no_pipeline_eval)
             "token_usage": 0, "token_usage_input": 0, "token_usage_output": 0,
         }

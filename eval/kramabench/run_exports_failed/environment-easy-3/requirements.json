@@ -1,0 +1,301 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算每个海滩在2012年和2013年的细菌超标率",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "以海滩为单位分别统计两年的超标率",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "统计2013年超标率高于2012年的海滩数量",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "排除2012年无样本的海滩",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "验证年度样本数据完整性以确保比较有效",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算每个海滩在2012年和2013年的细菌超标率",
+      "acceptanceCriteria": [
+        "结果包含每个海滩在2012与2013两个年份各自的细菌超标率度量",
+        "超标率基于样本数据中的超标判定计算，两年采用一致的计算口径"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算每个海滩在2012年和2013年的细菌超标率",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q8",
+        "Q9"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "以海滩为单位分别统计两年的超标率",
+      "acceptanceCriteria": [
+        "每个海滩作为独立比较单元",
+        "每年(2012、2013)分别计算该海滩的超标率，不跨年混合样本"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "以海滩为单位分别统计两年的超标率",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q9"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "统计2013年超标率高于2012年的海滩数量",
+      "acceptanceCriteria": [
+        "仅当某海滩2013年超标率严格大于其2012年超标率时计入",
+        "最终输出为满足条件的海滩数量，为一个单一数值",
+        "2013年超标率等于或低于2012年的海滩不计入"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "统计2013年超标率高于2012年的海滩数量",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E8",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "data_quality",
+      "description": "排除2012年无样本的海滩",
+      "acceptanceCriteria": [
+        "2012年样本数为零的海滩被完全排除，不得出现在计数中",
+        "被排除的海滩不能因2013年有样本而被计入"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "排除2012年无样本的海滩",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E9",
+        "E12"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "验证年度样本数据完整性以确保比较有效",
+      "acceptanceCriteria": [
+        "计入比较的每个海滩在2012年和2013年均有非零样本",
+        "2013年无样本的海滩不得因缺失数据被计入",
+        "最终计数结果与非空比较集合一致"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "验证年度样本数据完整性以确保比较有效",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E10",
+        "E13"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Expected double-quoted property name in JSON at position 2963 (line 63 column 34)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Expected double-quoted property name in JSON at position 2963 (line 63 column 34)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Expected double-quoted property name in JSON at position 2963 (line 63 column 34)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Expected double-quoted property name in JSON at position 2963 (line 63 column 34)"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Expected double-quoted property name in JSON at position 2963 (line 63 column 34)"
+    }
+  ]
+}

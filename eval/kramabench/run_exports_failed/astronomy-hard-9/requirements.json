@@ -1,0 +1,376 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "TLE observations for SATCAT object 43180 and hourly OMNI2 AP index data must both be available for the analysis window May 1–30, 2024, with the OMNI2 data parsed according to its documented format specification.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "Atmospheric drag must be quantified as the change in semi-major axis (in km) derived from consecutive TLE observations of object 43180, using Earth's gravitational parameter mu = 398600.4418 km³/s².",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "TLE epoch times must be rounded to the nearest hour so the drag series aligns with the hourly AP index timestamps.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "The correlation analysis is restricted to the time window May 1–30, 2024.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "The r² correlation between the drag series and the AP index must be computed for every integer lag from 0 through 48 hours inclusive.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "decision",
+      "description": "The best lag is defined as the integer lag in 0–48 hours that maximizes the r² correlation between drag and AP index.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "TLE observations for SATCAT object 43180 and hourly OMNI2 AP index data must both be available for the analysis window May 1–30, 2024, with the OMNI2 data parsed according to its documented format specification.",
+      "acceptanceCriteria": [
+        "TLE records for SATCAT object 43180 exist with epochs inside May 1–30, 2024.",
+        "AP index values are sourced from OMNI2 at hourly cadence and cover May 1–30, 2024.",
+        "AP values are extracted by parsing OMNI2 records according to the provided omni2 format specification."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "TLE observations for SATCAT object 43180 and hourly OMNI2 AP index data must both be available for the analysis window May 1–30, 2024, with the OMNI2 data parsed according to its documented format specification.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E3",
+        "E5",
+        "E7",
+        "E9",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E14",
+        "E16",
+        "E18",
+        "E19",
+        "E22",
+        "E23",
+        "E24",
+        "E26",
+        "E28"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "Atmospheric drag must be quantified as the change in semi-major axis (in km) derived from consecutive TLE observations of object 43180, using Earth's gravitational parameter mu = 398600.4418 km³/s².",
+      "acceptanceCriteria": [
+        "Semi-major axis is derived from TLE mean motion using mu = 398600.4418 km³/s².",
+        "The drag measure is the difference in semi-major axis between consecutive TLE epochs, expressed in km."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "Atmospheric drag must be quantified as the change in semi-major axis (in km) derived from consecutive TLE observations of object 43180, using Earth's gravitational parameter mu = 398600.4418 km³/s².",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q4",
+        "Q5",
+        "Q13",
+        "Q16",
+        "Q20",
+        "Q21"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E4",
+        "E6",
+        "E8",
+        "E15",
+        "E17",
+        "E20",
+        "E25",
+        "E27",
+        "E29"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "TLE epoch times must be rounded to the nearest hour so the drag series aligns with the hourly AP index timestamps.",
+      "acceptanceCriteria": [
+        "Every TLE epoch used is rounded to the nearest hour before pairing with AP values.",
+        "Each drag sample is paired with the AP value at the matching hourly timestamp, offset by the lag under evaluation."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "TLE epoch times must be rounded to the nearest hour so the drag series aligns with the hourly AP index timestamps.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q16"
+      ],
+      "evidenceBindingIds": [
+        "E21"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "segmentation",
+      "description": "The correlation analysis is restricted to the time window May 1–30, 2024.",
+      "acceptanceCriteria": [
+        "Only drag samples and AP values with timestamps within May 1–30, 2024 enter the correlation computation.",
+        "Lag-shifted pairs whose timestamps fall outside May 1–30, 2024 are excluded from that lag's r² computation."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "The correlation analysis is restricted to the time window May 1–30, 2024.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "metric",
+      "description": "The r² correlation between the drag series and the AP index must be computed for every integer lag from 0 through 48 hours inclusive.",
+      "acceptanceCriteria": [
+        "All 49 integer lags (0 through 48 hours) are evaluated, each producing an r² value.",
+        "Each r² is computed over the lag-shifted, hour-aligned drag–AP pairs within the analysis window.",
+        "Each r² is computed only from pairs where both the drag measure and AP value are non-null."
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "The r² correlation between the drag series and the AP index must be computed for every integer lag from 0 through 48 hours inclusive.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "decision",
+      "description": "The best lag is defined as the integer lag in 0–48 hours that maximizes the r² correlation between drag and AP index.",
+      "acceptanceCriteria": [
+        "The reported best lag is an integer in the range 0–48 hours.",
+        "The r² at the reported best lag is greater than or equal to the r² at every other lag in 0–48."
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "The best lag is defined as the integer lag in 0–48 hours that maximizes the r² correlation between drag and AP index.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [],
+      "evidenceBindingIds": [],
+      "reportedClaimIds": [
+        "C6"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.3.endInclusive: Invalid input: expected boolean, received undefined; contracts.0.assertions.1.sqlConstraints.4.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.1.sqlConstraints.4.value: Invalid input; contracts.1.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.1.sqlConstraints.5.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.2.assertions.1.sqlConstraints.5.value: Invalid input; contracts.2.assertions.1.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.2.assertions.1.sqlConstraints.7.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.3.assertions.0.sqlConstraints.5.endInclusive: Invalid input: expected boolean, received undefined; contracts.3.assertions.0.sqlConstraints.6.endInclusive: Invalid input: expected boolean, received undefined; contracts.4.assertions.1.sqlConstraints.3.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.4.assertions.1.sqlConstraints.3.value: Invalid input; contracts.4.assertions.1.sqlConstraints.4.endInclusive: Invalid input: expected boolean, received undefined"
+    }
+  ]
+}

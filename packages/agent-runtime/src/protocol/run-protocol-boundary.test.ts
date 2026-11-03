@@ -109,7 +109,7 @@ describe("createRunProtocolBoundary", () => {
       expect.arrayContaining([expect.objectContaining({ id: "R1", status: "evidenced" })])
     );
 
-    await boundary.actionRouter.execute({
+    const commit = await boundary.actionRouter.execute({
       runId: "run-requirement-evidence",
       segmentId: boundary.segmentId,
       actionId: "commit-1",
@@ -122,6 +122,19 @@ describe("createRunProtocolBoundary", () => {
         }]
       }
     });
+    // The commit tool must report what it did: echoing the input back left the agent
+    // unable to tell a successful commit from a no-op, and one run repeated the same
+    // commit 67 times until its step budget ran out.
+    expect(commit.observation).toMatchObject({
+      commit_result: {
+        committed: true,
+        reported_claim_ids: ["C1"],
+        pending_requirement_ids: [],
+        requirements: [expect.objectContaining({ requirement_id: "R1", status: "reported" })]
+      }
+    });
+    expect((commit.observation as { commit_result: { instruction: string } }).commit_result.instruction)
+      .toMatch(/Do not commit again/u);
     state = boundary.protocolRuntime.getState("run-requirement-evidence");
     const terminal = boundary.protocolRuntime.proposeCompletion({
       runId: "run-requirement-evidence",

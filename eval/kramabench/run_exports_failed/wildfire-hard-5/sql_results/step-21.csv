@@ -1,0 +1,2 @@
+min_year,max_year,n_rows,distinct_years,expected_span
+2000,2024,25,25,25

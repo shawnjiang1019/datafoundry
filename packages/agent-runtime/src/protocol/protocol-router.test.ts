@@ -130,6 +130,34 @@ describe("ProtocolRouter", () => {
     expect(() => registry.register(createDefinition("general-task")))
       .toThrow("PROTOCOL_ALREADY_REGISTERED:general-task@1");
   });
+
+  it("never offers classifier-excluded protocols to the classifier", async () => {
+    const registry = createRegistry();
+    registry.register(createDefinition("data-analysis-planned"));
+    let offered: string[] = [];
+    const router = new ProtocolRouter(registry, {
+      classifierExcludedProtocolIds: ["data-analysis-planned"],
+      classifier: async ({ candidates }) => {
+        offered = candidates.map((candidate) => candidate.protocolId).sort();
+        return {
+          protocolId: "data-analysis",
+          protocolVersion: "1",
+          confidence: 0.9,
+          reasonCodes: ["ANALYTIC_INTENT"],
+          taskRelation: "replace"
+        };
+      }
+    });
+
+    await router.route({ authorizedProtocolIds: ["general-task", "data-analysis", "data-analysis-planned"] });
+    expect(offered).toEqual(["data-analysis", "general-task"]);
+
+    const explicit = await router.route({
+      authorizedProtocolIds: ["general-task", "data-analysis", "data-analysis-planned"],
+      explicit: { protocolId: "data-analysis-planned", protocolVersion: "1" }
+    });
+    expect(explicit.definition.id).toBe("data-analysis-planned");
+  });
 });
 
 const createRegistry = (): ProtocolRegistry => {

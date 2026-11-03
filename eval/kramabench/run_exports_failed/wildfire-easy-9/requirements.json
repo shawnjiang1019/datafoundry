@@ -1,0 +1,182 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算湿度低于30%的天数中由野火导致的死亡人数",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "计算湿度低于30%天数的野火死亡人数相对于总体平均水平的差异",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "最终差值必须四舍五入保留四位小数",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算湿度低于30%的天数中由野火导致的死亡人数",
+      "acceptanceCriteria": [
+        "统计范围限定为湿度低于30%的日期",
+        "仅计入归因于野火（wildfires）的死亡人数",
+        "必须基于事实数据（而非估算或假设值）得出该数值"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算湿度低于30%的天数中由野火导致的死亡人数",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "计算湿度低于30%天数的野火死亡人数相对于总体平均水平的差异",
+      "acceptanceCriteria": [
+        "差值 = 湿度低于30%天数的野火死亡人数 − 野火死亡人数的平均基线值",
+        "基线为所有日期的野火死亡人数平均值",
+        "符号约定必须符合用户定义：正数表示低湿度天数死亡人数多于平均值，负数表示少于平均值",
+        "差值方向（正/负）必须由实际数据计算结果决定，不得人工假定"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "计算湿度低于30%天数的野火死亡人数相对于总体平均水平的差异",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E4"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "最终差值必须四舍五入保留四位小数",
+      "acceptanceCriteria": [
+        "返回的数值精确到小数点后4位（round to 4 decimal places）",
+        "输出为一个单一数值，不附带单位或百分号"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "最终差值必须四舍五入保留四位小数",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    }
+  ]
+}

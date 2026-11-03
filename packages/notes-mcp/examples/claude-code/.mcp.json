@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "node",
+      "args": [
+        "../../dist/server.js",
+        "--data", "wildfire=data/wildfire.duckdb",
+        "--data", "biomedical=data/biomedical.duckdb"
+      ]
+    }
+  }
+}

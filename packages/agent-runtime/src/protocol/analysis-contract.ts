@@ -21,7 +21,18 @@ export type SqlSemanticConstraint =
   | { kind: "aggregate"; function: string; column?: string; alias?: string }
   | { kind: "group_by"; columns: string[] }
   | { kind: "filter"; column: string; operator: "eq" | "gt" | "gte" | "lt" | "lte"; value: AnalysisScalar }
-  | { kind: "time_range"; column: string; start: string; end: string; endInclusive: boolean };
+  | { kind: "time_range"; column: string; start: string; end: string; endInclusive: boolean }
+  // Server-owned: added from join keys checked against the data when note binding is on, and
+  // absent from the model-facing schema below so a contract model can never propose them.
+  | { kind: "join"; tables: [string, string]; anyOf: SqlJoinKey[]; condition: string }
+  | { kind: "avoid_join"; key: SqlJoinKey; instead: string };
+
+export type SqlJoinKey = {
+  left: { table: string; column: string };
+  right: { table: string; column: string };
+  /** Set when the values only match as numbers (e.g. 41007 vs "041007"): a text comparison misses them. */
+  compare?: "numeric";
+};
 
 export type AnalysisValueOperand = {
   field?: string;
@@ -127,7 +138,7 @@ const analysisOperandSchema = z.object({
 }).refine((value) => value.field !== undefined || value.literal !== undefined, {
   message: "An operand requires field or literal."
 });
-const sqlConstraintSchema = z.discriminatedUnion("kind", [
+export const sqlConstraintSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("source"), table: z.string().min(1) }),
   z.object({
     kind: z.literal("column"),
@@ -162,7 +173,7 @@ const commonBinaryCheckFields = {
   right: analysisOperandSchema,
   tolerance: z.number().nonnegative().optional()
 };
-const resultCheckSchema = z.discriminatedUnion("kind", [
+export const resultCheckSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("non_empty"), required: z.boolean() }),
   z.object({
     kind: z.literal("row_count"),
@@ -195,7 +206,7 @@ const resultCheckSchema = z.discriminatedUnion("kind", [
     tolerance: z.number().nonnegative().optional()
   })
 ]);
-const claimValueSpecSchema = z.object({
+export const claimValueSpecSchema = z.object({
   name: z.string().min(1),
   field: z.string().min(1),
   selector: analysisSelectorSchema.optional(),
@@ -241,6 +252,34 @@ export const createManualAnalysisAssertion = (
   kind: "manual",
   description
 }])[0] as AnalysisAssertion;
+
+/**
+ * Map the assertion ids an agent wrote to the server's ids before anything else reads them.
+ * Agents guess formats ("R1.1", "A1", "R1_1" for R1.A1; wildfire-hard-20, 2026-10-12: 57 rejected
+ * queries and no query ran), so an unambiguous variant is accepted, and an unknown id is rejected
+ * with the valid ids listed (and a pointer to frame_choices for an answer-frame id such as F1.2).
+ */
+export const canonicalAssertionIds = (
+  requirements: Array<{ id: string; assertions: AnalysisAssertion[] }>,
+  assertionIds: string[]
+): string[] => {
+  const known = requirements.flatMap((requirement) => requirement.assertions.map((assertion) => assertion.id));
+  const valid = known.filter((id) => !id.startsWith("CORE"));
+  return assertionIds.map((raw) => {
+    const id = raw.trim();
+    if (known.includes(id)) return id;
+    const normalized = id.toUpperCase().replace(/[\s_-]+/gu, ".");
+    const parts = /^(?:(R\d+)\.?)?A?(\d+)$/u.exec(normalized.replace(/^(R\d+)\.A/u, "$1.").replace(/^A(\d+)$/u, "$1"));
+    const candidates = parts
+      ? valid.filter((candidate) => candidate.endsWith(`.A${parts[2]}`) && (!parts[1] || candidate.startsWith(`${parts[1]}.`)))
+      : [];
+    if (candidates.length === 1) return candidates[0] as string;
+    const hint = /^F\d+\.\d+$/u.test(normalized)
+      ? ` ${id} is an answer-frame reading: pass it in frame_choices, not assertion_ids.`
+      : "";
+    throw new Error(`ANALYSIS_ASSERTION_NOT_FOUND:${id}: valid assertion ids are ${valid.join(", ") || "none"}.${hint}`);
+  });
+};
 
 /** Resolve selected assertion IDs and reject cross-requirement or incomplete references. */
 export const resolveRequirementAssertions = (

@@ -1,0 +1,246 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute the proportion of fraud reporters who lost between $1 and $500 (inclusive bounds as stated) in 2024, expressed as a single numeric ratio.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The analysis population is restricted to fraud reporters with reports occurring in calendar year 2024; the $1-$500 loss criterion applies only to the numerator subset.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "The computed proportion must be mathematically valid and rounded to exactly 3 decimal places.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The completeness of the 2024 fraud reporter population must be supported by audit evidence.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "Compute the proportion of fraud reporters who lost between $1 and $500 (inclusive bounds as stated) in 2024, expressed as a single numeric ratio.",
+      "acceptanceCriteria": [
+        "Result is a single numeric value representing a ratio, not a count or percentage with a % sign",
+        "Numerator counts fraud reporters in 2024 whose reported loss amount falls within the $1-$500 range",
+        "Denominator counts all fraud reporters in 2024 regardless of loss amount",
+        "Ratio is computed as numerator divided by denominator from the same 2024 population"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "Compute the proportion of fraud reporters who lost between $1 and $500 (inclusive bounds as stated) in 2024, expressed as a single numeric ratio.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "The analysis population is restricted to fraud reporters with reports occurring in calendar year 2024; the $1-$500 loss criterion applies only to the numerator subset.",
+      "acceptanceCriteria": [
+        "Both numerator and denominator are limited to fraud reports dated within calendar year 2024 (no other years included)",
+        "The $1-$500 loss filter is applied to the numerator but not to the denominator",
+        "Boundary values $1 and $500 are handled consistently and the applied boundary inclusion/exclusion is auditable"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "The analysis population is restricted to fraud reporters with reports occurring in calendar year 2024; the $1-$500 loss criterion applies only to the numerator subset.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E2",
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "validation",
+      "description": "The computed proportion must be mathematically valid and rounded to exactly 3 decimal places.",
+      "acceptanceCriteria": [
+        "Denominator is greater than zero; a zero denominator is flagged as a failure rather than returned as a result",
+        "Proportion value falls within [0, 1]",
+        "Final value is rounded (not truncated) to exactly 3 decimal places",
+        "Numerator is less than or equal to denominator, confirming the subset relationship"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "The computed proportion must be mathematically valid and rounded to exactly 3 decimal places.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "The completeness of the 2024 fraud reporter population must be supported by audit evidence.",
+      "acceptanceCriteria": [
+        "Audit evidence shows the denominator record count and the numerator record count used in the calculation",
+        "Records excluded from the 2024 population (e.g., null or out-of-range loss amounts in the denominator) are accounted for and their treatment is documented",
+        "The reported final answer is reproducible from the recorded numerator and denominator counts after rounding"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "The completeness of the 2024 fraud reporter population must be supported by audit evidence.",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4"
+      ],
+      "evidenceBindingIds": [
+        "E4",
+        "E8"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

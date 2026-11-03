@@ -1,0 +1,9 @@
+var,n,n_nonnull,min_val,max_val,median_val,n_abs_ge_999
+f10.7_index,240,240,67.1,70.3,68.7,0
+pc_index,240,240,-0.2,5.5,0.6499999999999999,0
+sigma_T_K,240,240,1032,96919,10702.5,240
+sigma_V_km_s,240,240,0,31,6,0
+sigma_n_N_cm3,240,240,0.1,15,0.4,0
+sigma_phi_V_degrees,240,240,0.1,4.2,0.7,0
+sigma_ratio,240,240,0,0.024,0.004,0
+sigma_theta_V_degrees,240,240,0.1,3.2,0.7,0

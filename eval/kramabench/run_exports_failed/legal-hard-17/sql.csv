@@ -1,0 +1,30 @@
+﻿step,created_at,status,rows,elapsed_ms,error,sql,audit_log_id
+12,2026-09-21T07:53:38.349Z,blocked,,1,Dangerous keyword blocked: REPLACE.,"WITH cats AS (
+  SELECT column1 AS category,
+         CAST(regexp_replace(column2, ',', '', 'g') AS BIGINT) AS reports,
+         CAST(replace(column3, '%', '') AS DOUBLE) AS published_pct
+  FROM ""2024_CSN_Report_Categories""
+  WHERE regexp_matches(""Report Categories"", '^[0-9]+$')
+),
+counts AS (
+  SELECT ""Number of Fraud, Identity Theft and Other Reports by Year"" AS yr,
+         CAST(regexp_replace(column1, ',', '', 'g') AS BIGINT) AS n
+  FROM ""2024_CSN_Report_Count""
+  WHERE ""Number of Fraud, Identity Theft and Other Reports by Year"" IN ('2007','2024')
+)
+SELECT
+  (SELECT reports FROM cats WHERE category = 'Auto Related') AS auto_related_2024,
+  (SELECT n FROM counts WHERE yr = '2024') AS total_2024,
+  ROUND((SELECT reports FROM cats WHERE category = 'Auto Related')::DOUBLE
+        / (SELECT n FROM counts WHERE yr = '2024'), 6) AS auto_share_2024,
+  (SELECT published_pct FROM cats WHERE category = 'Auto Related') AS published_pct_auto,
+  (SELECT ROUND(SUM(published_pct), 2) FROM cats) AS sum_published_pct_listed,
+  (SELECT ROUND(SUM(reports)::DOUBLE / (SELECT n FROM counts WHERE yr = '2024'), 4) FROM cats) AS sum_computed_share_listed,
+  (SELECT n FROM counts WHERE yr = '2007') AS total_2007,
+  ROUND((SELECT n FROM counts WHERE yr = '2007')
+        * (SELECT reports FROM cats WHERE category = 'Auto Related')::DOUBLE
+        / (SELECT n FROM counts WHERE yr = '2024'), 2) AS auto_related_cf_2007_raw,
+  CAST(ROUND((SELECT n FROM counts WHERE yr = '2007')
+        * (SELECT reports FROM cats WHERE category = 'Auto Related')::DOUBLE
+        / (SELECT n FROM counts WHERE yr = '2024')) AS BIGINT) AS auto_related_cf_2007",144d7a58-110e-4b81-8959-7544d0137319
+14,2026-09-21T07:53:58.245Z,succeeded,1,22,,"WITH cats AS ( SELECT column1 AS category, CAST(translate(column2, ',', '') AS BIGINT) AS reports, CAST(left(column3, length(column3) - 1) AS DOUBLE) AS published_pct FROM ""2024_CSN_Report_Categories"" WHERE regexp_matches(""Report Categories"", '^[0-9]+$') ), counts AS ( SELECT ""Number of Fraud, Identity Theft and Other Reports by Year"" AS yr, CAST(translate(column1, ',', '') AS BIGINT) AS n FROM ""2024_CSN_Report_Count"" WHERE ""Number of Fraud, Identity Theft and Other Reports by Year"" IN ('2007','2024') ), base AS ( SELECT (SELECT reports FROM cats WHERE category = 'Auto Related') AS auto_related_2024, (SELECT n FROM counts WHERE yr = '2024') AS total_2024, (SELECT published_pct FROM cats WHERE category = 'Auto Related') AS published_pct_auto, (SELECT n FROM counts WHERE yr = '2007') AS total_2007 ) SELECT auto_related_2024, total_2024, ROUND(auto_related_2024::DOUBLE / total_2024, 6) AS auto_share_2024, published_pct_auto, (SELECT ROUND(SUM(published_pct), 2) FROM cats) AS sum_published_pct_listed, (SELECT ROUND(SUM(reports)::DOUBLE / (SELECT n FROM counts WHERE yr = '2024'), 4) FROM cats) AS sum_computed_share_listed, total_2007, ROUND(total_2007 * auto_related_2024::DOUBLE / total_2024, 2) AS auto_related_cf_2007_raw, CAST(ROUND(total_2007 * auto_related_2024::DOUBLE / total_2024) AS BIGINT) AS auto_related_cf_2007 FROM base",2aea98d3-e83a-45db-87e0-3e481266d6e5

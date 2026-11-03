@@ -1,0 +1,302 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "comparison",
+      "description": "按年度量化 NOAA 与 NIFC 两个报告口径之间的两组配对差异：报告火灾次数的差异与报告过火面积的差异。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "所有差异与相关性必须在年度粒度上计算，每个观测对应一个日历年份。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "仅当某年份同时具备 NOAA 与 NIFC 两源的有效数值时，该年份才可参与相关性计算。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "在两条年度差异序列（次数差异、面积差异）之间计算相关系数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "最终答案为一个标量数值，即上述相关系数的三位小数表示。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "comparison",
+      "description": "按年度量化 NOAA 与 NIFC 两个报告口径之间的两组配对差异：报告火灾次数的差异与报告过火面积的差异。",
+      "acceptanceCriteria": [
+        "对纳入的每一年，分别计算 NOAA 报告与 NIFC 报告的火灾次数差异，且方向定义须与请求中口径顺序一致并全程统一。",
+        "对纳入的每一年，分别计算 NOAA 报告与 NIFC 报告的过火面积差异，方向定义与次数差异保持一致。",
+        "两条差异序列覆盖完全相同的年份集合，形成一一配对的年度观测。"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "按年度量化 NOAA 与 NIFC 两个报告口径之间的两组配对差异：报告火灾次数的差异与报告过火面积的差异。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q5",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "所有差异与相关性必须在年度粒度上计算，每个观测对应一个日历年份。",
+      "acceptanceCriteria": [
+        "每个年份仅产生一个次数差异值和一个面积差异值。",
+        "相关性仅在年度观测上计算，不混入月度、事件级或其他更细粒度的数据。"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "所有差异与相关性必须在年度粒度上计算，每个观测对应一个日历年份。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E6",
+        "E8"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "仅当某年份同时具备 NOAA 与 NIFC 两源的有效数值时，该年份才可参与相关性计算。",
+      "acceptanceCriteria": [
+        "缺少任一来源（NOAA 或 NIFC）的次数或面积数值的年份被剔除，不参与相关性计算。",
+        "在构造差异之前，须区分缺失/未报告与真实的零值。",
+        "用于计算的配对年度观测数须足以得到有定义的相关系数。"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "仅当某年份同时具备 NOAA 与 NIFC 两源的有效数值时，该年份才可参与相关性计算。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E7",
+        "E9"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "在两条年度差异序列（次数差异、面积差异）之间计算相关系数。",
+      "acceptanceCriteria": [
+        "输出恰好一个相关系数，由配对的年度差异序列计算得到。",
+        "相关系数的符号与两条差异序列的既定方向定义一致。",
+        "结果精度为三位小数。"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "在两条年度差异序列（次数差异、面积差异）之间计算相关系数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q6",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E10"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "最终答案为一个标量数值，即上述相关系数的三位小数表示。",
+      "acceptanceCriteria": [
+        "交付值为恰好一个数值（相关系数），不含额外的序列或表格。",
+        "交付值与计算得到的相关系数在三位小数精度上一致。"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "最终答案为一个标量数值，即上述相关系数的三位小数表示。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q6",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    }
+  ]
+}

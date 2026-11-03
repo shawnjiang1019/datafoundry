@@ -1,0 +1,6 @@
+year,sample_date,beach_name,Organism,indicator_level,Violation
+2013,2013-07-15T00:00:00.000Z,333 Commercial Street,Enterococci,4,false
+2013,2013-07-08T00:00:00.000Z,333 Commercial Street,Enterococci,2,false
+2013,2013-07-22T00:00:00.000Z,333 Commercial Street,Enterococci,2,false
+2013,2013-08-26T00:00:00.000Z,333 Commercial Street,Enterococci,8,false
+2013,2013-06-10T00:00:00.000Z,333 Commercial Street,Enterococci,2,false

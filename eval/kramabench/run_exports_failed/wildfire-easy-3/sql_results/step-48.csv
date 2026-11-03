@@ -1,0 +1,7 @@
+ga_name,n_states,states_in_ga
+California,1,CA
+Great Basin,2,"NV,UT"
+Inland Empire,2,"ID,MT"
+Northwest,2,"OR,WA"
+Rocky Mountain Front,2,"CO,WY"
+Southwest,2,"AZ,NM"

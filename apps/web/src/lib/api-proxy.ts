@@ -65,6 +65,9 @@ export async function proxyToApi(request: Request, pathname: string): Promise<Re
   headers.delete("host");
   headers.delete("connection");
   headers.delete("content-length");
+  // undici's fetch rejects `Expect` outright (UND_ERR_NOT_SUPPORTED); curl and .NET
+  // clients send `Expect: 100-continue` on larger POST bodies, which would 500 here.
+  headers.delete("expect");
 
   const init: RequestInit = {
     method: request.method,

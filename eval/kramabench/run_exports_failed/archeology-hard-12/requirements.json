@@ -1,0 +1,291 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "统计公元800年至1400年之间发生的人类冲突（human conflicts）数量，结果为一个单一计数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "应用用户给定的冲突定义：冲突须发生在两个行为体（two actors）之间，且持续时间至少一年。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "segmentation",
+      "description": "将每一条被计入的冲突尽可能归因到现代国家（modern countries），形成冲突到现代国家的映射。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "计数与归因结果的一致性：归因映射所覆盖的冲突集合应与最终计数的冲突集合可相互核对。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "统计公元800年至1400年之间发生的人类冲突（human conflicts）数量，结果为一个单一计数。",
+      "acceptanceCriteria": [
+        "计数对象为人类冲突，最终结果是一个表示冲突总数的单一数值",
+        "时间窗口为800 AD至1400 AD，边界（含或不含端点）的取法必须在证据中明确且自洽"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "统计公元800年至1400年之间发生的人类冲突（human conflicts）数量，结果为一个单一计数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q22",
+        "Q23",
+        "Q24"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E23"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "应用用户给定的冲突定义：冲突须发生在两个行为体（two actors）之间，且持续时间至少一年。",
+      "acceptanceCriteria": [
+        "仅计入存在两个行为体的冲突；缺少行为体或无法满足两方条件的记录不计入",
+        "仅计入持续至少一年的冲突；持续时间不足一年的记录被排除",
+        "上述定义过滤在计数前生效，最终计数与过滤后的记录集合一致"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "应用用户给定的冲突定义：冲突须发生在两个行为体（two actors）之间，且持续时间至少一年。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q22",
+        "Q23",
+        "Q24"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E4",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E11",
+        "E13",
+        "E24"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "segmentation",
+      "description": "将每一条被计入的冲突尽可能归因到现代国家（modern countries），形成冲突到现代国家的映射。",
+      "acceptanceCriteria": [
+        "每条计入的冲突都尝试映射到至少一个现代国家，映射基于历史位置与现代国家的对应关系",
+        "无法归因到现代国家的冲突数量可从证据中核实，归因覆盖率明确可查"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "将每一条被计入的冲突尽可能归因到现代国家（modern countries），形成冲突到现代国家的映射。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26"
+      ],
+      "evidenceBindingIds": [
+        "E5",
+        "E10",
+        "E12",
+        "E14",
+        "E15",
+        "E16",
+        "E17",
+        "E18",
+        "E19",
+        "E20",
+        "E21",
+        "E22",
+        "E25",
+        "E27",
+        "E29"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "validation",
+      "description": "计数与归因结果的一致性：归因映射所覆盖的冲突集合应与最终计数的冲突集合可相互核对。",
+      "acceptanceCriteria": [
+        "归因结果涉及的冲突条目数量与最终冲突计数一致；一条冲突归因到多个国家等特殊情况需在证据中说明且不改变冲突计数的唯一性"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "计数与归因结果的一致性：归因映射所覆盖的冲突集合应与最终计数的冲突集合可相互核对。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26"
+      ],
+      "evidenceBindingIds": [
+        "E26",
+        "E28",
+        "E30"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Expected ',' or '}' after property value in JSON at position 545 (line 1 column 546)"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Expected ',' or '}' after property value in JSON at position 545 (line 1 column 546)"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Expected ',' or '}' after property value in JSON at position 545 (line 1 column 546)"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Expected ',' or '}' after property value in JSON at position 545 (line 1 column 546)"
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "在马耳他数据集中确定最北端的 Neolithic 样本及其年份，最北端并列时取较晚的年份",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "在气候数据集中找出与目标年份最接近的年份，若存在多个并列最接近的年份则全部纳入",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "计算气候数据集中所有最接近年份的铝（aluminum）测量值的最大值，并四舍五入到 4 位小数",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "在马耳他数据集中确定最北端的 Neolithic 样本及其年份，最北端并列时取较晚的年份",
+      "acceptanceCriteria": [
+        "仅考虑马耳他数据集中属于 Neolithic 时期的样本子集",
+        "按地理位置最北（北向坐标最大）确定目标样本",
+        "若多个样本并列位于最北位置，必须选择其中年份更晚（数值更大）的样本",
+        "产出一个唯一确定的目标年份，作为后续气候数据查询的参照值"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "在马耳他数据集中确定最北端的 Neolithic 样本及其年份，最北端并列时取较晚的年份",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q7"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E7"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "comparison",
+      "description": "在气候数据集中找出与目标年份最接近的年份，若存在多个并列最接近的年份则全部纳入",
+      "acceptanceCriteria": [
+        "在气候数据集中基于与目标年份的绝对年份差进行最近年比较",
+        "仅保留年份差最小的年份",
+        "若存在多个年份并列最接近，必须全部纳入候选年份集合，不得只取其一",
+        "候选年份集合非空"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "在气候数据集中找出与目标年份最接近的年份，若存在多个并列最接近的年份则全部纳入",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q5"
+      ],
+      "evidenceBindingIds": [
+        "E5"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "metric",
+      "description": "计算气候数据集中所有最接近年份的铝（aluminum）测量值的最大值，并四舍五入到 4 位小数",
+      "acceptanceCriteria": [
+        "对候选年份集合中全部年份的铝含量测量值求最大值，不得遗漏任一并列年份的观测值",
+        "若候选年份集合内无任何铝测量值，视为验收失败",
+        "最终结果四舍五入到 4 位小数",
+        "最终答案为单一数值，不带单位、百分号或千位分隔符"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "计算气候数据集中所有最接近年份的铝（aluminum）测量值的最大值，并四舍五入到 4 位小数",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q6"
+      ],
+      "evidenceBindingIds": [
+        "E6"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    }
+  ]
+}

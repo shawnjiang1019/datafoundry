@@ -1,5 +1,9 @@
 import { isDataActionName } from "./data-actions.js";
-import { evaluateProtocolHandoff, type ProtocolHandoffKind } from "./protocol-handoff.js";
+import {
+  evaluateProtocolHandoff,
+  STRICT_ANALYSIS_PROTOCOL_IDS,
+  type ProtocolHandoffKind
+} from "./protocol-handoff.js";
 import type { ProtocolRegistry } from "./protocol-registry.js";
 import type {
   ProtocolCompletionDecision,
@@ -127,7 +131,7 @@ export class ProtocolHandoffCoordinator {
     current: ProtocolRunState,
     input: CoordinateProtocolHandoffInput
   ): boolean {
-    return current.protocolId === "data-analysis"
+    return STRICT_ANALYSIS_PROTOCOL_IDS.includes(current.protocolId)
       && input.target.protocolId === "general-task"
       && !current.actions.some((action) => action.status === "succeeded" && isDataActionName(action.actionName));
   }

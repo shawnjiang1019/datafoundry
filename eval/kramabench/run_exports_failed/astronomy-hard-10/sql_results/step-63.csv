@@ -1,0 +1,5 @@
+var,variance_240h,n_distinct,is_constant
+Proton_flux_>1_Mev,0,1,constant
+Proton_flux_>2_Mev,0,1,constant
+Proton_flux_>4_Mev,0,1,constant
+sigma_T_K,151974225.32984373,239,varies

@@ -1,0 +1,565 @@
+﻿step,kind,tool,status,error_code,error_message,requirement_ids,sql,result_rows,rows_shown,result_columns,audit_log_id,sql_result_file,message,seq
+1,agent,,message,,,,,,,,,,I'll start by loading the data-analysis skill and checking the available data sources.,13
+2,tool,skill,ok,,,,,,,,,,,29
+3,tool,list_data_sources,ok,,,,,,,,,,,37
+4,agent,,message,,,,,,,,,,Now let me inspect the schema of the kb-archeology datasource.,45
+5,tool,inspect_schema,ok,,,,,,,,,,,78
+6,agent,,message,,,,,,,,,,The `conflict_brecke` table looks like the Brecke conflict dataset. Let me preview it.,84
+7,tool,preview_table,failed,ACTION_EXECUTION_FAILED,Do not know how to serialize a BigInt,,,,,,,,,111
+8,agent,,message,,,,,,,,,,Preview failed on BigInt serialization. Let me use SQL with casts instead.,117
+9,tool,run_sql_readonly,ok,,,R1,"SELECT ""Conflict"", CAST(""StartYear"" AS INTEGER) AS StartYear, CAST(""EndYear"" AS INTEGER) AS EndYear, ""Fatalities"", CAST(""Century"" AS INTEGER) AS Century, CAST(""Decade"" AS INTEGER) AS Decade FROM conflict_brecke LIMIT 40",40,20,Conflict | StartYear | EndYear | Fatalities | Century | Decade,fda0f645-511a-426a-914e-475321e60fd6,sql_results/step-09.csv,,160
+10,agent,,message,,,,,,,,,,"The preview failed on BigInt serialization, but SQL with casts works. The `conflict_brecke` table has the conflict data. Now let me get aggregate statistics on the year window, actor pattern, and duration in one focused query.",166
+11,tool,run_sql_readonly,ok,,,R1 R2,"SELECT COUNT(*) AS total_rows,
+  MIN(""StartYear"") AS min_start, MAX(""StartYear"") AS max_start,
+  MIN(""EndYear"") AS min_end, MAX(""EndYear"") AS max_end,
+  COUNT(*) FILTER (WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400) AS start_in_800_1400,
+  COUNT(*) FILTER (WHERE ""EndYear"" >= 800 AND ""StartYear"" <= 1400) AS overlap_800_1400,
+  COUNT(*) FILTER (WHERE regexp_matches(""Conflict"", '^[^(]*-')) AS two_actor_total,
+  COUNT(*) FILTER (WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400 AND regexp_matches(""Conflict"", '^[^(]*-')) AS two_actor_start_win,
+  COUNT(*) FILTER (WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400 AND NOT regexp_matches(""Conflict"", '^[^(]*-')) AS one_actor_start_win,
+  COUNT(*) FILTER (WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400 AND regexp_matches(""Conflict"", '^[^(]*-') AND ""EndYear"" = ""StartYear"") AS two_actor_sameyear_start_win,
+  COUNT(*) FILTER (WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400 AND regexp_matches(""Conflict"", '^[^(]*-') AND ""EndYear"" - ""StartYear"" >= 1) AS final_start_win,
+  COUNT(*) FILTER (WHERE ""EndYear"" >= 800 AND ""StartYear"" <= 1400 AND regexp_matches(""Conflict"", '^[^(]*-') AND ""EndYear"" - ""StartYear"" >= 1) AS final_overlap_win
+FROM conflict_brecke",1,1,total_rows | min_start | max_start | min_end | max_end | start_in_800_1400 | overlap_800_1400 | two_actor_total | two_actor_start_win | one_actor_start_win | two_actor_sameyear_start_win | final_start_win | final_overlap_win,08067beb-fc1f-4271-a24c-a800560a3fc3,sql_results/step-11.csv,,244
+12,agent,,message,,,,,,,,,,"All 1,147 rows fall within 800–1400 (start years 900–1399, end years ≤1402), so boundary handling is moot. Two-actor pattern matches 554; with ≥1-year duration → **233 candidates**. Now let me validate the actor parsing (hyphen variants) and extract distinct actor pairs for country attribution.",250
+13,tool,run_sql_readonly,failed,ACTION_EXECUTION_FAILED,"Parser Error: syntax error at or near "","" LINE 1: ...(split_part(""Conflict"", '(', 1), '-', 2)) > 0 AND position('-', split_part(split_part(""Conflict"", '(', 1), '-', 3... ^",R2,"SELECT COUNT(*) FILTER (WHERE ""Conflict"" LIKE '%–%' OR ""Conflict"" LIKE '%—%') AS en_em_dash_rows,
+  COUNT(*) FILTER (WHERE position('-' in ""Conflict"") = 0) AS no_hyphen_rows,
+  COUNT(*) FILTER (WHERE regexp_matches(""Conflict"", '\([^)]*-')) AS hyphen_in_paren_rows,
+  COUNT(*) FILTER (WHERE length(split_part(split_part(""Conflict"", '(', 1), '-', 2)) > 0 AND position('-', split_part(split_part(""Conflict"", '(', 1), '-', 3)) > 0) AS multi_hyphen_actor_part
+FROM conflict_brecke",,,,,,,326
+14,tool,run_sql_readonly,ok,,,R2 R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT split_part(actor_part, '-', 1) AS actor1, split_part(actor_part, '-', 2) AS actor2, COUNT(*) AS n
+FROM base GROUP BY 1, 2 ORDER BY n DESC, actor1",149,20,actor1 | actor2 | n,fdaf543f-3363-493b-9bd2-a94f4339259f,sql_results/step-14.csv,,377
+15,agent,,message,,,,,,,,,,"The actor-pair extraction works (149 distinct pairs). The validation query had a parser error — let me fix it with `strpos`, and get the complete distinct actor list with frequencies (as a single aggregated string to avoid display truncation).",383
+16,tool,run_sql_readonly,ok,,,R2,"SELECT COUNT(*) FILTER (WHERE ""Conflict"" LIKE '%–%' OR ""Conflict"" LIKE '%—%') AS en_em_dash_rows,
+  COUNT(*) FILTER (WHERE strpos(""Conflict"", '-') = 0) AS no_hyphen_rows,
+  COUNT(*) FILTER (WHERE regexp_matches(""Conflict"", '\([^)]*-')) AS hyphen_in_paren_rows,
+  COUNT(*) FILTER (WHERE strpos(split_part(split_part(""Conflict"", '(', 1), '-', 3), '-') > 0) AS multi_hyphen_actor_part
+FROM conflict_brecke",1,1,en_em_dash_rows | no_hyphen_rows | hyphen_in_paren_rows | multi_hyphen_actor_part,8a819bf0-f10e-426c-836c-63782b0da78c,sql_results/step-16.csv,,431
+17,tool,run_sql_readonly,ok,,,R2,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+)
+SELECT (SELECT COUNT(DISTINCT actor) FROM actors) AS distinct_actors,
+  (SELECT string_agg(cnt || 'x ' || actor, ' | ' ORDER BY cnt DESC, actor) FROM (SELECT actor, COUNT(*) AS cnt FROM actors GROUP BY actor) t) AS actors_by_freq
+",1,1,distinct_actors | actors_by_freq,f7268d63-48b0-4b02-968a-8d9aa890144f,sql_results/step-17.csv,,492
+18,agent,,message,,,,,,,,,,"Parsing is clean: 0 unicode dashes, 0 extra hyphens, and hyphens only occur inside parentheses (10 rows) where `split_part(Conflict, '(', 1)` correctly stops. 129 distinct actors. The display truncated the long actor string — let me pull the full actor list in compact buckets.",498
+19,tool,run_sql_readonly,ok,,,R2,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY cnt DESC, actor) AS rn FROM freq)
+SELECT CAST((rn-1)/22 AS INTEGER) AS bucket, string_agg(cnt || 'x ' || actor, ' | ' ORDER BY rn) AS actors
+FROM ranked GROUP BY 1 ORDER BY 1",7,7,bucket | actors,1be646cc-bdce-4bda-ba4c-893a343b5d83,sql_results/step-19.csv,,595
+20,agent,,message,,,,,,,,,,"The parsing is validated (0 unicode dashes, 0 stray hyphens — hyphens only appear inside parentheses). Now I have 129 distinct actors including bracketed coalitions. Let me examine ambiguous actors and all coalition entries to build an accurate actor→modern-country mapping.",601
+21,tool,run_sql_readonly,failed,ANALYSIS_ASSERTION_IDS_REQUIRED,ANALYSIS_ASSERTION_IDS_REQUIRED:R3,R2 R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+)
+SELECT actor, COUNT(*) AS n FROM actors WHERE actor LIKE '[%' GROUP BY actor ORDER BY actor",,,,,,,657
+22,tool,run_sql_readonly,failed,ANALYSIS_ASSERTION_IDS_REQUIRED,ANALYSIS_ASSERTION_IDS_REQUIRED:R3,R2 R3,"WITH base AS (
+  SELECT ""Conflict"" AS name, ""StartYear"", ""EndYear"",
+    regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, trim(split_part(actor_part, '-', 1)) AS a1, trim(split_part(actor_part, '-', 2)) AS a2, CAST(""StartYear"" AS INTEGER) AS StartYear, CAST(""EndYear"" AS INTEGER) AS EndYear
+FROM base
+WHERE trim(split_part(actor_part, '-', 1)) IN ('Muslims','Christians','Celts','Galicia province','Muslim pirates','Saxons','Henry','Prussia','Rugens')
+   OR trim(split_part(actor_part, '-', 2)) IN ('Muslims','Christians','Celts','Galicia province','Muslim pirates','Saxons','Henry','Prussia','Rugens')",,,,,,,670
+23,agent,,message,,,,,,,,,,Queries touching attribution need `R3.A1` in assertion_ids. Retrying with it included.,676
+24,tool,run_sql_readonly,ok,,,R2 R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+)
+SELECT actor, COUNT(*) AS n FROM actors WHERE actor LIKE '[%' GROUP BY actor ORDER BY actor",38,20,actor | n,c69e7f15-3c9c-418f-9dac-96dac77699c3,sql_results/step-24.csv,,696
+25,tool,run_sql_readonly,ok,,,R2 R3,"WITH base AS (
+  SELECT ""Conflict"" AS name, ""StartYear"", ""EndYear"",
+    regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, trim(split_part(actor_part, '-', 1)) AS a1, trim(split_part(actor_part, '-', 2)) AS a2, CAST(""StartYear"" AS INTEGER) AS StartYear, CAST(""EndYear"" AS INTEGER) AS EndYear
+FROM base
+WHERE trim(split_part(actor_part, '-', 1)) IN ('Muslims','Christians','Celts','Galicia province','Muslim pirates','Saxons','Henry','Prussia','Rugens')
+   OR trim(split_part(actor_part, '-', 2)) IN ('Muslims','Christians','Celts','Galicia province','Muslim pirates','Saxons','Henry','Prussia','Rugens')",14,14,name | a1 | a2 | StartYear | EndYear,d4630fad-17f4-426a-9747-9fb4a6030438,sql_results/step-25.csv,,757
+26,agent,,message,,,,,,,,,,"I have 14 ambiguous-actor conflicts. Let me get the remaining 18 coalition entries (38 total, 20 shown).",763
+27,tool,run_sql_readonly,failed,ACTION_EXECUTION_FAILED,"Binder Error: column ""actor"" must appear in the GROUP BY clause or must be part of an aggregate function. Either add it to the GROUP BY list, or use ""ANY_VALUE(actor)"" if the exact value of ""actor"" is not important. LINE 1: ...(split_part(actor_part, '-', 2)) AS actor FROM base ) SELECT actor, COUNT(*) AS n FROM actors WHERE actor LIKE '[%' ORDER... ^",R2 R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+)
+SELECT actor, COUNT(*) AS n FROM actors WHERE actor LIKE '[%' ORDER BY actor LIMIT 20 OFFSET 20",,,,,,,807
+28,tool,run_sql_readonly,ok,,,R2 R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+)
+SELECT actor, COUNT(*) AS n FROM actors WHERE actor LIKE '[%' GROUP BY actor ORDER BY actor LIMIT 20 OFFSET 20",18,18,actor | n,7dd4e476-63cb-44f2-a5fb-771e9a86ed54,sql_results/step-28.csv,,843
+29,agent,,message,,,,,,,,,,"All 38 coalition actors are now fully enumerated. The bucket display truncated some cells, so let me pull the complete non-coalition actor inventory (129 − 38 = 91 actors) in two safe chunks.",849
+30,tool,run_sql_readonly,failed,ANALYSIS_ASSERTION_NOT_FOUND,ANALYSIS_ASSERTION_NOT_FOUND:R2.A1,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', '; ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn <= 46",,,,,,,893
+31,tool,run_sql_readonly,failed,ANALYSIS_ASSERTION_NOT_FOUND,ANALYSIS_ASSERTION_NOT_FOUND:R2.A1,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', '; ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn > 46",,,,,,,906
+32,agent,,message,,,,,,,,,,That assertion lookup failed unexpectedly. Let me retry with only the R3 assertion (this query is purely about attribution).,912
+33,tool,run_sql_readonly,failed,QUERY_CONTRACT_VALIDATION_FAILED,SQL was not executed because contract validation failed: SQL_MULTIPLE_STATEMENTS_FORBIDDEN. SQL_MULTIPLE_STATEMENTS_FORBIDDEN,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', '; ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn <= 46",,,,,,,935
+34,tool,run_sql_readonly,failed,QUERY_CONTRACT_VALIDATION_FAILED,SQL was not executed because contract validation failed: SQL_MULTIPLE_STATEMENTS_FORBIDDEN. SQL_MULTIPLE_STATEMENTS_FORBIDDEN,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', '; ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn > 46",,,,,,,957
+35,agent,,message,,,,,,,,,,The `'; '` separator string triggered the multi-statement filter. Retrying with a semicolon-free separator.,963
+36,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', ' | ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn <= 46",1,1,actors | n_actors,fa174456-7ac6-4e4d-abe1-dc7f79f3c093,sql_results/step-36.csv,,985
+37,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT string_agg(actor || ' (' || cnt || ')', ' | ' ORDER BY rn) AS actors, COUNT(*) AS n_actors
+FROM ranked WHERE rn > 46",1,1,actors | n_actors,2afd1da1-6f89-4b5f-869a-32eaac96078d,sql_results/step-37.csv,,1045
+38,agent,,message,,,,,,,,,,Display truncation is hiding the tails. Let me fetch the missing middle and end segments of the alphabetized actor list in short chunks.,1051
+39,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT actor, cnt FROM ranked WHERE rn BETWEEN 31 AND 50 ORDER BY rn",20,20,actor | cnt,99dd2543-5f36-47cd-9e5c-91d9ed89a354,sql_results/step-39.csv,,1078
+40,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', '') AS actor_part
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actors AS (
+  SELECT trim(split_part(actor_part, '-', 1)) AS actor FROM base
+  UNION ALL
+  SELECT trim(split_part(actor_part, '-', 2)) AS actor FROM base
+),
+freq AS (SELECT actor, COUNT(*) AS cnt FROM actors WHERE actor NOT LIKE '[%' GROUP BY actor),
+ranked AS (SELECT actor, cnt, ROW_NUMBER() OVER (ORDER BY actor) AS rn FROM freq)
+SELECT actor, cnt FROM ranked WHERE rn > 72 ORDER BY rn",19,19,actor | cnt,b228cf0a-e370-4fe7-b992-9debf8852535,sql_results/step-40.csv,,1139
+41,agent,,message,,,,,,,,,,"I now have the complete inventory: 91 plain actors + 38 coalition actors = 129. Now let me pull the context-dependent rows (generic actors like ""Muslims"", ""Christians"", ""Crusades"", ""Normans"", ""Vikings"") to attribute them via their parenthetical locations.",1145
+42,tool,run_sql_readonly,failed,ANALYSIS_ASSERTION_NOT_FOUND,ANALYSIS_ASSERTION_NOT_FOUND:R1.A1,R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, a1, a2 FROM base
+WHERE a1 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+   OR a2 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+ORDER BY name",,,,,,,1214
+43,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, a1, a2 FROM base
+WHERE a1 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+   OR a2 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+ORDER BY name",25,20,name | a1 | a2,8a883bc8-08b3-4fb6-a589-22ab2224ad62,sql_results/step-43.csv,,1250
+44,agent,,message,,,,,,,,,,Let me get the remaining 5 rows of that result.,1256
+45,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, a1, a2 FROM base
+WHERE a1 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+   OR a2 IN ('Christians','Muslims','Muslim pirates','Vikings','Celts','Normans','First Crusade','Second Crusade','Third Crusade','Fourth Crusade','Fifth Crusade','Seventh Crusade')
+ORDER BY name LIMIT 10 OFFSET 20",9,9,name | a1 | a2,ffaf1c41-4cd8-4da0-ae3b-46bf123133ee,sql_results/step-45.csv,,1298
+46,agent,,message,,,,,,,,,,"I have the full picture of the conflict list. Now let me check context for the remaining context-dependent actors (Moors, Mongols, Golden Horde, Templars/Chudi, Pomerania, Hapsburg, etc.) to attribute them accurately.",1304
+47,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, a1, a2 FROM base
+WHERE a1 IN ('Moors','[Chudi Templars]','Mongols','Khanate of Golden Horde','Hanseatic League','Lombards','Pomerania','Hapsburg','Silesia','South Germany','Two Sicilies','Valencia','Wessex','York','[East Anglia Mercia]','[Norse Picts Scots]','Pechenegs','Pecheneg','Polovcians','Wallachia','Estonia','Finland','Flanders','Slavic Wends','Wends','[Black Hats Torks Berendei]','Germans','Teutonic Knights')
+   OR a2 IN ('Moors','[Chudi Templars]','Mongols','Khanate of Golden Horde','Hanseatic League','Lombards','Pomerania','Hapsburg','Silesia','South Germany','Two Sicilies','Valencia','Wessex','York','[East Anglia Mercia]','[Norse Picts Scots]','Pechenegs','Pecheneg','Polovcians','Wallachia','Estonia','Finland','Flanders','Slavic Wends','Wends','[Black Hats Torks Berendei]','Germans','Teutonic Knights')
+ORDER BY name",39,20,name | a1 | a2,be7c9b2a-a305-4ae5-a501-1648d917d036,sql_results/step-47.csv,,1386
+48,tool,run_sql_readonly,ok,,,R3,"WITH base AS (
+  SELECT ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+)
+SELECT name, a1, a2 FROM base
+WHERE a1 IN ('Moors','[Chudi Templars]','Mongols','Khanate of Golden Horde','Hanseatic League','Lombards','Pomerania','Hapsburg','Silesia','South Germany','Two Sicilies','Valencia','Wessex','York','[East Anglia Mercia]','[Norse Picts Scots]','Pechenegs','Pecheneg','Polovcians','Wallachia','Estonia','Finland','Flanders','Slavic Wends','Wends','[Black Hats Torks Berendei]','Germans','Teutonic Knights')
+   OR a2 IN ('Moors','[Chudi Templars]','Mongols','Khanate of Golden Horde','Hanseatic League','Lombards','Pomerania','Hapsburg','Silesia','South Germany','Two Sicilies','Valencia','Wessex','York','[East Anglia Mercia]','[Norse Picts Scots]','Pechenegs','Pecheneg','Polovcians','Wallachia','Estonia','Finland','Flanders','Slavic Wends','Wends','[Black Hats Torks Berendei]','Germans','Teutonic Knights')
+ORDER BY name LIMIT 20 OFFSET 20",19,19,name | a1 | a2,8b912c0b-93ae-412a-b7c3-7c8bea05540d,sql_results/step-48.csv,,1422
+49,agent,,message,,,,,,,,,,"All data gathering is complete. Now I'll run the attribution query: a full actor→modern-country mapping for all 129 actors (plus context overrides for generic actors like ""Muslims"", ""Crusades"", ""Vikings""), applied to the 233 counted conflicts.",1428
+50,tool,run_sql_readonly,failed,ACTION_EXECUTION_FAILED,"Binder Error: Referenced table ""u"" not found! Candidate tables: ""unnamed_subquery"" LINE 1: ...( SELECT rid, name, a1, a2, array_to_string(list(DISTINCT trim(u.c)), ',') AS countries FROM (SELECT *, unnest(string_to_a... ^",R1 R2 R3 R4,"WITH base AS (
+  SELECT ROW_NUMBER() OVER () AS rid, ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actor_map(actor, countries) AS (VALUES
+('Almohad','Morocco,Spain'),('Almohads','Morocco,Spain'),('Aragon','Spain'),('Austria','Austria'),('Bavaria','Germany'),('Bohemia','Czechia'),('Bulgaria','Bulgaria'),('Byzantium','Turkey'),('Castile','Spain'),('Celts','Ireland'),('Christians','Turkey'),('Danish Vikings','Denmark'),('Danish and Norwegian Vikings','Denmark,Norway'),('Denmark','Denmark'),('Edward I','UK'),('England','UK'),('Estonia','Estonia'),('Fifth Crusade','Egypt'),('Finland','Finland'),('First Crusade','Turkey'),('Flanders','Belgium'),('Florence','Italy'),('Fourth Crusade','Turkey'),('France','France'),('Galicia province','Ukraine'),('Genoa','Italy'),('Germans','Germany'),('Germany','Germany'),('Hanseatic League','Germany'),('Hapsburg','Germany'),('Hungary','Hungary'),('Ireland','Ireland'),('Italy','Italy'),('Khanate of Golden Horde','Russia'),('Lithuania','Lithuania'),('Lombards','Italy'),('Lombardy','Italy'),('Lucca','Italy'),('Magyars','Hungary'),('Milan','Italy'),('Mongols','Mongolia'),('Moors','Spain'),('Moravia','Czechia'),('Moroccan Almohads','Morocco'),('Moroccan Almoravids','Morocco'),('Muslim Spain','Spain'),('Muslim pirates','Turkey'),('Muslims','Turkey'),('Muslims in Tunisia and Algeria','Tunisia,Algeria'),('Naples','Italy'),('Nicaea','Turkey'),('Normans','Italy'),('Norway','Norway'),('Norwegian Vikings','Norway'),('Ottomans','Turkey'),('Pecheneg','Bulgaria'),('Pechenegs','Ukraine'),('Pisa','Italy'),('Poland','Poland'),('Polovcians','Russia'),('Pomerania','Germany'),('Pope','Italy'),('Portugal','Portugal'),('Prussia','Poland'),('Rugens','Germany'),('Russia','Russia'),('Saxons','Germany'),('Scotland','UK'),('Second Crusade','Syria'),('Seljuks','Turkey'),('Seventh Crusade','Egypt'),('Serbia','Serbia'),('Sicily','Italy'),('Silesia','Poland'),('Slavic Wends','Germany'),('South Germany','Germany'),('Spanish Muslims','Spain'),('Sweden','Sweden'),('Switzerland','Switzerland'),('Teutonic Knights','Germany'),('Third Crusade','Israel'),('Turkey','Turkey'),('Two Sicilies','Italy'),('Valencia','Spain'),('Venice','Italy'),('Vikings','Norway'),('Wales','UK'),('Wallachia','Romania'),('Wends','Germany'),('Wessex','UK'),('York','UK'),
+('[Aragon Catalan Venice]','Spain,Italy'),('[Black Hats Torks Berendei]','Ukraine'),('[Byzantium Genoa]','Turkey,Italy'),('[Byzantium Normans]','Turkey,Italy'),('[Byzantium Russia]','Turkey,Russia'),('[Byzantium Venice]','Turkey,Italy'),('[Chudi Templars]','Estonia'),('[Constantinople Bulgaria Epirus]','Turkey,Bulgaria,Greece'),('[Constantinople Venice Achaia]','Turkey,Italy,Greece'),('[Denmark Germany Teutonic Knights]','Denmark,Germany'),('[East Anglia Mercia]','UK'),('[England Castile]','UK,Spain'),('[England Denmark]','UK,Denmark'),('[England Flanders Germany]','UK,Belgium,Germany'),('[England Flanders]','UK,Belgium'),('[Flanders England]','Belgium,UK'),('[Florence Milan]','Italy'),('[France Burgundy Bavaria Italy Drava and Danube]','France,Germany,Italy'),('[France and Henri de Trastamare]','France,Spain'),('[Genoa Pisa]','Italy'),('[Germany Bohemia]','Germany,Czechia'),('[Hanseatic League Mecklenburg Holstein Sweden]','Germany,Sweden'),('[Lombard League Milan]','Italy'),('[Macedonia Albania Bulgaria Thessaly Epirus]','Greece,Albania,Bulgaria'),('[Nicaea Bulgaria]','Turkey,Bulgaria'),('[Norse Picts Scots]','UK'),('[Poland Germany Teutonic Knights]','Poland,Germany'),('[Poland Teutonic Knights]','Poland,Germany'),('[Pope Lombards]','Italy'),('[Portugal England]','Portugal,UK'),('[Scotland Ireland Wales]','UK,Ireland'),('[Seljuks Trebizond Nicaea]','Turkey'),('[Sicily Henry]','Italy,Germany'),('[South Italy Byzantium]','Italy,Turkey'),('[Sweden Norway]','Sweden,Norway'),('[Teutonic Knights Masovia]','Germany,Poland'),('[Venice Normans]','Italy'),('[southern Italy Sicily]','Italy')),
+ctx(name, countries) AS (VALUES
+('Byzantium-Muslims (Cyprus)','Turkey,Cyprus'),('Byzantium-Muslims (southern Italy)','Turkey,Italy'),('Byzantium-Muslim pirates (Adriatic)','Turkey,Croatia'),('Byzantium-Muslim pirates (western Mediterranean)','Turkey,Greece,Italy'),('Christians-Muslims (First Crusade) (Nicaea)','Turkey,France'),('England-Muslims (Third Crusade)','UK,Israel'),('Austria-Second Crusade','Austria,Syria'),('Austria-Third Crusade','Austria,Israel'),('Austria-Fifth Crusade','Austria,Egypt'),('France-First Crusade','France,Turkey'),('France-Second Crusade','France,Syria'),('France-Third Crusade','France,Israel'),('France-Fourth Crusade','France,Turkey'),('France-Seventh Crusade','France,Egypt'),('Pecheneg-Byzantium (Bulgaria)','Bulgaria,Turkey'),('Celts-Vikings (Ireland)','Ireland,Norway'),('Normans-Ireland','UK,Ireland'),('[Byzantium Normans]-Muslims (Sicily)','Turkey,Italy,Tunisia'),('Normans-Muslims (Messina Sicily)','Italy,Tunisia')),
+mapped AS (
+  SELECT b.rid, b.name, b.a1, b.a2,
+    CASE WHEN ov.countries IS NOT NULL THEN ov.countries
+         WHEN am1.countries IS NOT NULL AND am2.countries IS NOT NULL THEN am1.countries || ',' || am2.countries
+         ELSE COALESCE(am1.countries, am2.countries) END AS countries_raw
+  FROM base b
+  LEFT JOIN ctx ov ON ov.name = b.name
+  LEFT JOIN actor_map am1 ON am1.actor = b.a1
+  LEFT JOIN actor_map am2 ON am2.actor = b.a2
+),
+attrib AS (
+  SELECT rid, name, a1, a2, array_to_string(list(DISTINCT trim(u.c)), ',') AS countries
+  FROM (SELECT *, unnest(string_to_array(countries_raw, ',')) AS c FROM mapped WHERE countries_raw IS NOT NULL)
+  GROUP BY ALL
+),
+unmapped AS (
+  SELECT a1 AS actor, COUNT(*) AS n FROM base WHERE a1 NOT IN (SELECT actor FROM actor_map) GROUP BY a1
+  UNION ALL
+  SELECT a2 AS actor, COUNT(*) AS n FROM base WHERE a2 NOT IN (SELECT actor FROM actor_map) GROUP BY a2
+)
+SELECT (SELECT COUNT(*) FROM base) AS counted_conflicts,
+  (SELECT COUNT(*) FROM attrib) AS attributed_conflicts,
+  (SELECT COUNT(*) FROM base WHERE rid NOT IN (SELECT rid FROM attrib)) AS unattributed_conflicts,
+  (SELECT COUNT(*) FROM base WHERE name IN (SELECT name FROM ctx)) AS override_hits,
+  (SELECT COALESCE(string_agg(actor || ' x' || n, ' | '), 'NONE') FROM (SELECT actor, COUNT(*) AS n FROM unmapped GROUP BY actor) t) AS unmapped_actors",,,,,,,1503
+51,agent,,message,,,,,,,,,,Binder error on the subquery alias. Fixing the unnest reference and resubmitting.,1509
+52,tool,run_sql_readonly,failed,ACTION_EXECUTION_FAILED,Binder Error: Aggregate with only constant parameters has to be bound in the root subquery,R1 R2 R3 R4,"WITH base AS (
+  SELECT ROW_NUMBER() OVER () AS rid, ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actor_map(actor, countries) AS (VALUES
+('Almohad','Morocco,Spain'),('Almohads','Morocco,Spain'),('Aragon','Spain'),('Austria','Austria'),('Bavaria','Germany'),('Bohemia','Czechia'),('Bulgaria','Bulgaria'),('Byzantium','Turkey'),('Castile','Spain'),('Celts','Ireland'),('Christians','Turkey'),('Danish Vikings','Denmark'),('Danish and Norwegian Vikings','Denmark,Norway'),('Denmark','Denmark'),('Edward I','UK'),('England','UK'),('Estonia','Estonia'),('Fifth Crusade','Egypt'),('Finland','Finland'),('First Crusade','Turkey'),('Flanders','Belgium'),('Florence','Italy'),('Fourth Crusade','Turkey'),('France','France'),('Galicia province','Ukraine'),('Genoa','Italy'),('Germans','Germany'),('Germany','Germany'),('Hanseatic League','Germany'),('Hapsburg','Germany'),('Hungary','Hungary'),('Ireland','Ireland'),('Italy','Italy'),('Khanate of Golden Horde','Russia'),('Lithuania','Lithuania'),('Lombards','Italy'),('Lombardy','Italy'),('Lucca','Italy'),('Magyars','Hungary'),('Milan','Italy'),('Mongols','Mongolia'),('Moors','Spain'),('Moravia','Czechia'),('Moroccan Almohads','Morocco'),('Moroccan Almoravids','Morocco'),('Muslim Spain','Spain'),('Muslim pirates','Turkey'),('Muslims','Turkey'),('Muslims in Tunisia and Algeria','Tunisia,Algeria'),('Naples','Italy'),('Nicaea','Turkey'),('Normans','Italy'),('Norway','Norway'),('Norwegian Vikings','Norway'),('Ottomans','Turkey'),('Pecheneg','Bulgaria'),('Pechenegs','Ukraine'),('Pisa','Italy'),('Poland','Poland'),('Polovcians','Russia'),('Pomerania','Germany'),('Pope','Italy'),('Portugal','Portugal'),('Prussia','Poland'),('Rugens','Germany'),('Russia','Russia'),('Saxons','Germany'),('Scotland','UK'),('Second Crusade','Syria'),('Seljuks','Turkey'),('Seventh Crusade','Egypt'),('Serbia','Serbia'),('Sicily','Italy'),('Silesia','Poland'),('Slavic Wends','Germany'),('South Germany','Germany'),('Spanish Muslims','Spain'),('Sweden','Sweden'),('Switzerland','Switzerland'),('Teutonic Knights','Germany'),('Third Crusade','Israel'),('Turkey','Turkey'),('Two Sicilies','Italy'),('Valencia','Spain'),('Venice','Italy'),('Vikings','Norway'),('Wales','UK'),('Wallachia','Romania'),('Wends','Germany'),('Wessex','UK'),('York','UK'),
+('[Aragon Catalan Venice]','Spain,Italy'),('[Black Hats Torks Berendei]','Ukraine'),('[Byzantium Genoa]','Turkey,Italy'),('[Byzantium Normans]','Turkey,Italy'),('[Byzantium Russia]','Turkey,Russia'),('[Byzantium Venice]','Turkey,Italy'),('[Chudi Templars]','Estonia'),('[Constantinople Bulgaria Epirus]','Turkey,Bulgaria,Greece'),('[Constantinople Venice Achaia]','Turkey,Italy,Greece'),('[Denmark Germany Teutonic Knights]','Denmark,Germany'),('[East Anglia Mercia]','UK'),('[England Castile]','UK,Spain'),('[England Denmark]','UK,Denmark'),('[England Flanders Germany]','UK,Belgium,Germany'),('[England Flanders]','UK,Belgium'),('[Flanders England]','Belgium,UK'),('[Florence Milan]','Italy'),('[France Burgundy Bavaria Italy Drava and Danube]','France,Germany,Italy'),('[France and Henri de Trastamare]','France,Spain'),('[Genoa Pisa]','Italy'),('[Germany Bohemia]','Germany,Czechia'),('[Hanseatic League Mecklenburg Holstein Sweden]','Germany,Sweden'),('[Lombard League Milan]','Italy'),('[Macedonia Albania Bulgaria Thessaly Epirus]','Greece,Albania,Bulgaria'),('[Nicaea Bulgaria]','Turkey,Bulgaria'),('[Norse Picts Scots]','UK'),('[Poland Germany Teutonic Knights]','Poland,Germany'),('[Poland Teutonic Knights]','Poland,Germany'),('[Pope Lombards]','Italy'),('[Portugal England]','Portugal,UK'),('[Scotland Ireland Wales]','UK,Ireland'),('[Seljuks Trebizond Nicaea]','Turkey'),('[Sicily Henry]','Italy,Germany'),('[South Italy Byzantium]','Italy,Turkey'),('[Sweden Norway]','Sweden,Norway'),('[Teutonic Knights Masovia]','Germany,Poland'),('[Venice Normans]','Italy'),('[southern Italy Sicily]','Italy')),
+ctx(name, countries) AS (VALUES
+('Byzantium-Muslims (Cyprus)','Turkey,Cyprus'),('Byzantium-Muslims (southern Italy)','Turkey,Italy'),('Byzantium-Muslim pirates (Adriatic)','Turkey,Croatia'),('Byzantium-Muslim pirates (western Mediterranean)','Turkey,Greece,Italy'),('Christians-Muslims (First Crusade) (Nicaea)','Turkey,France'),('England-Muslims (Third Crusade)','UK,Israel'),('Austria-Second Crusade','Austria,Syria'),('Austria-Third Crusade','Austria,Israel'),('Austria-Fifth Crusade','Austria,Egypt'),('France-First Crusade','France,Turkey'),('France-Second Crusade','France,Syria'),('France-Third Crusade','France,Israel'),('France-Fourth Crusade','France,Turkey'),('France-Seventh Crusade','France,Egypt'),('Pecheneg-Byzantium (Bulgaria)','Bulgaria,Turkey'),('Celts-Vikings (Ireland)','Ireland,Norway'),('Normans-Ireland','UK,Ireland'),('[Byzantium Normans]-Muslims (Sicily)','Turkey,Italy,Tunisia'),('Normans-Muslims (Messina Sicily)','Italy,Tunisia')),
+mapped AS (
+  SELECT b.rid, b.name, b.a1, b.a2,
+    CASE WHEN ov.countries IS NOT NULL THEN ov.countries
+         WHEN am1.countries IS NOT NULL AND am2.countries IS NOT NULL THEN am1.countries || ',' || am2.countries
+         ELSE COALESCE(am1.countries, am2.countries) END AS countries_raw
+  FROM base b
+  LEFT JOIN ctx ov ON ov.name = b.name
+  LEFT JOIN actor_map am1 ON am1.actor = b.a1
+  LEFT JOIN actor_map am2 ON am2.actor = b.a2
+),
+flat AS (
+  SELECT rid, name, a1, a2, trim(unnest(string_to_array(countries_raw, ','))) AS c
+  FROM mapped WHERE countries_raw IS NOT NULL
+),
+attrib AS (
+  SELECT rid, name, a1, a2, string_agg(DISTINCT c, ',') AS countries
+  FROM flat GROUP BY rid, name, a1, a2
+),
+unmapped AS (
+  SELECT a1 AS actor FROM base WHERE a1 NOT IN (SELECT actor FROM actor_map)
+  UNION ALL
+  SELECT a2 AS actor FROM base WHERE a2 NOT IN (SELECT actor FROM actor_map)
+)
+SELECT (SELECT COUNT(*) FROM base) AS counted_conflicts,
+  (SELECT COUNT(*) FROM attrib) AS attributed_conflicts,
+  (SELECT COUNT(*) FROM base WHERE rid NOT IN (SELECT rid FROM attrib)) AS unattributed_conflicts,
+  (SELECT COUNT(*) FROM base WHERE name IN (SELECT name FROM ctx)) AS override_hits,
+  (SELECT COALESCE(string_agg(actor || ' x' || COUNT(*), ' | '), 'NONE') FROM unmapped GROUP BY actor) AS unmapped_actors",,,,,,,1547
+53,agent,,message,,,,,,,,,,Aggregate binding issue in the scalar subquery. Restructuring into a CTE.,1553
+54,tool,run_sql_readonly,ok,,,R1 R2 R3 R4,"WITH base AS (
+  SELECT ROW_NUMBER() OVER () AS rid, ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actor_map(actor, countries) AS (VALUES
+('Almohad','Morocco,Spain'),('Almohads','Morocco,Spain'),('Aragon','Spain'),('Austria','Austria'),('Bavaria','Germany'),('Bohemia','Czechia'),('Bulgaria','Bulgaria'),('Byzantium','Turkey'),('Castile','Spain'),('Celts','Ireland'),('Christians','Turkey'),('Danish Vikings','Denmark'),('Danish and Norwegian Vikings','Denmark,Norway'),('Denmark','Denmark'),('Edward I','UK'),('England','UK'),('Estonia','Estonia'),('Fifth Crusade','Egypt'),('Finland','Finland'),('First Crusade','Turkey'),('Flanders','Belgium'),('Florence','Italy'),('Fourth Crusade','Turkey'),('France','France'),('Galicia province','Ukraine'),('Genoa','Italy'),('Germans','Germany'),('Germany','Germany'),('Hanseatic League','Germany'),('Hapsburg','Germany'),('Hungary','Hungary'),('Ireland','Ireland'),('Italy','Italy'),('Khanate of Golden Horde','Russia'),('Lithuania','Lithuania'),('Lombards','Italy'),('Lombardy','Italy'),('Lucca','Italy'),('Magyars','Hungary'),('Milan','Italy'),('Mongols','Mongolia'),('Moors','Spain'),('Moravia','Czechia'),('Moroccan Almohads','Morocco'),('Moroccan Almoravids','Morocco'),('Muslim Spain','Spain'),('Muslim pirates','Turkey'),('Muslims','Turkey'),('Muslims in Tunisia and Algeria','Tunisia,Algeria'),('Naples','Italy'),('Nicaea','Turkey'),('Normans','Italy'),('Norway','Norway'),('Norwegian Vikings','Norway'),('Ottomans','Turkey'),('Pecheneg','Bulgaria'),('Pechenegs','Ukraine'),('Pisa','Italy'),('Poland','Poland'),('Polovcians','Russia'),('Pomerania','Germany'),('Pope','Italy'),('Portugal','Portugal'),('Prussia','Poland'),('Rugens','Germany'),('Russia','Russia'),('Saxons','Germany'),('Scotland','UK'),('Second Crusade','Syria'),('Seljuks','Turkey'),('Seventh Crusade','Egypt'),('Serbia','Serbia'),('Sicily','Italy'),('Silesia','Poland'),('Slavic Wends','Germany'),('South Germany','Germany'),('Spanish Muslims','Spain'),('Sweden','Sweden'),('Switzerland','Switzerland'),('Teutonic Knights','Germany'),('Third Crusade','Israel'),('Turkey','Turkey'),('Two Sicilies','Italy'),('Valencia','Spain'),('Venice','Italy'),('Vikings','Norway'),('Wales','UK'),('Wallachia','Romania'),('Wends','Germany'),('Wessex','UK'),('York','UK'),
+('[Aragon Catalan Venice]','Spain,Italy'),('[Black Hats Torks Berendei]','Ukraine'),('[Byzantium Genoa]','Turkey,Italy'),('[Byzantium Normans]','Turkey,Italy'),('[Byzantium Russia]','Turkey,Russia'),('[Byzantium Venice]','Turkey,Italy'),('[Chudi Templars]','Estonia'),('[Constantinople Bulgaria Epirus]','Turkey,Bulgaria,Greece'),('[Constantinople Venice Achaia]','Turkey,Italy,Greece'),('[Denmark Germany Teutonic Knights]','Denmark,Germany'),('[East Anglia Mercia]','UK'),('[England Castile]','UK,Spain'),('[England Denmark]','UK,Denmark'),('[England Flanders Germany]','UK,Belgium,Germany'),('[England Flanders]','UK,Belgium'),('[Flanders England]','Belgium,UK'),('[Florence Milan]','Italy'),('[France Burgundy Bavaria Italy Drava and Danube]','France,Germany,Italy'),('[France and Henri de Trastamare]','France,Spain'),('[Genoa Pisa]','Italy'),('[Germany Bohemia]','Germany,Czechia'),('[Hanseatic League Mecklenburg Holstein Sweden]','Germany,Sweden'),('[Lombard League Milan]','Italy'),('[Macedonia Albania Bulgaria Thessaly Epirus]','Greece,Albania,Bulgaria'),('[Nicaea Bulgaria]','Turkey,Bulgaria'),('[Norse Picts Scots]','UK'),('[Poland Germany Teutonic Knights]','Poland,Germany'),('[Poland Teutonic Knights]','Poland,Germany'),('[Pope Lombards]','Italy'),('[Portugal England]','Portugal,UK'),('[Scotland Ireland Wales]','UK,Ireland'),('[Seljuks Trebizond Nicaea]','Turkey'),('[Sicily Henry]','Italy,Germany'),('[South Italy Byzantium]','Italy,Turkey'),('[Sweden Norway]','Sweden,Norway'),('[Teutonic Knights Masovia]','Germany,Poland'),('[Venice Normans]','Italy'),('[southern Italy Sicily]','Italy')),
+ctx(name, countries) AS (VALUES
+('Byzantium-Muslims (Cyprus)','Turkey,Cyprus'),('Byzantium-Muslims (southern Italy)','Turkey,Italy'),('Byzantium-Muslim pirates (Adriatic)','Turkey,Croatia'),('Byzantium-Muslim pirates (western Mediterranean)','Turkey,Greece,Italy'),('Christians-Muslims (First Crusade) (Nicaea)','Turkey,France'),('England-Muslims (Third Crusade)','UK,Israel'),('Austria-Second Crusade','Austria,Syria'),('Austria-Third Crusade','Austria,Israel'),('Austria-Fifth Crusade','Austria,Egypt'),('France-First Crusade','France,Turkey'),('France-Second Crusade','France,Syria'),('France-Third Crusade','France,Israel'),('France-Fourth Crusade','France,Turkey'),('France-Seventh Crusade','France,Egypt'),('Pecheneg-Byzantium (Bulgaria)','Bulgaria,Turkey'),('Celts-Vikings (Ireland)','Ireland,Norway'),('Normans-Ireland','UK,Ireland'),('[Byzantium Normans]-Muslims (Sicily)','Turkey,Italy,Tunisia'),('Normans-Muslims (Messina Sicily)','Italy,Tunisia')),
+mapped AS (
+  SELECT b.rid, b.name, b.a1, b.a2,
+    CASE WHEN ov.countries IS NOT NULL THEN ov.countries
+         WHEN am1.countries IS NOT NULL AND am2.countries IS NOT NULL THEN am1.countries || ',' || am2.countries
+         ELSE COALESCE(am1.countries, am2.countries) END AS countries_raw
+  FROM base b
+  LEFT JOIN ctx ov ON ov.name = b.name
+  LEFT JOIN actor_map am1 ON am1.actor = b.a1
+  LEFT JOIN actor_map am2 ON am2.actor = b.a2
+),
+flat AS (
+  SELECT rid, name, a1, a2, trim(unnest(string_to_array(countries_raw, ','))) AS c
+  FROM mapped WHERE countries_raw IS NOT NULL
+),
+attrib AS (
+  SELECT rid, name, a1, a2, string_agg(DISTINCT c, ',') AS countries
+  FROM flat GROUP BY rid, name, a1, a2
+),
+unmapped_grp AS (
+  SELECT actor, COUNT(*) AS n FROM (
+    SELECT a1 AS actor FROM base WHERE a1 NOT IN (SELECT actor FROM actor_map)
+    UNION ALL
+    SELECT a2 AS actor FROM base WHERE a2 NOT IN (SELECT actor FROM actor_map)
+  ) GROUP BY actor
+),
+counts AS (
+  SELECT (SELECT COUNT(*) FROM base) AS counted_conflicts,
+    (SELECT COUNT(*) FROM attrib) AS attributed_conflicts,
+    (SELECT COUNT(*) FROM base WHERE rid NOT IN (SELECT rid FROM attrib)) AS unattributed_conflicts,
+    (SELECT COUNT(*) FROM base WHERE name IN (SELECT name FROM ctx)) AS override_hits,
+    COALESCE((SELECT string_agg(actor || ' x' || n, ' | ') FROM unmapped_grp), 'NONE') AS unmapped_actors
+  FROM (SELECT 1) d
+)
+SELECT * FROM counts",1,1,counted_conflicts | attributed_conflicts | unattributed_conflicts | override_hits | unmapped_actors,89ef03f8-4e93-4fdf-b0fb-8609b7e6af69,sql_results/step-54.csv,,1600
+55,agent,,message,,,,,,,,,,"**Attribution is 100% complete: all 233 counted conflicts mapped to modern countries, 0 unattributed, all 19 context overrides hit.** Now let me compute the country-level distribution for the report.",1606
+56,tool,run_sql_readonly,ok,,,R3 R4,"WITH base AS (
+  SELECT ROW_NUMBER() OVER () AS rid, ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actor_map(actor, countries) AS (VALUES
+('Almohad','Morocco,Spain'),('Almohads','Morocco,Spain'),('Aragon','Spain'),('Austria','Austria'),('Bavaria','Germany'),('Bohemia','Czechia'),('Bulgaria','Bulgaria'),('Byzantium','Turkey'),('Castile','Spain'),('Celts','Ireland'),('Christians','Turkey'),('Danish Vikings','Denmark'),('Danish and Norwegian Vikings','Denmark,Norway'),('Denmark','Denmark'),('Edward I','UK'),('England','UK'),('Estonia','Estonia'),('Fifth Crusade','Egypt'),('Finland','Finland'),('First Crusade','Turkey'),('Flanders','Belgium'),('Florence','Italy'),('Fourth Crusade','Turkey'),('France','France'),('Galicia province','Ukraine'),('Genoa','Italy'),('Germans','Germany'),('Germany','Germany'),('Hanseatic League','Germany'),('Hapsburg','Germany'),('Hungary','Hungary'),('Ireland','Ireland'),('Italy','Italy'),('Khanate of Golden Horde','Russia'),('Lithuania','Lithuania'),('Lombards','Italy'),('Lombardy','Italy'),('Lucca','Italy'),('Magyars','Hungary'),('Milan','Italy'),('Mongols','Mongolia'),('Moors','Spain'),('Moravia','Czechia'),('Moroccan Almohads','Morocco'),('Moroccan Almoravids','Morocco'),('Muslim Spain','Spain'),('Muslim pirates','Turkey'),('Muslims','Turkey'),('Muslims in Tunisia and Algeria','Tunisia,Algeria'),('Naples','Italy'),('Nicaea','Turkey'),('Normans','Italy'),('Norway','Norway'),('Norwegian Vikings','Norway'),('Ottomans','Turkey'),('Pecheneg','Bulgaria'),('Pechenegs','Ukraine'),('Pisa','Italy'),('Poland','Poland'),('Polovcians','Russia'),('Pomerania','Germany'),('Pope','Italy'),('Portugal','Portugal'),('Prussia','Poland'),('Rugens','Germany'),('Russia','Russia'),('Saxons','Germany'),('Scotland','UK'),('Second Crusade','Syria'),('Seljuks','Turkey'),('Seventh Crusade','Egypt'),('Serbia','Serbia'),('Sicily','Italy'),('Silesia','Poland'),('Slavic Wends','Germany'),('South Germany','Germany'),('Spanish Muslims','Spain'),('Sweden','Sweden'),('Switzerland','Switzerland'),('Teutonic Knights','Germany'),('Third Crusade','Israel'),('Turkey','Turkey'),('Two Sicilies','Italy'),('Valencia','Spain'),('Venice','Italy'),('Vikings','Norway'),('Wales','UK'),('Wallachia','Romania'),('Wends','Germany'),('Wessex','UK'),('York','UK'),
+('[Aragon Catalan Venice]','Spain,Italy'),('[Black Hats Torks Berendei]','Ukraine'),('[Byzantium Genoa]','Turkey,Italy'),('[Byzantium Normans]','Turkey,Italy'),('[Byzantium Russia]','Turkey,Russia'),('[Byzantium Venice]','Turkey,Italy'),('[Chudi Templars]','Estonia'),('[Constantinople Bulgaria Epirus]','Turkey,Bulgaria,Greece'),('[Constantinople Venice Achaia]','Turkey,Italy,Greece'),('[Denmark Germany Teutonic Knights]','Denmark,Germany'),('[East Anglia Mercia]','UK'),('[England Castile]','UK,Spain'),('[England Denmark]','UK,Denmark'),('[England Flanders Germany]','UK,Belgium,Germany'),('[England Flanders]','UK,Belgium'),('[Flanders England]','Belgium,UK'),('[Florence Milan]','Italy'),('[France Burgundy Bavaria Italy Drava and Danube]','France,Germany,Italy'),('[France and Henri de Trastamare]','France,Spain'),('[Genoa Pisa]','Italy'),('[Germany Bohemia]','Germany,Czechia'),('[Hanseatic League Mecklenburg Holstein Sweden]','Germany,Sweden'),('[Lombard League Milan]','Italy'),('[Macedonia Albania Bulgaria Thessaly Epirus]','Greece,Albania,Bulgaria'),('[Nicaea Bulgaria]','Turkey,Bulgaria'),('[Norse Picts Scots]','UK'),('[Poland Germany Teutonic Knights]','Poland,Germany'),('[Poland Teutonic Knights]','Poland,Germany'),('[Pope Lombards]','Italy'),('[Portugal England]','Portugal,UK'),('[Scotland Ireland Wales]','UK,Ireland'),('[Seljuks Trebizond Nicaea]','Turkey'),('[Sicily Henry]','Italy,Germany'),('[South Italy Byzantium]','Italy,Turkey'),('[Sweden Norway]','Sweden,Norway'),('[Teutonic Knights Masovia]','Germany,Poland'),('[Venice Normans]','Italy'),('[southern Italy Sicily]','Italy')),
+ctx(name, countries) AS (VALUES
+('Byzantium-Muslims (Cyprus)','Turkey,Cyprus'),('Byzantium-Muslims (southern Italy)','Turkey,Italy'),('Byzantium-Muslim pirates (Adriatic)','Turkey,Croatia'),('Byzantium-Muslim pirates (western Mediterranean)','Turkey,Greece,Italy'),('Christians-Muslims (First Crusade) (Nicaea)','Turkey,France'),('England-Muslims (Third Crusade)','UK,Israel'),('Austria-Second Crusade','Austria,Syria'),('Austria-Third Crusade','Austria,Israel'),('Austria-Fifth Crusade','Austria,Egypt'),('France-First Crusade','France,Turkey'),('France-Second Crusade','France,Syria'),('France-Third Crusade','France,Israel'),('France-Fourth Crusade','France,Turkey'),('France-Seventh Crusade','France,Egypt'),('Pecheneg-Byzantium (Bulgaria)','Bulgaria,Turkey'),('Celts-Vikings (Ireland)','Ireland,Norway'),('Normans-Ireland','UK,Ireland'),('[Byzantium Normans]-Muslims (Sicily)','Turkey,Italy,Tunisia'),('Normans-Muslims (Messina Sicily)','Italy,Tunisia')),
+mapped AS (
+  SELECT b.rid,
+    CASE WHEN ov.countries IS NOT NULL THEN ov.countries
+         WHEN am1.countries IS NOT NULL AND am2.countries IS NOT NULL THEN am1.countries || ',' || am2.countries
+         ELSE COALESCE(am1.countries, am2.countries) END AS countries_raw
+  FROM base b
+  LEFT JOIN ctx ov ON ov.name = b.name
+  LEFT JOIN actor_map am1 ON am1.actor = b.a1
+  LEFT JOIN actor_map am2 ON am2.actor = b.a2
+),
+flat AS (
+  SELECT rid, trim(unnest(string_to_array(countries_raw, ','))) AS country
+  FROM mapped WHERE countries_raw IS NOT NULL
+)
+SELECT country, COUNT(DISTINCT rid) AS conflicts_involved
+FROM flat GROUP BY country ORDER BY conflicts_involved DESC, country LIMIT 45",36,20,country | conflicts_involved,6929d318-5f27-455c-bd3f-d4d90fc07c6e,sql_results/step-56.csv,,1682
+57,agent,,message,,,,,,,,,,Let me get the remaining 16 countries and write the full attribution export to the workspace.,1688
+58,tool,run_sql_readonly,ok,,,R3 R4,"WITH base AS (
+  SELECT ROW_NUMBER() OVER () AS rid, ""Conflict"" AS name,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 1)) AS a1,
+    trim(split_part(regexp_replace(split_part(""Conflict"", '(', 1), '\s+$', ''), '-', 2)) AS a2
+  FROM conflict_brecke
+  WHERE ""StartYear"" >= 800 AND ""StartYear"" <= 1400
+    AND regexp_matches(""Conflict"", '^[^(]*-')
+    AND ""EndYear"" - ""StartYear"" >= 1
+),
+actor_map(actor, countries) AS (VALUES
+('Almohad','Morocco,Spain'),('Almohads','Morocco,Spain'),('Aragon','Spain'),('Austria','Austria'),('Bavaria','Germany'),('Bohemia','Czechia'),('Bulgaria','Bulgaria'),('Byzantium','Turkey'),('Castile','Spain'),('Celts','Ireland'),('Christians','Turkey'),('Danish Vikings','Denmark'),('Danish and Norwegian Vikings','Denmark,Norway'),('Denmark','Denmark'),('Edward I','UK'),('England','UK'),('Estonia','Estonia'),('Fifth Crusade','Egypt'),('Finland','Finland'),('First Crusade','Turkey'),('Flanders','Belgium'),('Florence','Italy'),('Fourth Crusade','Turkey'),('France','France'),('Galicia province','Ukraine'),('Genoa','Italy'),('Germans','Germany'),('Germany','Germany'),('Hanseatic League','Germany'),('Hapsburg','Germany'),('Hungary','Hungary'),('Ireland','Ireland'),('Italy','Italy'),('Khanate of Golden Horde','Russia'),('Lithuania','Lithuania'),('Lombards','Italy'),('Lombardy','Italy'),('Lucca','Italy'),('Magyars','Hungary'),('Milan','Italy'),('Mongols','Mongolia'),('Moors','Spain'),('Moravia','Czechia'),('Moroccan Almohads','Morocco'),('Moroccan Almoravids','Morocco'),('Muslim Spain','Spain'),('Muslim pirates','Turkey'),('Muslims','Turkey'),('Muslims in Tunisia and Algeria','Tunisia,Algeria'),('Naples','Italy'),('Nicaea','Turkey'),('Normans','Italy'),('Norway','Norway'),('Norwegian Vikings','Norway'),('Ottomans','Turkey'),('Pecheneg','Bulgaria'),('Pechenegs','Ukraine'),('Pisa','Italy'),('Poland','Poland'),('Polovcians','Russia'),('Pomerania','Germany'),('Pope','Italy'),('Portugal','Portugal'),('Prussia','Poland'),('Rugens','Germany'),('Russia','Russia'),('Saxons','Germany'),('Scotland','UK'),('Second Crusade','Syria'),('Seljuks','Turkey'),('Seventh Crusade','Egypt'),('Serbia','Serbia'),('Sicily','Italy'),('Silesia','Poland'),('Slavic Wends','Germany'),('South Germany','Germany'),('Spanish Muslims','Spain'),('Sweden','Sweden'),('Switzerland','Switzerland'),('Teutonic Knights','Germany'),('Third Crusade','Israel'),('Turkey','Turkey'),('Two Sicilies','Italy'),('Valencia','Spain'),('Venice','Italy'),('Vikings','Norway'),('Wales','UK'),('Wallachia','Romania'),('Wends','Germany'),('Wessex','UK'),('York','UK'),
+('[Aragon Catalan Venice]','Spain,Italy'),('[Black Hats Torks Berendei]','Ukraine'),('[Byzantium Genoa]','Turkey,Italy'),('[Byzantium Normans]','Turkey,Italy'),('[Byzantium Russia]','Turkey,Russia'),('[Byzantium Venice]','Turkey,Italy'),('[Chudi Templars]','Estonia'),('[Constantinople Bulgaria Epirus]','Turkey,Bulgaria,Greece'),('[Constantinople Venice Achaia]','Turkey,Italy,Greece'),('[Denmark Germany Teutonic Knights]','Denmark,Germany'),('[East Anglia Mercia]','UK'),('[England Castile]','UK,Spain'),('[England Denmark]','UK,Denmark'),('[England Flanders Germany]','UK,Belgium,Germany'),('[England Flanders]','UK,Belgium'),('[Flanders England]','Belgium,UK'),('[Florence Milan]','Italy'),('[France Burgundy Bavaria Italy Drava and Danube]','France,Germany,Italy'),('[France and Henri de Trastamare]','France,Spain'),('[Genoa Pisa]','Italy'),('[Germany Bohemia]','Germany,Czechia'),('[Hanseatic League Mecklenburg Holstein Sweden]','Germany,Sweden'),('[Lombard League Milan]','Italy'),('[Macedonia Albania Bulgaria Thessaly Epirus]','Greece,Albania,Bulgaria'),('[Nicaea Bulgaria]','Turkey,Bulgaria'),('[Norse Picts Scots]','UK'),('[Poland Germany Teutonic Knights]','Poland,Germany'),('[Poland Teutonic Knights]','Poland,Germany'),('[Pope Lombards]','Italy'),('[Portugal England]','Portugal,UK'),('[Scotland Ireland Wales]','UK,Ireland'),('[Seljuks Trebizond Nicaea]','Turkey'),('[Sicily Henry]','Italy,Germany'),('[South Italy Byzantium]','Italy,Turkey'),('[Sweden Norway]','Sweden,Norway'),('[Teutonic Knights Masovia]','Germany,Poland'),('[Venice Normans]','Italy'),('[southern Italy Sicily]','Italy')),
+ctx(name, countries) AS (VALUES
+('Byzantium-Muslims (Cyprus)','Turkey,Cyprus'),('Byzantium-Muslims (southern Italy)','Turkey,Italy'),('Byzantium-Muslim pirates (Adriatic)','Turkey,Croatia'),('Byzantium-Muslim pirates (western Mediterranean)','Turkey,Greece,Italy'),('Christians-Muslims (First Crusade) (Nicaea)','Turkey,France'),('England-Muslims (Third Crusade)','UK,Israel'),('Austria-Second Crusade','Austria,Syria'),('Austria-Third Crusade','Austria,Israel'),('Austria-Fifth Crusade','Austria,Egypt'),('France-First Crusade','France,Turkey'),('France-Second Crusade','France,Syria'),('France-Third Crusade','France,Israel'),('France-Fourth Crusade','France,Turkey'),('France-Seventh Crusade','France,Egypt'),('Pecheneg-Byzantium (Bulgaria)','Bulgaria,Turkey'),('Celts-Vikings (Ireland)','Ireland,Norway'),('Normans-Ireland','UK,Ireland'),('[Byzantium Normans]-Muslims (Sicily)','Turkey,Italy,Tunisia'),('Normans-Muslims (Messina Sicily)','Italy,Tunisia')),
+mapped AS (
+  SELECT b.rid,
+    CASE WHEN ov.countries IS NOT NULL THEN ov.countries
+         WHEN am1.countries IS NOT NULL AND am2.countries IS NOT NULL THEN am1.countries || ',' || am2.countries
+         ELSE COALESCE(am1.countries, am2.countries) END AS countries_raw
+  FROM base b
+  LEFT JOIN ctx ov ON ov.name = b.name
+  LEFT JOIN actor_map am1 ON am1.actor = b.a1
+  LEFT JOIN actor_map am2 ON am2.actor = b.a2
+),
+flat AS (
+  SELECT rid, trim(unnest(string_to_array(countries_raw, ','))) AS country
+  FROM mapped WHERE countries_raw IS NOT NULL
+)
+SELECT country, COUNT(DISTINCT rid) AS conflicts_involved
+FROM flat GROUP BY country ORDER BY conflicts_involved DESC, country LIMIT 20 OFFSET 20",16,16,country | conflicts_involved,9ee09a59-0592-4a0e-9481-af2dd8e00150,sql_results/step-58.csv,,1736
+59,agent,,message,,,,,,,,,,All evidence is in hand. Now I'll commit the validated claims for all four requirements.,1742
+60,tool,analysis_requirements_commit,failed,ANALYSIS_CLAIM_VALUE_UNKNOWN,ANALYSIS_CLAIM_VALUE_UNKNOWN:R1:counted_conflicts: use an exact verified name; allowed names: none.,,,,,,,,,1764
+61,agent,,message,,,,,,,,,,"The commit failed because the runtime requires verified claim-value names (none are registered for these manual requirements). Per the recovery guidance, I'll resubmit without inventing value names, binding evidence through the requirement IDs already attached to my SQL results.",1772
+62,tool,analysis_requirements_commit,ok,,,,,,,,,,,1825
+63,agent,,message,,,,,,,,,,"All four requirements are committed (C1–C4). Let me save the full attribution detail to the workspace for reference, then close out.",1832
+64,tool,write_file,ok,,,,,,,,,,,1867
+65,agent,,message,,,,,,,,,,"Done. Here's a summary of the analysis:
+
+**Method** — I worked from the `conflict_brecke` table (the Brecke conflict dataset, 1,147 rows) in the kb-archeology datasource:
+1. **Window:** All rows start between 900–1399 and end by 1402, so every record falls inside 800–1400 AD — the inclusive-bounds question never bites.
+2. **Definition filter (applied before counting):** a conflict must show a two-actor `Actor1-Actor2` pattern before the parenthetical location, and must last at least one year (`EndYear − StartYear ≥ 1`). That excluded 593 single-actor records (rebellions/insurrections) and 321 one-campaign-year records, leaving **233 counted conflicts**. I validated the parsing: 0 unicode dashes and 0 stray hyphens (hyphens only occur inside parentheticals, which the split ignores).
+3. **Attribution:** I built a mapping for **all 129 distinct actors** (including 38 bracketed coalitions like `[England Flanders]`) plus 19 name-specific overrides for context-dependent actors (Crusades → their theatres, ""Muslims""/""Vikings""/""Normans"" → context). Result: **233 of 233 conflicts attributed (100%), 0 unattributed**, spanning 36 modern countries — most involved: UK 64, Italy 58, Turkey 44, Germany 43, France 36, Russia 31.
+4. **Consistency:** the attributed set is exactly the counted set (233 = 233); multi-country attributions produce 446 conflict–country incidences but each conflict is counted once.
+
+All four analysis requirements (R1–R4) were committed with SQL-backed evidence, and the full write-up is saved as `conflicts_800_1400_report.md` in the workspace.
+
+FINAL_ANSWER: 233",1873

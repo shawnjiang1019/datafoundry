@@ -77,7 +77,7 @@ export const AGENT_RUNTIME_LIMIT_DEFINITIONS = {
     description: "Maximum inspected tables materialized into model-visible schema context."
   },
   schemaMaxColumnsPerTable: {
-    defaultValue: 50,
+    defaultValue: 250,
     min: 1,
     max: 1000,
     env: "DATAFOUNDRY_SCHEMA_MAX_COLUMNS_PER_TABLE",

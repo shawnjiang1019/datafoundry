@@ -653,6 +653,13 @@ const mcpToolAllowlistCandidates = (toolName: string): string[] => {
   if (toolName === "datalink_explore" || toolName === "datagraph_explore") {
     return ["datalink_explore", "datagraph_explore"];
   }
+  if (
+    toolName === "dtrail_plan_verify"
+    || toolName === "dtrail_trail_read"
+    || toolName === "dtrail_candidate_list"
+  ) {
+    return ["dtrail_plan_verify", "dtrail_trail_read", "dtrail_candidate_list"];
+  }
   return [toolName];
 };
 

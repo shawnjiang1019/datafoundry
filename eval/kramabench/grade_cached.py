@@ -15,10 +15,10 @@ import os
 import re
 import sys
 
-from benchmark.metrics import F1, RAEScore, Success
+from benchmark.metrics import F1, F1Approximate, RAEScore, Success
 
 PRIMARY = {"numeric_exact": Success, "string_exact": Success, "list_exact": F1,
-           "numeric_approximate": RAEScore}
+           "numeric_approximate": RAEScore, "list_approximate": F1Approximate}
 CACHE = "results/DataFoundrySUT/response_cache/tasks"
 
 

@@ -8,6 +8,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 
+/**
+ * Windows paths are case-insensitive, so a root resolved from a cwd that merely
+ * differs in case (`c:\...` vs `C:\...`) must still contain its own assets.
+ * Comparing case-sensitively there rejects every stored path as traversal.
+ */
+const normalizePath = (value: string): string =>
+  process.platform === "win32" ? value.toLowerCase() : value;
+
+const samePath = (path: string, root: string): boolean =>
+  normalizePath(path) === normalizePath(root);
+
+const isUnderRoot = (path: string, root: string): boolean =>
+  normalizePath(path).startsWith(`${normalizePath(root)}${sep}`);
+
 export type CreateFileAssetRefInput = {
   user_id: string;
   workspace_id: string;
@@ -349,7 +363,7 @@ export class LocalFileAssetService implements FileAssetService {
 
   private assetStoragePath(sha256: string): string {
     const path = resolve(this.root, sha256.slice(0, 2), sha256.slice(2, 4), sha256);
-    if (!path.startsWith(`${this.root}${sep}`)) {
+    if (!isUnderRoot(path, this.root)) {
       throw new Error("FILE_ASSET_STORAGE_PATH_INVALID");
     }
     return path;
@@ -357,7 +371,7 @@ export class LocalFileAssetService implements FileAssetService {
 
   private assertStoragePath(storagePath: string): void {
     const path = resolve(storagePath);
-    if (path !== this.root && !path.startsWith(`${this.root}${sep}`)) {
+    if (!isUnderRoot(path, this.root) && !samePath(path, this.root)) {
       throw new Error("FILE_ASSET_STORAGE_PATH_INVALID");
     }
   }

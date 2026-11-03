@@ -1,0 +1,2 @@
+total_rows,min_start,max_start,min_end,max_end,start_in_800_1400,overlap_800_1400,two_actor_total,two_actor_start_win,one_actor_start_win,two_actor_sameyear_start_win,final_start_win,final_overlap_win
+1147,900,1399,900,1402,1147,1147,554,554,593,321,233,233

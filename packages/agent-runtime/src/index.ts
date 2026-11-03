@@ -92,6 +92,7 @@ import {
 } from "./tools/tool-plan.js";
 import type { ProtocolClassifier, ProtocolIdentity } from "./protocol/protocol-router.js";
 import { createModelProtocolClassifier } from "./protocol/model-protocol-classifier.js";
+import { createAnswerCheck, createAnswerCommitCheck } from "./protocol/answer-commit-check.js";
 import {
   createModelAnalysisRequirementExtractor,
   type AnalysisRequirementExtractor
@@ -103,6 +104,8 @@ import {
 import type { AnalysisRequirement } from "./protocol/analysis-requirements.js";
 import type { DataAnalysisState } from "./protocol/protocols/data-analysis.js";
 import { createDefaultSemanticProvider } from "./semantic/default-semantic-provider.js";
+import { createEvidenceGroundingProvider } from "./grounding/evidence-grounding-provider.js";
+import { createModelAnswerFrameProposer } from "./grounding/answer-frame.js";
 import type { ProtocolEvent } from "./protocol/types.js";
 import type { ContextPackageRef, ProtocolStateStore } from "./protocol/types.js";
 import { toolErrorObservation as createToolErrorObservation } from "./errors/tool-execution-error.js";
@@ -290,6 +293,10 @@ export type WorkspaceAttachment = {
   size_bytes: number;
   source_path: string;
 };
+
+/** Mark grounded contracts advisory so the protocol treats their rules as warnings. */
+const advisoryContractGrounder = (grounder: AnalysisContractGrounder, advisory: boolean): AnalysisContractGrounder =>
+  advisory ? async (input) => ({ ...await grounder(input), advisory: true }) : grounder;
 
 export const createDataFoundry = async (
   input: CreateDataFoundryInput
@@ -516,6 +523,31 @@ export const createDataFoundry = async (
   const preActionPolicy = preActionVerifierFromEnvironment(process.env, {
     enabledDatasourceIds: input.runContext.enabled_datasource_ids ?? []
   });
+  const selectedDatasourceRevision = String(
+    input.resourceRevisions?.[`datasource:${selectedDatasourceId}`] ?? "unknown"
+  );
+  const createSemanticProvider = (datasourceId: string) => {
+    const semanticProvider = createDefaultSemanticProvider({ tools: selectedTools });
+    return input.runContext.evidence_grounding || input.runContext.answer_frame
+      ? createEvidenceGroundingProvider({
+          inner: semanticProvider,
+          dataGateway: input.dataGateway,
+          runContext: input.runContext,
+          datasourceId,
+          datasourceRevision: selectedDatasourceRevision,
+          relationships: input.runContext.evidence_grounding === true,
+          proposeFrame: input.runContext.answer_frame
+            ? createModelAnswerFrameProposer(input.modelProvider)
+            : undefined,
+          binding: {
+            joins: input.runContext.join_binding === true,
+            frame: input.runContext.frame_binding === true,
+            check: input.runContext.answer_check === true
+          },
+          abortSignal: input.abortSignal
+        })
+      : semanticProvider;
+  };
   const deferredProtocolEvents: ProtocolEvent[] = [];
   let protocolEventsReady = false;
   let protocol: RunProtocolBoundary;
@@ -534,14 +566,12 @@ export const createDataFoundry = async (
       ...(preActionPolicy ? { serverPolicy: preActionPolicy } : {}),
       ...(selectedDatasourceId
         ? {
-            semanticProvider: createDefaultSemanticProvider({ tools: selectedTools }),
+            semanticProvider: createSemanticProvider(selectedDatasourceId),
             semanticRequest: {
               userId: input.runContext.user_id,
               workspaceId: input.runContext.workspace_id ?? "default",
               datasourceId: selectedDatasourceId,
-              datasourceRevision: String(
-                input.resourceRevisions?.[`datasource:${selectedDatasourceId}`] ?? "unknown"
-              )
+              datasourceRevision: selectedDatasourceRevision
             }
           }
         : {}),
@@ -551,8 +581,10 @@ export const createDataFoundry = async (
       classifier: input.protocolClassifier ?? createModelProtocolClassifier(input.modelProvider),
       requirementExtractor: input.analysisRequirementExtractor
         ?? createModelAnalysisRequirementExtractor(input.modelProvider),
-      analysisContractGrounder: input.analysisContractGrounder
-        ?? createModelAnalysisContractGrounder(input.modelProvider),
+      analysisContractGrounder: advisoryContractGrounder(
+        input.analysisContractGrounder ?? createModelAnalysisContractGrounder(input.modelProvider),
+        input.runContext.advisory_contract === true
+      ),
       ...(input.protocolStateStore ? { stateStore: input.protocolStateStore } : {}),
       projectContext: ({ actionName, rawResult }) => {
         if (isProtocolRuntimeAction(actionName)) {
@@ -698,6 +730,14 @@ export const createDataFoundry = async (
     outputProcessors: mastraContextProcessors.outputProcessors,
     defaultOptions: {
       maxSteps: AGENT_MAX_STEPS,
+      // With frame binding on, an answer left uncommitted skips the frame check: send the agent back.
+      isTaskComplete: {
+        scorers: [createAnswerCommitCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never, createAnswerCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never]
+      },
       ...(input.modelSettings ? { modelSettings: input.modelSettings } : {}),
       providerOptions: {
         openai: {

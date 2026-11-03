@@ -1,0 +1,450 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算 2016 年火灾中被控制时伴随中到大雨（降雨量 > 0.05 英寸）的火灾占全部相关火灾的百分比。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "统计对象限定为 2016 年的火灾。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "降雨条件：火灾被控制当日或前一日，火灾区域内出现中到大雨（降雨量严格大于 0.05 英寸）。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "decision",
+      "description": "依据火灾区域最窄直径为 1km 的假设，确定哪些气象站的详细观测可用于对应火灾。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "缺失控制日期或缺少可用降雨观测的火灾的处理口径须与百分比定义一致。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "最终结果须为合法的百分比数值。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "metric",
+      "description": "计算 2016 年火灾中被控制时伴随中到大雨（降雨量 > 0.05 英寸）的火灾占全部相关火灾的百分比。",
+      "acceptanceCriteria": [
+        "结果为单一百分比数值，表示满足降雨条件的火灾数除以 2016 年纳入统计的火灾总数",
+        "百分比四舍五入保留 2 位小数"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "计算 2016 年火灾中被控制时伴随中到大雨（降雨量 > 0.05 英寸）的火灾占全部相关火灾的百分比。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q20",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q34",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41"
+      ],
+      "evidenceBindingIds": [
+        "E15",
+        "E22",
+        "E25",
+        "E35",
+        "E48",
+        "E53",
+        "E58"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R2",
+      "kind": "segmentation",
+      "description": "统计对象限定为 2016 年的火灾。",
+      "acceptanceCriteria": [
+        "仅 2016 年的火灾计入分子与分母，其他年份的火灾被排除"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "统计对象限定为 2016 年的火灾。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q19",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q34",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E5",
+        "E6",
+        "E14",
+        "E23",
+        "E26",
+        "E36",
+        "E49",
+        "E54",
+        "E59"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "降雨条件：火灾被控制当日或前一日，火灾区域内出现中到大雨（降雨量严格大于 0.05 英寸）。",
+      "acceptanceCriteria": [
+        "时间窗口为每个火灾的控制日及其前一天，共两天",
+        "降雨量判定阈值为严格大于 0.05 英寸，恰好等于 0.05 英寸不满足",
+        "两天窗口内任意一天满足阈值即视为该火灾满足降雨条件"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "降雨条件：火灾被控制当日或前一日，火灾区域内出现中到大雨（降雨量严格大于 0.05 英寸）。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q9",
+        "Q20",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40"
+      ],
+      "evidenceBindingIds": [
+        "E16",
+        "E20",
+        "E24",
+        "E27",
+        "E28",
+        "E33",
+        "E37",
+        "E40",
+        "E42",
+        "E45",
+        "E50",
+        "E55"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R4",
+      "kind": "decision",
+      "description": "依据火灾区域最窄直径为 1km 的假设，确定哪些气象站的详细观测可用于对应火灾。",
+      "acceptanceCriteria": [
+        "仅当气象站落入某火灾区域内时，才可使用该站针对该火灾的详细气象观测",
+        "火灾区域范围按最窄直径 1km 的假设推断（即以火灾位置为参考、半径 0.5km 的范围）",
+        "未落入火灾区域的气象站观测不得用于判定该火灾的降雨条件"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "依据火灾区域最窄直径为 1km 的假设，确定哪些气象站的详细观测可用于对应火灾。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q7",
+        "Q8",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q41"
+      ],
+      "evidenceBindingIds": [
+        "E3",
+        "E4",
+        "E7",
+        "E9",
+        "E10",
+        "E11",
+        "E12",
+        "E13",
+        "E17",
+        "E19",
+        "E21",
+        "E29",
+        "E30",
+        "E31",
+        "E32",
+        "E34",
+        "E41",
+        "E43",
+        "E46",
+        "E60"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R5",
+      "kind": "data_quality",
+      "description": "缺失控制日期或缺少可用降雨观测的火灾的处理口径须与百分比定义一致。",
+      "acceptanceCriteria": [
+        "无法确定控制日期的火灾不得计入分子",
+        "无匹配站点的降雨观测时不得默认视为满足降雨条件",
+        "分子与分母对缺失数据的排除口径一致且可被审计追溯"
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "缺失控制日期或缺少可用降雨观测的火灾的处理口径须与百分比定义一致。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q6",
+        "Q12",
+        "Q21",
+        "Q34",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40"
+      ],
+      "evidenceBindingIds": [
+        "E8",
+        "E18",
+        "E38",
+        "E44",
+        "E47",
+        "E51",
+        "E56"
+      ],
+      "reportedClaimIds": []
+    },
+    {
+      "id": "R6",
+      "kind": "validation",
+      "description": "最终结果须为合法的百分比数值。",
+      "acceptanceCriteria": [
+        "结果数值在 0 至 100 之间",
+        "结果精确到 2 位小数"
+      ],
+      "assertions": [
+        {
+          "id": "R6.A1",
+          "requirementId": "R6",
+          "kind": "manual",
+          "description": "最终结果须为合法的百分比数值。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "evidenced",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q34",
+        "Q38",
+        "Q39",
+        "Q40"
+      ],
+      "evidenceBindingIds": [
+        "E39",
+        "E52",
+        "E57"
+      ],
+      "reportedClaimIds": []
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R5",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R5: Unexpected end of JSON input"
+    },
+    {
+      "requirementId": "R6",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R6: Unexpected end of JSON input"
+    }
+  ]
+}

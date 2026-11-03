@@ -1,0 +1,6 @@
+idx,MSMuTect_classification,MSIsensor_classification,MLH1_methylation_classification,Mutation_burden_classification,MLH1_mutation,MLH3_mutation,MSH2_mutation,MSH3_mutation,MSH6_mutation
+S001,MSI-H,MSI-H,MSI-H,MSS,0,0,0,0,0
+S002,MSI-H,MSI-H,MSS,MSS,0,0,0,0,0
+S003,MSS,MSS,MSI-H,MSI-H,0,0,0,0,0
+S004,MSS,MSS,,MSI-H,0,0,0,0,0
+S005,MSS,MSS,MSI-H,MSI-H,0,0,0,0,0

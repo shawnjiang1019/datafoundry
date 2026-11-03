@@ -1,0 +1,360 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "The analysis is based on historical yearly mean sunspot numbers covering the full 1960–2020 window at annual granularity.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "Solar activity level is quantified by the yearly mean sunspot number, and the approximate solar activity cycle period is derived from the spacing of detected extremes.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "The five years of maximum activity are identified as local peaks of the yearly mean sunspot series within 1960–2020, applying a prominence of 20 and a distance of 5.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "The five years of minimum activity are identified as local troughs of the yearly mean sunspot series within 1960–2020 under the same prominence of 20 and distance of 5 rules.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "All detected extreme years and the derived cycle period must be mutually consistent and confined to the 1960–2020 window.",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "The analysis is based on historical yearly mean sunspot numbers covering the full 1960–2020 window at annual granularity.",
+      "acceptanceCriteria": [
+        "The analyzed series consists of yearly mean sunspot number values with one value per year.",
+        "Year coverage spans 1960 through 2020 inclusive (61 yearly observations), and any gap is explicitly evidenced rather than silently interpolated.",
+        "No years outside 1960–2020 contribute to extreme detection, ranking, or the derived cycle period."
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "年度序列完整性：分析所用序列必须为按年粒度的太阳黑子年平均值，1960–2020（含端点）每年一个值，共 61 个年度观测；任何缺失年份必须以显式证据说明，不得静默插值。物理 schema（tables=[]，datasourceRevision=2，fallbackReason=DATALINK_UNAVAILABLE）未提供任何可绑定的表或字段，无法建立 SQL 层验证，需人工核对数据源。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        },
+        {
+          "id": "R1.A2",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "时间窗口约束：1960–2020 之外的任何年份不得参与极值检测、排序或周期推导。由于 schema 中不存在太阳黑子相关物理表与年份字段，该口径仅能作为人工验证项。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q3",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "E7",
+        "E8",
+        "E9",
+        "E10",
+        "E16"
+      ],
+      "reportedClaimIds": [
+        "C1",
+        "C2"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "metric",
+      "description": "Solar activity level is quantified by the yearly mean sunspot number, and the approximate solar activity cycle period is derived from the spacing of detected extremes.",
+      "acceptanceCriteria": [
+        "Extremes are ranked solely by yearly mean sunspot number; higher value means greater activity for maxima and lower value means lower activity for minima.",
+        "The approximate cycle period is expressed in years and equals the average interval between successive detected maxima (or equivalently successive detected minima) within 1960–2020.",
+        "The reported period is derivable from the identified extreme years and reported within a rounding tolerance consistent with whole-year spacing."
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "活动水平度量与排序口径：活动水平唯一由太阳黑子年平均值量化；极大值按数值从高到低、极小值按数值从低到高排序，不得引入其他度量替代。schema 无对应数值字段可绑定，需人工验证。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        },
+        {
+          "id": "R2.A2",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "周期推导口径：近似活动周期以年为单位，等于 1960–2020 内相邻被检测极大值年份间隔的平均值（或等价地相邻极小值年份间隔的平均值）；报告值须可由被识别的极值年份推导，并符合整年间隔的舍入容差。需人工复核推导过程。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E11",
+        "E14",
+        "E17"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "comparison",
+      "description": "The five years of maximum activity are identified as local peaks of the yearly mean sunspot series within 1960–2020, applying a prominence of 20 and a distance of 5.",
+      "acceptanceCriteria": [
+        "Each reported maximum year is a local peak whose prominence is at least 20 sunspot-number units.",
+        "All reported maxima are mutually separated by at least 5 years, reflecting the distance parameter of 5.",
+        "Exactly five maximum years are reported, ranked by yearly mean sunspot number from highest to lowest; if fewer than five peaks qualify, the shortfall is explicitly evidenced instead of filled with non-qualifying years."
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "极大值检测参数约束：每个报告的极大年份必须是太阳黑子年平均值序列的局部峰值，其 prominence 至少为 20 个太阳黑子数单位；任意两个被报告的极大年份相互间隔至少 5 年（对应 distance=5）。schema 未提供序列表与字段，参数适用性需人工验证。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        },
+        {
+          "id": "R3.A2",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "数量与排序约束：恰好报告 5 个极大年份，并按太阳黑子年平均值从高到低排序；若合格峰值不足 5 个，必须显式给出不足的证据，不得用不合格年份填充。需人工核对报告的极大值列表。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q13",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E18"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "comparison",
+      "description": "The five years of minimum activity are identified as local troughs of the yearly mean sunspot series within 1960–2020 under the same prominence of 20 and distance of 5 rules.",
+      "acceptanceCriteria": [
+        "Each reported minimum year is a local trough whose prominence is at least 20 sunspot-number units.",
+        "All reported minima are mutually separated by at least 5 years, reflecting the distance parameter of 5.",
+        "Exactly five minimum years are reported, ranked by yearly mean sunspot number from lowest to highest; if fewer than five troughs qualify, the shortfall is explicitly evidenced instead of filled with non-qualifying years."
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "极小值检测参数约束：每个报告的极小年份必须是太阳黑子年平均值序列的局部谷值，其 prominence 至少为 20 个太阳黑子数单位；任意两个被报告的极小年份相互间隔至少 5 年（对应 distance=5）。schema 未提供序列表与字段，参数适用性需人工验证。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        },
+        {
+          "id": "R4.A2",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "数量与排序约束：恰好报告 5 个极小年份，并按太阳黑子年平均值从低到高排序；若合格谷值不足 5 个，必须显式给出不足的证据，不得用不合格年份填充。需人工核对报告的极小值列表。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q14",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E12",
+        "E19"
+      ],
+      "reportedClaimIds": [
+        "C5"
+      ]
+    },
+    {
+      "id": "R5",
+      "kind": "validation",
+      "description": "All detected extreme years and the derived cycle period must be mutually consistent and confined to the 1960–2020 window.",
+      "acceptanceCriteria": [
+        "Every year appearing in the maxima or minima lists falls within 1960–2020 inclusive.",
+        "No single year is reported simultaneously as a qualifying maximum and qualifying minimum under the identical prominence and distance parameters.",
+        "The prominence and distance filtering is applied symmetrically and consistently to both peak and trough detection, and the resulting period agrees with the year differences among reported extremes."
+      ],
+      "assertions": [
+        {
+          "id": "R5.A1",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "窗口与互斥一致性：极大值与极小值列表中出现的每个年份均须落在 1960–2020（含端点）内；在相同的 prominence=20 与 distance=5 参数下，不允许任何单个年份同时作为合格极大值和合格极小值被报告。需人工交叉核对两份极值列表。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        },
+        {
+          "id": "R5.A2",
+          "requirementId": "R5",
+          "kind": "manual",
+          "description": "对称性与周期一致性：prominence=20 与 distance=5 的过滤须对峰值检测与谷值检测对称且一致地施加；推导出的周期须与报告极值年份之间的年份差值相符。schema 未提供可执行 SQL 的物理表，该一致性仅能通过人工复核极值年份集合验证。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17"
+      ],
+      "evidenceBindingIds": [
+        "E13",
+        "E15",
+        "E20"
+      ],
+      "reportedClaimIds": [
+        "C6"
+      ]
+    }
+  ],
+  "grounding_outcome": "clean",
+  "contract_grounded_flag": true,
+  "grounding_findings": []
+}

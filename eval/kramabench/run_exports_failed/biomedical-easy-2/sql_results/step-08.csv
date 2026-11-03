@@ -1,0 +1,15 @@
+idx,Proteomics_Participant_ID,Proteomics_Tumor_Normal,Case_excluded,Age,Histologic_type,Treatment_naive,Country
+S006,C3L-00098,Tumor,No,63,Serous,YES,United States
+S009,C3L-00139,Tumor,No,83,Serous,YES,United States
+S016,C3L-00358,Tumor,No,90,Serous,YES,United States
+S041,C3L-00963,Tumor,No,59,Serous,YES,Other_specify
+S042,C3L-01246,Tumor,No,62,Serous,YES,Other_specify
+S043,C3L-01247,Tumor,Yes,63,Serous,YES,Other_specify
+S058,C3L-01925,Tumor,No,65,Serous,YES,United States
+S071,C3N-00339,Tumor,No,45,Serous,YES,Ukraine
+S072,C3N-00340,Tumor,No,60,Serous,YES,Ukraine
+S096,C3N-01346,Tumor,No,63,Serous,YES,Poland
+S097,C3N-01349,Tumor,No,77,Serous,YES,Poland
+S102,C3N-01802,Tumor,No,85,Serous,YES,United States
+S103,C3N-01825,Tumor,No,70,Serous,YES,Ukraine
+S104,C3N-01825_replication,Tumor,Yes,,Serous,YES,Ukraine

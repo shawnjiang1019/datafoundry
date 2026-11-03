@@ -1,0 +1,2 @@
+n_rows,n_incidents,n_suppr50_notnull,n_grp_more_aggr,n_grp_less_aggr,n_duration_notnull,n_rh_notnull,n_wind_notnull,n_erc_notnull,n_complete_core,n_all_bldg_null,min_year,max_year,n_duration_zero,n_duration_negative
+6658,6536,6658,872,5786,6658,6658,6658,6657,6657,0,2002,2016,0,0

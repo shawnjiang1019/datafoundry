@@ -1,0 +1,11 @@
+region,cause,n_fires
+California,H,10
+California,L,1
+Great Basin,H,2
+Inland Empire,H,6
+Inland Empire,N,1
+Northwest,H,3
+Rocky Mountain Front,H,19
+Southwest,H,118
+Southwest,L,6
+Southwest,N,4

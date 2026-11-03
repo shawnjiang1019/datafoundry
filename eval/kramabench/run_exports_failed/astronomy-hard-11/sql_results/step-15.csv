@@ -1,0 +1,3 @@
+colname,nonnull,n,sample1,sample2
+source_file,715,309595,C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu001-20140128_to_20140131.csv,C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu715-20191213_to_20191216.csv
+density_nonnull,307717,309595,5.509381792057508e-14,9.99e+32

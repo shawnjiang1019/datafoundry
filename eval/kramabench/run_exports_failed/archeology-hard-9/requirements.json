@@ -1,0 +1,263 @@
+{
+  "extracted": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "古罗马城市与现代城市的匹配规则：仅当古城市与对应现代城市之间的距离小于 0.1 度时，二者视为同一城市；且仅纳入人口超过一百万的现代城市。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "rank 派生规则：当古罗马城市的 rank 以 'or' 形式给出两个数字时，取两个数字的平均值作为该城市的 rank。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "去重规则：若同一现代城市匹配到多个古城市样本，仅采用数据中最后一条古城市样本参与计算。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "计算去重后样本的 rank 与对应现代城市人口之间的相关系数（Pearson），并将结果四舍五入到 6 位小数。",
+      "required": true,
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "kind": "manual",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "stored": [
+    {
+      "id": "R1",
+      "kind": "data_quality",
+      "description": "古罗马城市与现代城市的匹配规则：仅当古城市与对应现代城市之间的距离小于 0.1 度时，二者视为同一城市；且仅纳入人口超过一百万的现代城市。",
+      "acceptanceCriteria": [
+        "样本必须满足古城市与现代城市位置距离 < 0.1 度的匹配条件",
+        "仅纳入人口 > 1,000,000 的现代城市",
+        "每个样本对中'距离'与'人口'的取值须可由 SQL 结果验证"
+      ],
+      "assertions": [
+        {
+          "id": "R1.A1",
+          "requirementId": "R1",
+          "kind": "manual",
+          "description": "古罗马城市与现代城市的匹配规则：仅当古城市与对应现代城市之间的距离小于 0.1 度时，二者视为同一城市；且仅纳入人口超过一百万的现代城市。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q2",
+        "Q4",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E1",
+        "E2",
+        "E3",
+        "E5",
+        "E7",
+        "E11"
+      ],
+      "reportedClaimIds": [
+        "C1"
+      ]
+    },
+    {
+      "id": "R2",
+      "kind": "data_quality",
+      "description": "rank 派生规则：当古罗马城市的 rank 以 'or' 形式给出两个数字时，取两个数字的平均值作为该城市的 rank。",
+      "acceptanceCriteria": [
+        "形如 'A or B' 的 rank 值必须替换为 (A+B)/2",
+        "派生后的 rank 必须是可用于相关性计算的数值"
+      ],
+      "assertions": [
+        {
+          "id": "R2.A1",
+          "requirementId": "R2",
+          "kind": "manual",
+          "description": "rank 派生规则：当古罗马城市的 rank 以 'or' 形式给出两个数字时，取两个数字的平均值作为该城市的 rank。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q1",
+        "Q3",
+        "Q5",
+        "Q6",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E8",
+        "E12",
+        "E15",
+        "E17"
+      ],
+      "reportedClaimIds": [
+        "C2"
+      ]
+    },
+    {
+      "id": "R3",
+      "kind": "data_quality",
+      "description": "去重规则：若同一现代城市匹配到多个古城市样本，仅采用数据中最后一条古城市样本参与计算。",
+      "acceptanceCriteria": [
+        "同一现代城市仅保留数据顺序中最后出现的古城市记录",
+        "每个现代城市在相关性计算样本中至多出现一次"
+      ],
+      "assertions": [
+        {
+          "id": "R3.A1",
+          "requirementId": "R3",
+          "kind": "manual",
+          "description": "去重规则：若同一现代城市匹配到多个古城市样本，仅采用数据中最后一条古城市样本参与计算。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q4",
+        "Q5",
+        "Q7",
+        "Q8"
+      ],
+      "evidenceBindingIds": [
+        "E4",
+        "E6",
+        "E9",
+        "E13"
+      ],
+      "reportedClaimIds": [
+        "C3"
+      ]
+    },
+    {
+      "id": "R4",
+      "kind": "metric",
+      "description": "计算去重后样本的 rank 与对应现代城市人口之间的相关系数（Pearson），并将结果四舍五入到 6 位小数。",
+      "acceptanceCriteria": [
+        "相关系数基于 rank 派生值与现代城市人口计算",
+        "样本范围仅限前三条要求筛选并去重后的匹配对",
+        "最终结果必须四舍五入保留 6 位小数",
+        "最终输出为一个裸数值，不带单位、百分号或千位分隔符"
+      ],
+      "assertions": [
+        {
+          "id": "R4.A1",
+          "requirementId": "R4",
+          "kind": "manual",
+          "description": "计算去重后样本的 rank 与对应现代城市人口之间的相关系数（Pearson），并将结果四舍五入到 6 位小数。",
+          "required": true,
+          "sourceTables": [],
+          "dimensions": [],
+          "sqlConstraints": [],
+          "resultChecks": [],
+          "claimValues": []
+        }
+      ],
+      "required": true,
+      "source": "user",
+      "status": "reported",
+      "taskIds": [],
+      "queryAttemptIds": [
+        "Q5",
+        "Q7",
+        "Q8",
+        "Q9",
+        "Q10"
+      ],
+      "evidenceBindingIds": [
+        "E10",
+        "E14",
+        "E16",
+        "E18"
+      ],
+      "reportedClaimIds": [
+        "C4"
+      ]
+    }
+  ],
+  "grounding_outcome": "failed",
+  "contract_grounded_flag": true,
+  "grounding_findings": [
+    {
+      "requirementId": "R1",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R1: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.6.column: Invalid input: expected string, received undefined; contracts.0.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.6.value: Invalid input; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.5.columns: Invalid input: expected array, received undefined; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R2",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R2: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.6.column: Invalid input: expected string, received undefined; contracts.0.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.6.value: Invalid input; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.5.columns: Invalid input: expected array, received undefined; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R3",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R3: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.6.column: Invalid input: expected string, received undefined; contracts.0.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.6.value: Invalid input; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.5.columns: Invalid input: expected array, received undefined; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    },
+    {
+      "requirementId": "R4",
+      "code": "CONTRACT_INVALID_OUTPUT",
+      "message": "Grounding output was invalid for R4: contracts.0.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.0.sqlConstraints.6.column: Invalid input: expected string, received undefined; contracts.0.assertions.0.sqlConstraints.6.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.0.assertions.0.sqlConstraints.6.value: Invalid input; contracts.0.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.0.assertions.1.sqlConstraints.2.operator: Invalid option: expected one of \"eq\"|\"gt\"|\"gte\"|\"lt\"|\"lte\"; contracts.1.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\"; contracts.2.assertions.0.sqlConstraints.5.columns: Invalid input: expected array, received undefined; contracts.3.assertions.1.kind: Invalid option: expected one of \"metric\"|\"filter\"|\"grain\"|\"comparison\"|\"reconciliation\"|\"counterfactual\"|\"decision\"|\"manual\""
+    }
+  ]
+}

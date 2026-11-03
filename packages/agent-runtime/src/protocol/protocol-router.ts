@@ -35,6 +35,8 @@ export type ProtocolRouterOptions = {
   classifier?: ProtocolClassifier;
   confidenceThreshold?: number;
   defaultProtocol?: ProtocolIdentity;
+  /** Registered protocols the classifier may never select (explicit/deterministic only). */
+  classifierExcludedProtocolIds?: string[];
 };
 
 export type ProtocolRouteResult = {
@@ -97,8 +99,9 @@ export class ProtocolRouter {
       throw new Error(`PROTOCOL_AMBIGUOUS:${keys.join(",")}`);
     }
     if (this.options.classifier) {
+      const excluded = new Set(this.options.classifierExcludedProtocolIds ?? []);
       const candidates = this.registry.list()
-        .filter((definition) => input.authorizedProtocolIds.includes(definition.id))
+        .filter((definition) => input.authorizedProtocolIds.includes(definition.id) && !excluded.has(definition.id))
         .map((definition) => ({ protocolId: definition.id, protocolVersion: definition.version }));
       let classification: ProtocolRouteClassification | undefined;
       try {

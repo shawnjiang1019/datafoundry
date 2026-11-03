@@ -84,6 +84,7 @@ import {
   type SessionIntent
 } from "./protocol/run-protocol-boundary.js";
 import { DATA_ACTION_NAMES } from "./protocol/data-actions.js";
+import { preActionVerifierFromEnvironment } from "./policy/pre-action-verifier.js";
 import {
   buildToolPlan,
   resolveToolPlanAvailability,
@@ -511,6 +512,10 @@ export const createDataFoundry = async (
   ];
   const selectedTools = toolPlan.exposedTools;
   const selectedDatasourceId = input.runContext.selected_datasource_id;
+  // Opt-in (DF_PRE_ACTION_VERIFY=1): checks each action before it runs; see policy/pre-action-verifier.ts.
+  const preActionPolicy = preActionVerifierFromEnvironment(process.env, {
+    enabledDatasourceIds: input.runContext.enabled_datasource_ids ?? []
+  });
   const deferredProtocolEvents: ProtocolEvent[] = [];
   let protocolEventsReady = false;
   let protocol: RunProtocolBoundary;
@@ -526,6 +531,7 @@ export const createDataFoundry = async (
       },
       tools: selectedTools,
       toolPlanEntries: agentToolPlanEntries,
+      ...(preActionPolicy ? { serverPolicy: preActionPolicy } : {}),
       ...(selectedDatasourceId
         ? {
             semanticProvider: createDefaultSemanticProvider({ tools: selectedTools }),

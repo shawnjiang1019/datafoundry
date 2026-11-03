@@ -3,7 +3,9 @@ export { createNotesMcpServer } from "./mcp.js";
 export { NotesStore, NOTES_TTL_MS, type NotesEntry } from "./notes-store.js";
 export {
   createNotesTools,
+  MAX_CELL_CHARS,
   MAX_CHALLENGES,
+  MAX_RESULT_CHARS,
   NotesToolError,
   type CheckAnswerResult,
   type GroundResult,

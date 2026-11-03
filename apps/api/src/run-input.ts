@@ -1,4 +1,5 @@
 import type { RunAgentInput } from "@ag-ui/client";
+import type { AssumptionReceipt, EnvAnnotation } from "@datafoundry/agent-runtime";
 import type { EvidenceKind, EvidenceRef, EvidenceSelection } from "@datafoundry/contracts";
 import type { ConfigResourceKind, MetadataStore } from "@datafoundry/metadata";
 import type { SkillMode, SkillPolicyConfig } from "@datafoundry/skills";
@@ -66,6 +67,10 @@ export type EffectiveRunConfig = {
   answerCheck?: boolean;
   /** Treat the contract model's rules as warnings; block only verified joins, frame choices and the answer value. */
   advisoryContract?: boolean;
+  /** D-Trail assumption receipt checked before the run; shown to the agent as its assumption ledger. */
+  assumptionReceipt?: AssumptionReceipt;
+  /** D-Trail environment annotation (agent export); enriches schema results and guards SQL. */
+  envAnnotation?: EnvAnnotation;
   /**
    * Resources silently dropped from `enabled*Ids` because `default_enabled=false` (R-020).
    * The run continues; this list is surfaced in `run.config.resolved` for diagnostics.
@@ -148,6 +153,8 @@ export const extractEffectiveRunConfig = (
   const frameBinding = noteBinding || booleanFromAliases(runConfig, ["frameBinding", "frame_binding"], false);
   const advisoryContract = booleanFromAliases(runConfig, ["advisoryContract", "advisory_contract"], false);
   const answerCheck = booleanFromAliases(runConfig, ["answerCheck", "answer_check"], false);
+  const assumptionReceipt = assumptionReceiptFromRunConfig(runConfig);
+  const envAnnotation = envAnnotationFromRunConfig(runConfig);
 
   if (
     activeDatasourceId
@@ -183,6 +190,8 @@ export const extractEffectiveRunConfig = (
     ...(frameBinding ? { frameBinding } : {}),
     ...(answerCheck ? { answerCheck } : {}),
     ...(advisoryContract ? { advisoryContract } : {}),
+    ...(assumptionReceipt ? { assumptionReceipt } : {}),
+    ...(envAnnotation ? { envAnnotation } : {}),
     evidenceRefs
   };
 };
@@ -427,6 +436,62 @@ const protocolSelectionFromRunConfig = (
   }
   return { protocolId, protocolVersion };
 };
+
+export const ASSUMPTION_RECEIPT_MAX_CHARS = 200_000;
+
+/** Advisory input: a malformed or oversized receipt is ignored rather than failing the run. */
+const assumptionReceiptFromRunConfig = (runConfig: Record<string, unknown>): AssumptionReceipt | undefined => {
+  let value = runConfig.assumptionReceipt ?? runConfig.assumption_receipt;
+  // Accept the GET /runs/{id}/assumptions wrapper too: {task_id, assumptions: <receipt>}.
+  if (isRecord(value) && isRecord(value.assumptions) && !Array.isArray(value.assumptions)) {
+    value = { task_id: value.task_id, ...value.assumptions };
+  }
+  if (!isRecord(value) || Array.isArray(value)) {
+    return undefined;
+  }
+  if (
+    (value.trees !== undefined && !Array.isArray(value.trees))
+    || (value.assumptions !== undefined && !Array.isArray(value.assumptions))
+  ) {
+    return undefined;
+  }
+  const receipt: Record<string, unknown> = { ...value };
+  delete receipt.conditioner_reply;
+  try {
+    if (JSON.stringify(receipt).length > ASSUMPTION_RECEIPT_MAX_CHARS) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return receipt as AssumptionReceipt;
+};
+
+export const ENV_ANNOTATION_MAX_CHARS = 2_000_000;
+
+/** Advisory input like the receipt: anything but an exported `{tables: {...}}` file is ignored. */
+const envAnnotationFromRunConfig = (runConfig: Record<string, unknown>): EnvAnnotation | undefined => {
+  const value = runConfig.envAnnotation ?? runConfig.env_annotation;
+  if (!isRecord(value) || Array.isArray(value) || !isRecord(value.tables) || Array.isArray(value.tables)) {
+    return undefined;
+  }
+  try {
+    if (JSON.stringify(value).length > ENV_ANNOTATION_MAX_CHARS) {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+  return value as EnvAnnotation;
+};
+
+/** Payload for the `assumptions.loaded` run event: what the agent's ledger was built from. */
+export const assumptionsLoadedPayload = (receipt: AssumptionReceipt): Record<string, unknown> => ({
+  ...(typeof receipt.task_id === "string" ? { dtrail_task_id: receipt.task_id } : {}),
+  item_count: Array.isArray(receipt.trees) ? receipt.trees.length : 0,
+  assumption_count: Array.isArray(receipt.assumptions) ? receipt.assumptions.length : 0,
+  ...(isRecord(receipt.summary) ? { summary: receipt.summary } : {})
+});
 
 const stringArrayFromAliases = (record: Record<string, unknown>, aliases: string[]): string[] => {
   for (const alias of aliases) {

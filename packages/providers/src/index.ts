@@ -1,4 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createEnvConfig } from "@datafoundry/contracts";
 
 export type ChatProviderConfig = {
@@ -6,6 +7,9 @@ export type ChatProviderConfig = {
   model: string;
   base_url: string;
   api_key?: string;
+  /** Reasoning models (GLM, DeepSeek) return their thinking in `reasoning_content`, which the
+   * OpenAI client drops; the openai-compatible client streams it as reasoning parts. */
+  reasoning_model?: boolean;
 };
 
 export type EmbeddingProviderConfig = {
@@ -57,17 +61,19 @@ export const createModelProviderFromConfig = (config: ChatProviderConfig): Model
     };
   }
 
-  const provider = createOpenAI({
-    apiKey: config.api_key,
-    baseURL: config.base_url,
-    fetch: createThinkingSwitchFetch(config.base_url)
-  });
+  // Helper calls can ask to skip the reasoning phase (DISABLE_THINKING_HEADER); reasoning models
+  // keep their reasoning stream through the OpenAI-compatible chat model.
+  const fetch = createThinkingSwitchFetch(config.base_url);
+  const model = config.reasoning_model
+    ? createOpenAICompatible({ name: "openai-compatible", apiKey: config.api_key, baseURL: config.base_url, fetch })
+      .chatModel(config.model)
+    : createOpenAI({ apiKey: config.api_key, baseURL: config.base_url, fetch }).chat(config.model);
   const promptCompat = resolvePromptCompatibility(config);
 
   return {
     kind: "openai-compatible",
     model_name: config.model,
-    model: provider.chat(config.model),
+    model,
     ...(promptCompat ? { prompt_compat: promptCompat } : {})
   };
 };

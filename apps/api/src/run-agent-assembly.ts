@@ -180,6 +180,10 @@ export const createRunAgentAssembly = async (
       : {}),
     ...(input.modelSettings ? { modelSettings: input.modelSettings } : {}),
     ...(input.evidenceContextItems?.length ? { evidenceContextItems: input.evidenceContextItems } : {}),
+    ...(input.effectiveRunConfig.assumptionReceipt
+      ? { assumptionReceipt: input.effectiveRunConfig.assumptionReceipt }
+      : {}),
+    ...(input.effectiveRunConfig.envAnnotation ? { envAnnotation: input.effectiveRunConfig.envAnnotation } : {}),
     ...(input.longTermMemories.length > 0 ? { longTermMemory: { records: input.longTermMemories } } : {}),
     runContext: input.runContext,
     sessionOutputService: input.sessionOutputService,

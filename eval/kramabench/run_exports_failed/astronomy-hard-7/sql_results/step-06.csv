@@ -1,0 +1,3 @@
+source_file,n_rows,min_ts,max_ts
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu334-20161023_to_20161026.csv,433,2016-10-23T00:00:00.000Z,2016-10-26T00:00:00.000Z
+C:\Users\shawn\KramaBench\data/astronomy/input\STORM-AI\warmup\v2\Sat_Density\swarma-wu335-20161026_to_20161029.csv,433,2016-10-26T00:00:00.000Z,2016-10-29T00:00:00.000Z

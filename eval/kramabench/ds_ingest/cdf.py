@@ -100,7 +100,10 @@ def load(path, time_var=DEFAULT_TIME_VAR, value_vars=DEFAULT_VALUE_VARS):
         epoch = np.asarray(cdf.varget(time_var))
         if epoch.ndim > 1:
             epoch = epoch.reshape(-1)  # tolerated (n_samples, 1) style
-        times = cdflib.cdfepoch.to_datetime(epoch)
+        # cdflib < 1.0 returns datetime objects, >= 1.0 returns numpy datetime64;
+        # casting to datetime64[us] handles both.
+        times = np.datetime_as_string(
+            np.asarray(cdflib.cdfepoch.to_datetime(epoch), dtype="datetime64[us]"), unit="us")
 
         cache = {}
         for var in value_vars:
@@ -108,7 +111,7 @@ def load(path, time_var=DEFAULT_TIME_VAR, value_vars=DEFAULT_VALUE_VARS):
 
         rows = []
         for i, ts in enumerate(times):
-            row = {"timestamp": ts.isoformat()}
+            row = {"timestamp": str(ts)}
             for var in value_vars:
                 value = cache[var][i] if cache[var].ndim > 0 else cache[var]
                 row.update(_extract_values(value, var))

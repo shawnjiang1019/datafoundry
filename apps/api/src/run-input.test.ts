@@ -1,7 +1,12 @@
 import type { RunAgentInput } from "@ag-ui/client";
 import { describe, expect, it } from "vitest";
 
-import { extractEffectiveRunConfig } from "./run-input.js";
+import {
+  ASSUMPTION_RECEIPT_MAX_CHARS,
+  ENV_ANNOTATION_MAX_CHARS,
+  assumptionsLoadedPayload,
+  extractEffectiveRunConfig
+} from "./run-input.js";
 
 describe("extractEffectiveRunConfig protocol selection", () => {
   it("parses an explicit protocol identity from run_config", () => {
@@ -48,6 +53,76 @@ describe("extractEffectiveRunConfig evidence grounding", () => {
   it("reads the advisory contract flag and leaves it off by default", () => {
     expect(extractEffectiveRunConfig(createInput({ advisory_contract: true })).advisoryContract).toBe(true);
     expect(extractEffectiveRunConfig(createInput({})).advisoryContract).toBeUndefined();
+  });
+});
+
+describe("extractEffectiveRunConfig assumption receipt", () => {
+  const receipt = {
+    task_id: "task_1",
+    assumptions: [{ clause: "Each row is one sample", term: "sample" }],
+    trees: [{ status: "refuted", claim: null }],
+    summary: { total: 1, refuted: 1 },
+    conditioner_reply: "raw model text"
+  };
+
+  it("parses a valid receipt and drops conditioner_reply", () => {
+    const config = extractEffectiveRunConfig(createInput({ assumptionReceipt: receipt }));
+
+    expect(config.assumptionReceipt).toEqual({
+      task_id: "task_1",
+      assumptions: receipt.assumptions,
+      trees: receipt.trees,
+      summary: receipt.summary
+    });
+    expect(assumptionsLoadedPayload(config.assumptionReceipt!)).toEqual({
+      dtrail_task_id: "task_1",
+      item_count: 1,
+      assumption_count: 1,
+      summary: { total: 1, refuted: 1 }
+    });
+  });
+
+  it("unwraps the GET /runs/{id}/assumptions body", () => {
+    const config = extractEffectiveRunConfig(createInput({
+      assumptionReceipt: { task_id: "task_1", assumptions: { ...receipt, task_id: undefined } }
+    }));
+
+    expect(config.assumptionReceipt?.trees).toEqual(receipt.trees);
+    expect(config.assumptionReceipt).not.toHaveProperty("conditioner_reply");
+  });
+
+  it("ignores malformed receipts without failing the run", () => {
+    for (const assumptionReceipt of ["text", [receipt], { trees: "x" }, { assumptions: 3, trees: [] }]) {
+      expect(extractEffectiveRunConfig(createInput({ assumptionReceipt })).assumptionReceipt).toBeUndefined();
+    }
+    expect(extractEffectiveRunConfig(createInput({})).assumptionReceipt).toBeUndefined();
+  });
+
+  it("ignores an oversized receipt", () => {
+    const huge = { ...receipt, trees: [{ status: "assumed", note: "x".repeat(ASSUMPTION_RECEIPT_MAX_CHARS) }] };
+    expect(extractEffectiveRunConfig(createInput({ assumptionReceipt: huge })).assumptionReceipt).toBeUndefined();
+  });
+
+  it("does not count a stripped conditioner_reply toward the size cap", () => {
+    const big = { ...receipt, conditioner_reply: "x".repeat(ASSUMPTION_RECEIPT_MAX_CHARS) };
+    expect(extractEffectiveRunConfig(createInput({ assumptionReceipt: big })).assumptionReceipt).toBeDefined();
+  });
+});
+
+describe("extractEffectiveRunConfig env annotation", () => {
+  const annotation = { environment_id: "env-1", tables: { t: { columns: {}, links: [] } } };
+
+  it("accepts an exported annotation under either spelling", () => {
+    expect(extractEffectiveRunConfig(createInput({ envAnnotation: annotation })).envAnnotation).toEqual(annotation);
+    expect(extractEffectiveRunConfig(createInput({ env_annotation: annotation })).envAnnotation).toEqual(annotation);
+  });
+
+  it("ignores missing, malformed or oversized annotations", () => {
+    for (const envAnnotation of [undefined, "text", [annotation], { tables: [] }, { tables: "x" }]) {
+      expect(extractEffectiveRunConfig(createInput({ envAnnotation })).envAnnotation).toBeUndefined();
+    }
+    const huge = { tables: { t: { columns: {}, note: "x".repeat(ENV_ANNOTATION_MAX_CHARS) } } };
+    expect(extractEffectiveRunConfig(createInput({ envAnnotation: huge })).envAnnotation).toBeUndefined();
   });
 });
 

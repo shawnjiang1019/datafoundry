@@ -6,7 +6,7 @@
 Writes <task>-agent-steps.png (300 dpi) and .svg next to this script. Each
 diagram shows only the agent's own steps, grouped into a few key moments, with
 what the agent said it meant to do (quoted from its messages or tool arguments in
-notes/traces/<task>.md) next to what it actually did and saw. Failed calls and
+notes/traces/<date>/<task>.md) next to what it actually did and saw. Failed calls and
 retries are folded into neighbouring rows and listed in the footnote.
 
 Marker colour encodes the role a step played, the same in every diagram:
@@ -80,7 +80,7 @@ TASKS = {
                      "and PECS gives 52."),
         ],
         footnote="Folded into the rows: setup (steps 1–4) and failed or rejected calls with their retries "
-                 "(6–7, 10–12, 17–19, 26–28).   Full trace: notes/traces/archeology-easy-8.md",
+                 "(6–7, 10–12, 17–19, 26–28).   Full trace: notes/traces/2026-09-21_to_2026-09-23/archeology-easy-8.md",
     ),
     "wildfire-easy-9": dict(
         title="wildfire-easy-9: how the agent arrived at the wrong number",
@@ -111,7 +111,7 @@ TASKS = {
         ],
         footnote="Folded into the rows: failed calls and retries (4–5, 7, 9–12, 14, 19). The formula at step 16 "
                  "comes from requirement R2, written before the agent saw any data.   "
-                 "Full trace: notes/traces/wildfire-easy-9.md",
+                 "Full trace: notes/traces/2026-09-21_to_2026-09-23/wildfire-easy-9.md",
     ),
 }
 

@@ -17,6 +17,20 @@ Prereqs (env vars):
     DF_RUN_TIMEOUT=180             (fail slow/un-runnable tasks fast)
     DF_RETRY_ATTEMPTS=4            (retries for provider rate limits / unreachable API)
     DF_RETRY_BASE_S=30             (first backoff delay; doubles each attempt)
+    DTRAIL_ASSUME=1 + DTRAIL_API_URL=http://127.0.0.1:8061 (+ DTRAIL_TOKEN)
+                                   (submit each question to d-trail with assume=true and the domain's
+                                    CSV tables, export_duckdb_tables.py --format csv, BEFORE the
+                                    DataFoundry run; the receipt lands in explanation.assumptions)
+    DTRAIL_TO_AGENT=1              (default; also pass the receipt to the agent as run_config
+                                    assumptionReceipt, its "assumption ledger"; 0 = A/B baseline)
+    DF_MCP_SERVER_IDS=             (comma-separated MCP server ids to enable per run, e.g. the
+                                    DataLink server; empty = none, the semantic step falls back
+                                    to the physical schema)
+    KRAMABENCH_ORACLE=<path to oracle_mappings.json>
+                                   (optional) bindings oracle: for tasks/domains with a mapping,
+                                   register a per-task DuckDB projected to exactly the gold
+                                   tables/columns, so the agent's resolver cannot bind elsewhere.
+                                   Unmapped tasks use the full lake. See oracle_lakes.py.
 DataFoundry must be running (npm run start) with a verified account + working model profile.
 """
 
@@ -51,6 +65,13 @@ except ImportError:  # the SUT still imports standalone for --smoke without the 
     load_by_extension = None
     DEFAULT_TABLE_NAME = {}
     SUPPORTED_EXTENSIONS = frozenset()
+import report_tables  # noqa: E402 — sibling module, importable via the path above
+try:
+    import oracle_lakes  # noqa: E402 — sibling module, same path trick as ds_ingest
+except ImportError:
+    oracle_lakes = None  # oracle disabled unless KRAMABENCH_ORACLE is set
+
+KRAMABENCH_ORACLE = os.environ.get("KRAMABENCH_ORACLE", "").strip()
 
 # KramaBench's base class when run inside the harness; a shim for standalone --smoke.
 try:
@@ -68,6 +89,7 @@ RUN_TIMEOUT_S = int(os.environ.get("DF_RUN_TIMEOUT", "180"))
 RETRY_ATTEMPTS = int(os.environ.get("DF_RETRY_ATTEMPTS", "4"))
 RETRY_BASE_S = float(os.environ.get("DF_RETRY_BASE_S", "30"))
 RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
+MCP_SERVER_IDS = [s.strip() for s in os.environ.get("DF_MCP_SERVER_IDS", "").split(",") if s.strip()]
 DTRAIL_API_URL = os.environ.get("DTRAIL_API_URL", "").rstrip("/")
 DTRAIL_TOKEN = os.environ.get("DTRAIL_TOKEN", "")
 DTRAIL_ASSUME = os.environ.get("DTRAIL_ASSUME", "0") == "1"
@@ -80,6 +102,20 @@ FRAME_BINDING = os.environ.get("DF_FRAME_BINDING", os.environ.get("DF_BINDING", 
 ANSWER_CHECK = os.environ.get("DF_ANSWER_CHECK", "0") == "1"
 # Applies to every arm when set, so baseline and note arms run against the same contract behavior.
 ADVISORY_CONTRACT = os.environ.get("DF_ADVISORY_CONTRACT", "0") == "1"
+# assume_only: d-trail compiles the question and classifies its assumptions against the
+# sources without grounding or executing it. On by default because d-trail's grounder
+# refuses multi-source requests without explicit joins (409 at grounding), and every
+# domain is submitted as many tables. DTRAIL_ASSUME_ONLY=0 asks for the full d-trail run.
+DTRAIL_ASSUME_ONLY = os.environ.get("DTRAIL_ASSUME_ONLY", "1") == "1"
+# CSV copies of each domain's tables (eval/kramabench/export_duckdb_tables.py --format csv);
+# d-trail reads csv/json/jsonl/sqlite only, not the DuckDB files or the raw Excel lake.
+DTRAIL_SOURCES_DIR = os.environ.get(
+    "DTRAIL_SOURCES_DIR", os.path.join(os.getcwd(), "system_scratch", "dtrail_sources"))
+DTRAIL_WORKSPACE = os.environ.get("DTRAIL_WORKSPACE", "kramabench")
+DTRAIL_TIMEOUT_S = float(os.environ.get("DTRAIL_TIMEOUT", "900"))
+DTRAIL_READ_TIMEOUT_S = float(os.environ.get("DTRAIL_READ_TIMEOUT", "120"))
+# Hand the pre-run receipt to the agent (run_config.assumptionReceipt); 0 keeps it out for A/B runs.
+DTRAIL_TO_AGENT = os.environ.get("DTRAIL_TO_AGENT", "1") == "1"
 
 # A failed run is reported as answer text, not raised, so retry decisions read the
 # text. Gate on these prefixes first: a task answer may legitimately contain the
@@ -97,6 +133,7 @@ TRANSIENT_MARKERS = (
     ("请求频率", "rate limited"),
     ("getaddrinfo", "provider unreachable"),
     ("cannot connect to api", "provider unreachable"),
+    ("headers timeout", "provider timed out"),
     ("econnreset", "connection reset"),
     ("socket hang up", "connection dropped"),
 )
@@ -182,14 +219,14 @@ class DataFoundryClient:
         print(f"[warn] schema for {ds_id} not confirmed; continuing", file=sys.stderr)
         return ds_id
 
-    def run(self, question: str, datasource_id: str) -> str:
+    def run(self, question: str, datasource_id: str, assumption_receipt: dict | None = None) -> str:
         thread_id = f"kb-{uuid.uuid4().hex[:8]}"
         run_config = {
             "activeDatasourceId": datasource_id,
             "enabledDatasourceIds": [datasource_id],
             "activeLlmProfileId": LLM_PROFILE,
             "enabledKnowledgeIds": [],
-            "enabledMcpServerIds": [],
+            "enabledMcpServerIds": MCP_SERVER_IDS,
             "enabledSkillIds": [],
         }
         if DTRAIL_ASSUME:
@@ -206,6 +243,8 @@ class DataFoundryClient:
             run_config["answerCheck"] = True
         if ADVISORY_CONTRACT:
             run_config["advisoryContract"] = True
+        if assumption_receipt:
+            run_config["assumptionReceipt"] = assumption_receipt
         payload = {
             "method": "agent/run",
             "params": {"agentId": "dataFoundry"},
@@ -250,7 +289,38 @@ class DataFoundryClient:
                     c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
                 if isinstance(c, str) and c.strip():
                     texts.append(c.strip())
-        return texts[-1] if texts else "[DataFoundry] no answer"
+        checkpoints = conv.get("checkpoints") or [] if isinstance(conv, dict) else []
+        failure = (f"[DataFoundry run failed] {checkpoints[-1].get('errorMessage')}"
+                   if checkpoints and checkpoints[-1].get("status") == "failed" else None)
+        # A provider fault mid-run leaves partial text behind; report the fault so it is retried.
+        if failure and transient_failure_reason(failure):
+            return failure
+        if texts:
+            return texts[-1]
+        return failure or "[DataFoundry] no answer"
+
+    def executed_sql(self) -> list[str]:
+        """Every statement the last run sent through run_sql_readonly, from the session trace DAG."""
+        if not self._last_thread_id:
+            return []
+        r = self.s.get(f"{self.api}/api/v1/sessions/{self._last_thread_id}/trace-dag",
+                       params={"limit": 500})
+        r.raise_for_status()
+        statements: list[str] = []
+        for node in (_unwrap(r) or {}).get("nodes") or []:
+            detail = node.get("detail") if isinstance(node, dict) else None
+            if not isinstance(detail, dict) or detail.get("toolName") != "run_sql_readonly":
+                continue
+            args = detail.get("arguments")
+            if not isinstance(args, dict):
+                try:
+                    args = json.loads(detail.get("argumentsText") or "")
+                except ValueError:
+                    args = None
+            sql = args.get("sql") if isinstance(args, dict) else None
+            if isinstance(sql, str) and sql.strip():
+                statements.append(sql)
+        return statements
 
     def read_assumptions(self) -> dict | None:
         """Best-effort readback of the d-trail assumptions receipt for the last run.
@@ -303,7 +373,9 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
              if not os.path.isdir(p)]
     con = duckdb.connect(out_path)
     made, skipped = 0, []
-    files, grouped = _group_file_families(con, files, dataset_directory)
+    overrides = _ingest_overrides()
+    notes: dict[str, list[tuple[str, str]]] = {}  # table -> notes, written once tables are final
+    files, grouped = _group_file_families(con, files, dataset_directory, notes)
     made += grouped
     names = _unique_table_names(files)
     for path in files:
@@ -312,6 +384,11 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
         ext = pathlib.Path(path).suffix.lower()
         try:
             if ext in (".csv", ".tsv", ".txt"):
+                override = _override_for(rel, overrides)
+                report = _parse_layout(path, override) if override.get("parser") != "sniff" else None
+                if report:
+                    made += _load_report(con, name, report, notes)
+                    continue
                 try:
                     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                 "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
@@ -337,9 +414,10 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM read_json_auto(?)', [path])
                 made += 1
             elif ext in (".xlsx", ".xls"):
-                made += _load_workbook(con, path, name)  # one table per sheet; sheet 1 is often a README
+                # One table per sheet; sheet 1 is often a README.
+                made += _load_workbook(con, path, name, _override_for(rel, overrides), notes)
             elif ext in (".html", ".htm"):
-                made += _load_html_tables(con, path, name)
+                made += _load_html_tables(con, path, name, notes)
             elif load_by_extension is not None and ext in SUPPORTED_EXTENSIONS:
                 outcome = _load_special(con, path, rel)
                 if outcome < 0:
@@ -350,11 +428,168 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 skipped.append(rel)
         except Exception as e:  # noqa: BLE001 — a load failure is also a finding
             skipped.append(f"{rel} ({str(e).splitlines()[0]})")
+    _apply_table_overrides(con, overrides, notes)
+    entries = _finalize_tables(con, notes)
     con.close()
     print(f"[ingest] {made} tables built, {len(skipped)} files skipped -> {out_path}")
     for s in skipped[:50]:
         print("   skip:", s)
+    _write_ingest_report(entries, skipped, out_path)
     return out_path
+
+
+# ── Report-style tables, numeric text and notes ──────────────────────────────
+
+INGEST_OVERRIDES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ingest_overrides.json")
+REPORT_MAX_BYTES = 20_000_000  # report-style files are small; big files go straight to DuckDB
+_GENERIC_COLUMN = re.compile(r"^(column\d+|Unnamed: \d+|col_\d+)$")
+
+
+def _ingest_overrides() -> dict[str, dict]:
+    """Corrections the heuristics cannot make: `files` sets a parser per glob, `tables` renames after loading."""
+    try:
+        with open(INGEST_OVERRIDES, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return {"files": {}, "tables": {}}
+    return {"files": data.get("files", {}), "tables": data.get("tables", {})}
+
+
+def _override_for(rel: str, overrides: dict[str, dict]) -> dict:
+    import fnmatch
+
+    path = rel.replace(os.sep, "/")
+    return next((value for pattern, value in overrides["files"].items() if fnmatch.fnmatch(path, pattern)), {})
+
+
+def _apply_table_overrides(con, overrides: dict[str, dict], notes: dict[str, list[tuple[str, str]]]) -> None:
+    """Rename columns ({old: new}, swaps allowed) and tables named in the overrides file, when present."""
+    existing = {r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main'").fetchall()}
+    for table, change in overrides["tables"].items():
+        if table not in existing:
+            continue
+        renames = change.get("columns", {})
+        for index, old in enumerate(renames):  # via temporary names so swapped labels do not collide
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN "{old}" TO "__rename_{index}"')
+        for index, new in enumerate(renames.values()):
+            con.execute(f'ALTER TABLE "{table}" RENAME COLUMN "__rename_{index}" TO "{new}"')
+        if renames:
+            notes.setdefault(table, []).append(("correction", change.get("reason", f"columns renamed: {renames}")))
+        if change.get("rename_to"):
+            con.execute(f'ALTER TABLE "{table}" RENAME TO "{change["rename_to"]}"')
+            notes[change["rename_to"]] = notes.pop(table, [])
+        print(f"[ingest] {table}: override applied ({change.get('reason', 'renamed')})")
+
+
+def _parse_layout(path: str, override: dict | None = None):
+    """A Report for files whose layout the CSV sniffer gets wrong, else None (load it as a plain CSV).
+
+    Two layouts: '#'-commented whitespace tables that name their columns in comments
+    (Swarm density files), and report-style files (titles, sections, footnotes).
+    """
+    override = override or {}
+    if os.path.getsize(path) > REPORT_MAX_BYTES:
+        return None
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        first = handle.readline()
+    if first.lstrip().startswith("#"):
+        return report_tables.parse_commented_table(path)
+    rows = _report_rows(path)
+    if rows and (override.get("parser") == "report" or report_tables.is_report_style(rows)):
+        return report_tables.parse_report(rows, bool(override.get("merge_continuations")))
+    return None
+
+
+def _report_rows(path: str) -> list[list[str]] | None:
+    if os.path.getsize(path) > REPORT_MAX_BYTES:
+        return None
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        head = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
+    return report_tables.read_rows(path, _best_delimiter(head)) if head else None
+
+
+def _section_frame(section, source_file: str | None = None):
+    import pandas as pd
+
+    frame = pd.DataFrame(section.rows, columns=section.columns, dtype="string").replace("", pd.NA)
+    if source_file is not None:
+        frame["source_file"] = source_file
+    return frame
+
+
+def _load_report(con, name: str, report, notes: dict[str, list[tuple[str, str]]]) -> int:
+    """One clean table per section of a report-style file; title and footnotes become notes."""
+    shared = ([("title", report.title)] if report.title else []) + [n for n in report.notes if n[0] != "section"]
+    tables = report_tables.section_table_names(name, report)
+    for table, section in zip(tables, report.sections):
+        con.register("_report", _section_frame(section))
+        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _report')
+        con.unregister("_report")
+        notes[table] = shared + ([("section", section.title)] if section.title else [])
+    print(f"[ingest] {name}: report layout -> {len(tables)} table(s), {len(shared)} note(s)")
+    return len(tables)
+
+
+def _finalize_tables(con, notes: dict[str, list[tuple[str, str]]]) -> list[dict]:
+    """Type formatted numbers in every table, write notes, and describe each table for the ingest report."""
+    entries = []
+    loaded = [r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    for table in loaded:
+        if not table.endswith("__notes"):
+            notes.setdefault(table, []).extend(report_tables.split_summary_rows(con, table))
+    tables = [r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    for table in tables:
+        if table.endswith("__notes"):
+            continue
+        converted = report_tables.normalize_numeric_text(con, table)
+        report_tables.write_notes(con, table, notes.get(table, []), converted)
+        columns = con.execute("select column_name, data_type from information_schema.columns "
+                              "where table_name = ? order by ordinal_position", [table]).fetchall()
+        numeric_text = []
+        for column, data_type in columns:
+            if data_type != "VARCHAR":
+                continue
+            ident = '"' + column.replace('"', '""') + '"'
+            nonempty, matched, leading_zero = con.execute(
+                f"select count(nullif(trim({ident}), '')), count(*) filter "
+                f"(where regexp_full_match(trim({ident}), ?)), count(*) filter "
+                f"(where regexp_full_match(trim({ident}), '0[0-9]+')) from \"{table}\"",
+                [report_tables.NUMBER_SQL]).fetchone()
+            # Leading zeros mark identifiers (county codes, station ids), which are text on purpose.
+            if nonempty and matched / nonempty >= 0.8 and not leading_zero:
+                odd = [r[0] for r in con.execute(
+                    f"select distinct trim({ident}) from \"{table}\" where nullif(trim({ident}), '') is not null "
+                    f"and not regexp_full_match(trim({ident}), ?) limit 3", [report_tables.NUMBER_SQL]).fetchall()]
+                numeric_text.append(f"{column} (e.g. {odd})")
+        entries.append({
+            "table": table,
+            "rows": con.execute(f'select count(*) from "{table}"').fetchone()[0],
+            "columns": len(columns),
+            "generic_columns": [c for c, _ in columns if _GENERIC_COLUMN.match(c)],
+            "numeric_text_columns": numeric_text,
+            "converted_columns": [text.split(":")[0] for _, text in converted],
+            "notes": len(notes.get(table, [])) + len(converted),
+        })
+    return entries
+
+
+def _write_ingest_report(entries: list[dict], skipped: list[str], out_path: str) -> None:
+    """Print tables that still look mis-parsed and save the full per-table report beside the DuckDB file."""
+    suspicious = [e for e in entries if e["generic_columns"] or e["numeric_text_columns"]]
+    print(f"[ingest] report: {len(entries)} tables, {sum(e['notes'] > 0 for e in entries)} with notes, "
+          f"{len(suspicious)} still suspicious")
+    for entry in suspicious[:40]:
+        problems = []
+        if entry["generic_columns"]:
+            problems.append(f"generic columns {entry['generic_columns'][:4]}")
+        if entry["numeric_text_columns"]:
+            problems.append(f"numbers stored as text {entry['numeric_text_columns'][:4]}")
+        print(f"   check: {entry['table']}: {'; '.join(problems)}")
+    with open(out_path + ".ingest.json", "w", encoding="utf-8") as handle:
+        json.dump({"tables": entries, "skipped": skipped}, handle, indent=1)
 
 
 def _load_special(con, path: str, rel: str) -> int:
@@ -424,7 +659,8 @@ def _family_table_name(directory: str, shape: str) -> str:
     return base
 
 
-def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple[list[str], int]:
+def _group_file_families(con, files: list[str], dataset_directory: str,
+                         notes: dict[str, list[tuple[str, str]]] | None = None) -> tuple[list[str], int]:
     """Union same-shaped files into one table each; return the files left to ingest singly.
 
     A lake often ships one logical table cut into shards — 715 `swarma-*` files for one
@@ -460,6 +696,9 @@ def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple
             remaining.extend(members)
             continue
         table = _family_table_name(directory, shape)
+        if extension != ".parquet" and _union_report_family(con, table, members, dataset_directory, notes):
+            made += 1
+            continue
         reader = "read_parquet" if extension in (".parquet", ".pq") else "read_csv_auto"
         options = "filename = true, union_by_name = false" + ("" if reader == "read_parquet" else ", sample_size = -1")
         listed = ", ".join("'" + member.replace("'", "''") + "'" for member in sorted(members))
@@ -476,13 +715,52 @@ def _group_file_families(con, files: list[str], dataset_directory: str) -> tuple
     return sorted(remaining), made
 
 
-def _load_html_tables(con, path: str, name: str) -> int:
+def _union_report_family(con, table: str, members: list[str], dataset_directory: str,
+                         notes: dict[str, list[tuple[str, str]]] | None) -> bool:
+    """Union a family of report-style files (a title line per file) parsed one by one.
+
+    Returns False, leaving the family to the CSV reader, unless the first file is
+    report-style and every file parses to exactly one section with the same columns.
+    """
+    import pandas as pd
+
+    if _parse_layout(members[0]) is None:
+        return False
+    frames, seen_notes, columns = [], {}, None
+    for member in sorted(members):
+        report = _parse_layout(member)
+        if not report or len(report.sections) != 1 or columns not in (None, report.sections[0].columns):
+            return False
+        columns = report.sections[0].columns
+        frames.append(_section_frame(report.sections[0], os.path.relpath(member, dataset_directory)))
+        for note in ([("title", report.title)] if report.title else []) + report.notes:
+            seen_notes.setdefault(note[1], note)  # each state's file repeats the same footnotes
+    con.register("_family", pd.concat(frames, ignore_index=True))
+    con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _family')
+    con.unregister("_family")
+    if notes is not None:
+        notes[table] = list(seen_notes.values())[:50]
+    print(f"[ingest] {table}: {len(members)} report-layout files unioned into one table")
+    return True
+
+
+def _load_html_tables(con, path: str, name: str,
+                      notes: dict[str, list[tuple[str, str]]] | None = None) -> int:
     """Load every table in an HTML page (legal's metropolitan_statistics.html, for example)."""
     import pandas as pd
 
     frames = [frame for frame in pd.read_html(path) if frame.shape[0] >= 5 and frame.shape[1] >= 2]
     for index, frame in enumerate(frames):
-        frame.columns = [str(column) for column in frame.columns]
+        captions: list[str] = []
+        if isinstance(frame.columns, pd.MultiIndex):
+            # Wikipedia tables put a caption level above the real column names.
+            captions = list(dict.fromkeys(str(c[0]) for c in frame.columns if str(c[0]) != str(c[-1])))
+            frame.columns = [str(c[-1]) for c in frame.columns]
+        frame.columns = [f"column{i}" if str(c).startswith("Unnamed:") else str(c)
+                         for i, c in enumerate(frame.columns)]
+        table_name = name if len(frames) == 1 else f"{name}__t{index + 1}"
+        if notes is not None and captions:
+            notes[table_name] = [("title", caption) for caption in captions]
         for column in frame.columns[frame.dtypes == object]:
             frame[column] = frame[column].astype("string")
         table = name if len(frames) == 1 else f"{name}__t{index + 1}"
@@ -562,7 +840,8 @@ def _fix_csv_header(con, name: str, path: str) -> None:
     columns = [r[0] for r in con.execute(
         "select column_name from information_schema.columns where table_name = ?", [name]).fetchall()]
     degenerate = (
-        len(columns) <= 1
+        # One column is fine for a list ('Name' over state names) unless the name hides a delimiter.
+        (len(columns) <= 1 and (not columns or any(d in columns[0] for d in "\t;|,")))
         or sum(1 for c in columns if re.fullmatch(r"column\d+", c)) > len(columns) / 2
         or any("\t" in c for c in columns)
         or sum(1 for c in columns if _looks_numeric(c)) > len(columns) / 2
@@ -631,14 +910,27 @@ def detect_header_row(rows: list[list]) -> int:
     return best_index
 
 
-def _load_workbook(con, path: str, name: str) -> int:
-    """Load every sheet of an Excel workbook as its own table; returns tables created."""
+def _load_workbook(con, path: str, name: str, override: dict | None = None,
+                   notes: dict[str, list[tuple[str, str]]] | None = None) -> int:
+    """Load every sheet of an Excel workbook as its own table; returns tables created.
+
+    An override of `"parser": "report"` (ingest_overrides.json) reads each sheet as a
+    report: titles, a stacked header and footnotes, like the Census estimate sheets.
+    """
+    override = override or {}
+    parser = override.get("parser")
     import pandas as pd  # openpyxl engine; KramaBench's biomedical workbooks put a README on sheet 1
 
     raw_sheets = pd.read_excel(path, sheet_name=None, header=None)
     made = 0
     for sheet, raw in raw_sheets.items():
         table = name if len(raw_sheets) == 1 else f"{name}__{_safe_ident(str(sheet))}"
+        if parser == "report":
+            rows = [["" if pd.isna(v) else str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip()
+                     for v in row] for row in raw.values.tolist()]
+            report = report_tables.parse_report(rows, bool(override.get("merge_continuations")))
+            made += _load_report(con, table, report, notes if notes is not None else {})
+            continue
         if raw.shape[1] == 1:
             # One-column sheets are bare lists (e.g. gene names) with no header row.
             df = raw.rename(columns={raw.columns[0]: "value"})
@@ -694,9 +986,121 @@ def extract_final_answer(text: str) -> str:
     return value
 
 
+_TABLE_REF = re.compile(r'\b(?:from|join)\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))*)', re.IGNORECASE)
+
+
+def referenced_tables(statements: list[str], known: list[str]) -> list[str]:
+    """Names from `known` that follow FROM/JOIN in any statement, in `known` order.
+
+    Matching against the exported tables drops CTE names, subquery aliases and
+    schema prefixes (main.t) without parsing SQL.
+    """
+    hits = {
+        ref.split(".")[-1].strip().strip('"').lower()
+        for sql in statements
+        for ref in _TABLE_REF.findall(sql)
+    }
+    return [name for name in known if name.lower() in hits]
+
+
 def _safe_ident(name: str) -> str:
     keep = "".join(c if c.isalnum() else "_" for c in name).strip("_")
     return keep or "t"
+
+
+# ── d-trail assumption check ──────────────────────────────────────────────────
+
+class DtrailAssumptionClient:
+    """Submit a benchmark question to d-trail with `assume: true` and read the receipt back.
+
+    Runs before the DataFoundry run, outside it: the receipt is stored beside the answer
+    and (DTRAIL_TO_AGENT=1) handed to the agent as its assumption ledger. d-trail gets, as
+    CSV sources, the tables named by `executed_sql` when given, else the whole domain
+    (fine with assume_only; a full grounding run stops at "multiple sources without a join").
+    Every failure is returned as data so a d-trail problem cannot fail a benchmark task.
+    """
+
+    # d-trail's Budget defaults (dtrail/contracts.py); raised per request to fit the
+    # largest exported table so a big source is read rather than rejected.
+    DEFAULT_MAX_ROWS = 100_000
+    DEFAULT_MAX_BYTES = 50_000_000
+
+    def __init__(self, api_url: str, token: str = "", sources_dir: str = DTRAIL_SOURCES_DIR,
+                 workspace_id: str = DTRAIL_WORKSPACE):
+        self.api = api_url.rstrip("/")
+        self.sources_dir = sources_dir
+        self.workspace_id = workspace_id
+        self.s = requests.Session()
+        self.s.headers["Accept"] = "application/json"
+        if token:
+            self.s.headers["Authorization"] = f"Bearer {token}"
+
+    def _manifest(self, domain: str) -> tuple[list[dict], dict]:
+        folder = pathlib.Path(self.sources_dir) / domain
+        manifest_path = folder / "manifest.json"
+        if not manifest_path.is_file():
+            raise FileNotFoundError(
+                f"no CSV export for {domain!r} at {folder}; run "
+                f"eval/kramabench/export_duckdb_tables.py --format csv {domain}")
+        tables = json.loads(manifest_path.read_text(encoding="utf-8"))["tables"]
+        sources = [{"name": t["table"], "kind": "csv", "path": str((folder / t["file"]).resolve())}
+                   for t in tables]
+        budget = {
+            "max_rows": max(self.DEFAULT_MAX_ROWS, max((t["rows"] for t in tables), default=0) + 1),
+            "max_bytes": max(self.DEFAULT_MAX_BYTES, max((t["bytes"] for t in tables), default=0) + 1),
+            "timeout_seconds": DTRAIL_READ_TIMEOUT_S,
+        }
+        return sources, budget
+
+    def check(self, question: str, domain: str, executed_sql: list[str] | None = None) -> dict:
+        result: dict = {"mode": "assume_only" if DTRAIL_ASSUME_ONLY else "direct", "domain": domain,
+                        "task_id": None, "run_status": None, "receipt": None}
+        try:
+            sources, budget = self._manifest(domain)
+            queried = referenced_tables(executed_sql or [], [s["name"] for s in sources])
+            result["source_selection"] = "queried" if queried else "all"
+            if queried:
+                sources = [s for s in sources if s["name"] in queried]
+            result["sources"] = [s["name"] for s in sources]
+            r = self.s.post(f"{self.api}/runs", timeout=DTRAIL_TIMEOUT_S, json={
+                "text": question, "sources": sources, "assume": True,
+                "assume_only": DTRAIL_ASSUME_ONLY,
+                "workspace_id": self.workspace_id, "budget": budget})
+            body = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            if r.status_code != 200:
+                # 409 WAITING_HUMAN (grounding asked a question), 422 MODEL_UNAVAILABLE / a
+                # refuted assumption, 4xx/5xx otherwise: keep d-trail's own code and message.
+                result["run_status"] = body.get("code") or f"HTTP_{r.status_code}"
+                result["error"] = {"http": r.status_code, **{k: body.get(k) for k in ("code", "message", "stage")}}
+                return result
+            result["task_id"] = body.get("task_id")
+            result["run_status"] = body.get("status")
+            if not result["task_id"]:
+                result["error"] = {"message": "d-trail returned no task_id"}
+                return result
+            a = self.s.get(f"{self.api}/runs/{result['task_id']}/assumptions", timeout=60)
+            if a.status_code == 200:
+                result["receipt"] = a.json()
+            else:
+                # 404: no receipt, usually the service has no model configured
+                # (DTRAIL_MODEL_URL / DTRAIL_MODEL), so no classifier ran.
+                result["error"] = {"http": a.status_code, "message": a.text[:300]}
+        except Exception as e:  # noqa: BLE001 — advisory: report, never fail the task
+            result["error"] = {"message": f"{type(e).__name__}: {e}"}
+        return result
+
+
+def agent_receipt(result: dict | None) -> dict | None:
+    """The classifier receipt to hand the agent, or None; drops the raw conditioner reply."""
+    receipt = (result or {}).get("receipt")
+    inner = receipt.get("assumptions") if isinstance(receipt, dict) else None
+    if not isinstance(inner, dict):  # GET /runs/{id}/assumptions wraps it as {task_id, assumptions}
+        return None
+    inner = {k: v for k, v in inner.items() if k != "conditioner_reply"}
+    if not inner.get("trees"):
+        return None
+    inner.setdefault("task_id", receipt.get("task_id"))
+    return inner
 
 
 # ── KramaBench System implementation ──────────────────────────────────────────
@@ -710,6 +1114,17 @@ class DataFoundrySUT(System):
         os.makedirs(self.out, exist_ok=True)
         self.client: DataFoundryClient | None = None      # lazy: auth happens on first use
         self._ds_id: str | None = None
+        self._domain: str | None = None
+        self.dtrail = (DtrailAssumptionClient(DTRAIL_API_URL, DTRAIL_TOKEN)
+                       if DTRAIL_ASSUME and DTRAIL_API_URL else None)
+        self._oracle_mappings: dict | None = None
+        if KRAMABENCH_ORACLE and oracle_lakes is not None:
+            try:
+                self._oracle_mappings = oracle_lakes.load_mappings(KRAMABENCH_ORACLE)
+                print(f"DataFoundrySUT: oracle enabled ({len(self._oracle_mappings)} mappings)", flush=True)
+            except oracle_lakes.OracleError as exc:
+                print(f"DataFoundrySUT: oracle disabled: {exc}", file=sys.stderr, flush=True)
+                self._oracle_mappings = None
 
     def _ensure_client(self) -> DataFoundryClient:
         if self.client is None:
@@ -726,9 +1141,10 @@ class DataFoundrySUT(System):
         if not os.path.exists(duckdb_path):
             build_domain_duckdb(str(dataset_directory), duckdb_path)
         self._ds_id = client.register_duckdb_datasource(f"kb-{tag}", f"KramaBench {tag}", duckdb_path)
+        self._domain = tag
         self.dataset_directory = dataset_directory
 
-    def _run_with_backoff(self, question: str) -> str:
+    def _run_with_backoff(self, question: str, ds_id: str, assumption_receipt: dict | None = None) -> str:
         """Run one task, retrying provider rate limits with exponential backoff.
 
         Without this a single 429 cascades: the limiter stays tripped, KramaBench
@@ -737,11 +1153,10 @@ class DataFoundrySUT(System):
         spends wall time instead of tasks.
         """
         client = self._ensure_client()
-        assert self._ds_id is not None
         full_text = ""
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
-                full_text = client.run(question, self._ds_id)
+                full_text = client.run(question, ds_id, assumption_receipt)
             except Exception as e:  # noqa: BLE001 — a run failure is a scored outcome, not a crash
                 full_text = f"[DataFoundry error] {e}"
             if quota_exhausted(full_text):
@@ -761,16 +1176,60 @@ class DataFoundrySUT(System):
             time.sleep(delay)
         return full_text
 
+    def _gold_datasource(self, query_id: str) -> str | None:
+        """Register (and cache) a gold-binding lake for this task, or None.
+
+        Returns the datasource id to run against when an oracle mapping covers
+        this task/domain, and None when the full domain lake should be used.
+        """
+        if self._oracle_mappings is None or self._domain is None:
+            return None
+        entry = oracle_lakes.lookup(query_id, self._domain, self._oracle_mappings)
+        if entry is None:
+            return None
+        cache_dir = oracle_lakes.projections_cache_dir(self.out)
+        os.makedirs(cache_dir, exist_ok=True)
+        lake_path = oracle_lakes.gold_lake_path(self.out, query_id, self._domain)
+        if not os.path.exists(lake_path):
+            domain_lake = os.path.join(self.out, f"{_safe_ident(self._domain)}.duckdb")
+            if not os.path.exists(domain_lake):
+                raise RuntimeError(f"oracle needs the domain lake first: {domain_lake}")
+            oracle_lakes.project_gold_lake(domain_lake, lake_path, entry, query_id)
+        client = self._ensure_client()
+        ds_id = client.register_duckdb_datasource(
+            f"kb-{_safe_ident(self._domain)}-{_safe_ident(query_id)}-oracle",
+            f"KramaBench {self._domain} oracle {query_id}",
+            lake_path,
+        )
+        print(f"DataFoundrySUT: {query_id} -> oracle datasource {ds_id} ({os.path.basename(lake_path)})",
+              file=sys.stderr, flush=True)
+        return ds_id
+
     def serve_query(self, query: str, query_id: str = "q-0", subset_files=None) -> dict:
         self._ensure_client()
         if self._ds_id is None:
             raise RuntimeError("process_dataset must run before serve_query")
-        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION)
+        oracle_ds_id = self._gold_datasource(query_id)
+        run_ds_id = oracle_ds_id if oracle_ds_id is not None else self._ds_id
+        assumptions = None
+        if self.dtrail is not None and self._domain:
+            # Before the run, so the agent can plan around it. The bare question, without
+            # the FINAL_ANSWER formatting instruction; no SQL yet, so the whole domain.
+            assumptions = self.dtrail.check(query, self._domain)
+            if self.verbose:
+                summary = (agent_receipt(assumptions) or {}).get("summary")
+                print(f"DataFoundrySUT: {query_id} d-trail {assumptions.get('run_status')} "
+                      f"task={assumptions.get('task_id')} summary={summary} error={assumptions.get('error')}")
+        receipt = agent_receipt(assumptions) if DTRAIL_TO_AGENT else None
+        full_text = self._run_with_backoff(query + ANSWER_FORMAT_INSTRUCTION, run_ds_id, receipt)
         answer = extract_final_answer(full_text)
         explanation = {"answer": answer, "id": query_id, "full_response": full_text}
-        assumptions = self.client.read_assumptions()
         if assumptions is not None:
             explanation["assumptions"] = assumptions
+        else:
+            assumptions = self.client.read_assumptions()  # receipt recorded by DataFoundry, if any
+            if assumptions is not None:
+                explanation["assumptions"] = assumptions
         if self.verbose:
             print(f"DataFoundrySUT: {query_id} -> {answer!r}")
         return {

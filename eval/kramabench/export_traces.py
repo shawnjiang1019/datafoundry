@@ -44,6 +44,7 @@ FIRST_DOMAINS = {"legal"}
 RESULT_CHARS = 2500
 ARGS_CHARS = 2500
 MESSAGE_CHARS = 6000
+REASONING_CHARS = 12000  # model reasoning runs long; --full keeps all of it
 TABLE_ROWS = 15
 CELL_CHARS = 60
 FULL = False  # set by --full / --embed-into: no clipping, every event kept
@@ -76,7 +77,7 @@ def load_task(kb_root: pathlib.Path, task_id: str) -> dict:
     raise SystemExit(f"{task_id}: not in workload/{domain}.json")
 
 
-def graded_cache_file(kb_root: pathlib.Path, task_id: str) -> pathlib.Path | None:
+def graded_cache_file(kb_root: pathlib.Path, task_id: str, latest: bool = False) -> pathlib.Path | None:
     cache = kb_root / "results" / "DataFoundrySUT" / "response_cache" / "tasks"
     matches = []
     for path in glob.glob(str(cache / f"*_task_{task_id}_*.json")):
@@ -86,7 +87,7 @@ def graded_cache_file(kb_root: pathlib.Path, task_id: str) -> pathlib.Path | Non
     if not matches:
         return None
     matches.sort()
-    return matches[0][1] if task_id.split("-")[0] in FIRST_DOMAINS else matches[-1][1]
+    return matches[0][1] if task_id.split("-")[0] in FIRST_DOMAINS and not latest else matches[-1][1]
 
 
 def iso_epoch(value: str | None) -> float | None:
@@ -124,12 +125,15 @@ def match_run(db, task: dict, cached: dict, cache_path: pathlib.Path):
     if not candidates:
         return None, None, "no run found"
     target = norm(cached.get("model_output", {}).get("full_response", ""))[:150]
-    for row in candidates:
-        events = events_for(db, row[0])
-        if target and target in norm(last_assistant_text(events)):
-            return row, events, f"final message matches the cached answer ({len(candidates)} candidate runs)"
     mtime = cache_path.stat().st_mtime
-    row = min(candidates, key=lambda r: abs((iso_epoch(r[4]) or 0) - mtime))
+    nearest = lambda r: abs((iso_epoch(r[4]) or 0) - mtime)  # noqa: E731
+    # Reruns often end with the same final message, so among matches take the one nearest the cache write.
+    matches = [row for row in candidates if target and target in norm(last_assistant_text(events_for(db, row[0])))]
+    if matches:
+        row = min(matches, key=nearest)
+        return row, events_for(db, row[0]), (f"final message matches the cached answer "
+                                             f"({len(matches)} of {len(candidates)} candidate runs)")
+    row = min(candidates, key=nearest)
     return row, events_for(db, row[0]), f"matched by finish time, nearest of {len(candidates)} runs"
 
 
@@ -313,12 +317,20 @@ def render_trace(db, task: dict, reason: dict, cache_path, cached, run, events, 
         elif kind == "TOOL_CALL_RESULT":
             result_by_id[payload.get("toolCallId")] = payload.get("content")
     calls: dict[str, dict] = {}
+    reasoning: dict[str, str] = defaultdict(str)
     for seq, kind, payload in events:
         if kind == "TEXT_MESSAGE_CHUNK" and payload.get("role", "assistant") == "assistant":
             mid = payload.get("messageId", "")
             if mid not in messages:
                 items.append(("message", mid))
             messages[mid] += payload.get("delta", "")
+        elif kind in ("REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK"):
+            mid = payload.get("messageId", "")
+            if mid not in reasoning:
+                items.append(("reasoning", mid))
+            reasoning[mid] += payload.get("delta", "")
+        elif kind.startswith("REASONING_"):
+            continue  # start/end markers of the block folded above
         elif kind == "TOOL_CALL_START":
             call_id = payload["toolCallId"]
             calls[call_id] = {"name": payload.get("toolCallName"), "args": args_by_id.get(call_id, ""),
@@ -376,7 +388,15 @@ def render_trace(db, task: dict, reason: dict, cache_path, cached, run, events, 
             out += [item[1], ""]
             continue
         step += 1
-        if item[0] == "message":
+        if item[0] == "reasoning":
+            text = reasoning[item[1]].strip()
+            if not text:
+                step -= 1
+                continue
+            quoted = "\n".join(f"> {line}" if line else ">" for line in
+                               (text if FULL else clip(text, REASONING_CHARS)).splitlines())
+            out += [f"### {step}. Reasoning", "", quoted, ""]
+        elif item[0] == "message":
             text = messages[item[1]].strip()
             if not text:
                 step -= 1
@@ -439,8 +459,9 @@ def embed_trace(trace_md: str, target: pathlib.Path, run_id: str, marks: dict[st
         "every tool call's complete arguments and result, and every event in the stream, in order. "
         "Protocol and activity events are one line each; expand **raw event** for the full JSON. "
         "Step numbers match the walkthrough above, and the steps it discusses are flagged with ▶.", "",
-        "DataFoundry does not record the model's hidden reasoning. What the agent was thinking is only "
-        "what it wrote in its messages, which appear here in full.", ""]
+        "Model reasoning appears as **Reasoning** steps when the run's model profile has "
+        "`reasoningModel: true`; older runs recorded none, so their thinking is only what the agent wrote "
+        "in its messages.", ""]
     text = target.read_text(encoding="utf-8")
     head = text.split("\n## Full trace\n")[0].rstrip()
     if head.endswith("---"):
@@ -457,6 +478,8 @@ def main() -> None:
     parser.add_argument("--kb-root", default=os.environ.get("KB_ROOT", str(pathlib.Path.home() / "KramaBench")))
     parser.add_argument("--out", default=str(OUT_DIR))
     parser.add_argument("--full", action="store_true", help="no clipping; keep every event")
+    parser.add_argument("--latest", action="store_true",
+                        help="export the newest attempt, not the graded one (legal grades its first attempt)")
     parser.add_argument("--embed-into", help="write the full trace into this markdown file (one task only)")
     parser.add_argument("--mark", action="append", default=[], metavar="STEP=TEXT",
                         help="flag a step (or R for the requirements) in an embedded trace")
@@ -485,7 +508,7 @@ def main() -> None:
     summaries = []
     for task_id in task_ids:
         task = load_task(kb_root, task_id)
-        cache_path = graded_cache_file(kb_root, task_id)
+        cache_path = graded_cache_file(kb_root, task_id, latest=args.latest)
         if cache_path is None:
             print(f"  {task_id}: no cached answer, skipped")
             continue

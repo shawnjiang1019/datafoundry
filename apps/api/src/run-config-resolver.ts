@@ -273,7 +273,10 @@ const resolveRunModelProvider = (
       provider: stringRecordValue(profile.payload, "provider") ?? "openai-compatible",
       model: stringRecordValue(profile.payload, "modelName") ?? stringRecordValue(profile.payload, "model") ?? "",
       base_url: stringRecordValue(profile.payload, "baseUrl") ?? stringRecordValue(profile.payload, "base_url") ?? "",
-      ...(apiKey ? { api_key: apiKey } : {})
+      ...(apiKey ? { api_key: apiKey } : {}),
+      ...((booleanRecordValue(profile.payload, "reasoningModel") ?? booleanRecordValue(profile.payload, "reasoning_model"))
+        ? { reasoning_model: true }
+        : {})
     });
     if (provider.kind === "mock") {
       throw new Error(`PROVIDER_CONFIG_MISSING:${currentId}`);

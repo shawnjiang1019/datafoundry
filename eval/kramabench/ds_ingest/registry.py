@@ -31,7 +31,9 @@ DEFAULT_TABLE_NAME = {
     ".tle": "tle",
     ".sp3": "pod_sp3",
     ".lst": "omni_lst",
-    ".dat": "omni2",
+    # Not "omni2": the astronomy lake's OMNI2/ CSV folder already builds a table named
+    # OMNI2, and DuckDB table names are case-insensitive, so the two would collide.
+    ".dat": "omni2_low_res",
     ".npz": "mock_tiegcm_grid",
     ".cdf": "swarm_accacal",
 }

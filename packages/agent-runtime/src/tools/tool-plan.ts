@@ -94,7 +94,8 @@ export const buildToolPlan = <TTool>(input: {
 
 const TOOL_ACTION_ALIASES: Record<string, string> = {
   protocol_handoff: "protocol.handoff.propose",
-  analysis_requirements_commit: "analysis.requirements.commit"
+  analysis_requirements_commit: "analysis.requirements.commit",
+  analysis_decision_record: "analysis.decision.record"
 };
 
 /** Resolve the protocol/phase availability of the static agent tool schema. */

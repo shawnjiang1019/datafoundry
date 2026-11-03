@@ -1,0 +1,23 @@
+{
+  "_usage": "Corrections the ingest heuristics cannot make. 'files': globs over paths relative to the domain lake (forward slashes) -> {\"parser\": \"report\" | \"sniff\", \"merge_continuations\": true to append blank-line-separated rows to the table above}. 'tables': final table name -> {\"columns\": {old: new}, \"rename_to\": new table name, \"reason\": why}. Each correction is recorded in the table's notes.",
+  "files": {
+    "NST-EST2024-POP.xlsx": {"parser": "report", "merge_continuations": true}
+  },
+  "tables": {
+    "SN_y_tot_V2_0": {
+      "columns": {"column0": "Year (mid-year)", "column1": "Yearly mean total sunspot number",
+                  "column2": "Yearly mean standard deviation", "column3": "Number of observations",
+                  "column4": "Definitive/provisional marker"},
+      "reason": "the SILSO yearly file has no header; names follow the SILSO SN_y_tot_V2.0 format description (-1 means not available; marker 1 = definitive)"
+    },
+    "2024_CSN_Top_Three_Identity_Theft_Reports_by_Year": {
+      "columns": {"Theft Type": "Year", "Year": "Theft Type"},
+      "reason": "the source CSV labels its first two columns in the wrong order (values are year, then theft type)"
+    },
+    "2024_CSN_Data_Contributors__section4": {
+      "columns": {"State Law Enforcement Agencies": "Year"},
+      "rename_to": "2024_CSN_Data_Contributors__State_Law_Enforcement_Agencies",
+      "reason": "the source CSV puts the section title in the Year header cell"
+    }
+  }
+}

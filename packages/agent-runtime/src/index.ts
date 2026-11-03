@@ -51,6 +51,10 @@ import {
 import { CONVERSATION_WORKING_MEMORY_CONFIG } from "./memory/conversation-memory-bridge.js";
 import type { RuntimeContextSource } from "./context/source/runtime-context-source.js";
 import {
+  AssumptionLedgerContextSource,
+  type AssumptionReceipt
+} from "./context/source/assumption-ledger-context-source.js";
+import {
   createContextItem,
   type ContextItem,
   type CreateContextItemInput
@@ -61,6 +65,7 @@ import {
 } from "./context/inventory/context-source-metadata.js";
 import { GoalRuntimeAdapter, type GoalRequest } from "./memory/goal-runtime-adapter.js";
 import { createDataFoundryToolRegistry } from "./tools/data-tools.js";
+import { envAnnotationFromEnvironment, parseEnvAnnotation, type EnvAnnotation } from "./tools/env-annotation.js";
 import { GovernedToolFactory } from "./tools/governed-tool-factory.js";
 import {
   maybeIngestSessionFileOutput,
@@ -102,6 +107,12 @@ import {
   type AnalysisContractGrounder
 } from "./protocol/model-analysis-contract-grounder.js";
 import type { AnalysisRequirement } from "./protocol/analysis-requirements.js";
+import {
+  ANALYSIS_DECISION_BASIS_KINDS,
+  ANALYSIS_DECISION_KINDS,
+  ANALYSIS_DECISION_RECORD_STATUSES,
+  createDecisionsFromReceipt
+} from "./protocol/analysis-decisions.js";
 import type { DataAnalysisState } from "./protocol/protocols/data-analysis.js";
 import { createDefaultSemanticProvider } from "./semantic/default-semantic-provider.js";
 import { createEvidenceGroundingProvider } from "./grounding/evidence-grounding-provider.js";
@@ -114,6 +125,11 @@ export type { AgentRunContext, AgentRunContextInput, AgUiEventEmitter } from "./
 export type { ContextPackage } from "./context/inventory/context-package.js";
 export type { ContextPlan } from "./context/inventory/context-plan.js";
 export type { ContextPackageRecorder } from "./context/protocol/mastra/mastra-context-budget-processor.js";
+export {
+  AssumptionLedgerContextSource,
+  createAssumptionLedgerText,
+  type AssumptionReceipt
+} from "./context/source/assumption-ledger-context-source.js";
 export type AgentContextItem = ContextItem;
 export type AgentContextSourceMetadata = ContextSourceMetadata;
 export type CreateAgentContextItemInput = CreateContextItemInput;
@@ -205,6 +221,12 @@ export {
 export { resolvePythonRuntime } from "./tools/python-runtime.js";
 export { createDataFoundryToolRegistry, type ToolRegistry } from "./tools/data-tools.js";
 export {
+  ENV_ANNOTATION_PATH_VARIABLE,
+  envAnnotationFromEnvironment,
+  parseEnvAnnotation,
+  type EnvAnnotation
+} from "./tools/env-annotation.js";
+export {
   GoalRuntimeAdapter,
   type GoalRequest,
   type GoalSnapshot
@@ -254,6 +276,13 @@ export type CreateDataFoundryInput = {
     maxChars?: number;
   };
   evidenceContextItems?: AgentContextItem[];
+  /** D-Trail receipt checked before the run; rendered as the always-present assumption ledger. */
+  assumptionReceipt?: AssumptionReceipt;
+  /**
+   * D-Trail environment annotation (`dtrail-annotate --export-agent-json`). Falls back to the file
+   * named by DF_ENV_ANNOTATION_PATH; absent both, schema/SQL tool results are unchanged.
+   */
+  envAnnotation?: EnvAnnotation;
   messages: Message[];
   modelSettings?: {
     frequencyPenalty?: number;
@@ -356,14 +385,20 @@ export const createDataFoundry = async (
   });
   const workspaceAttachments = materializeWorkspaceAttachments(runWorkspace.runDir, input.workspaceAttachments ?? []);
   const evidenceRuntimeSource = createEvidenceFocusRuntimeSource(input.evidenceContextItems ?? []);
+  const additionalRuntimeSources: RuntimeContextSource[] = [
+    ...(evidenceRuntimeSource ? [evidenceRuntimeSource] : []),
+    ...(input.assumptionReceipt ? [new AssumptionLedgerContextSource({ receipt: input.assumptionReceipt })] : [])
+  ];
 
   const governedMessages = normalizeIngressMessages(input.messages);
 
   const tokenUsageCorrelation = createTokenUsageCorrelationStore();
+  const envAnnotation = parseEnvAnnotation(input.envAnnotation) ?? envAnnotationFromEnvironment();
   const registry = createDataFoundryToolRegistry({
     ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     dataGateway: input.dataGateway,
     emitter: input.emitter,
+    ...(envAnnotation ? { envAnnotation } : {}),
     runContext: input.runContext,
     tokenUsageCorrelation,
   });
@@ -394,7 +429,7 @@ export const createDataFoundry = async (
     dispatcher,
     eventSink: contextEventSink,
     ...(input.contextPackageRecorder ? { contextPackageRecorder: input.contextPackageRecorder } : {}),
-    ...(evidenceRuntimeSource ? { additionalRuntimeSources: [evidenceRuntimeSource] } : {}),
+    ...(additionalRuntimeSources.length ? { additionalRuntimeSources } : {}),
     ...(input.longTermMemory ? { longTermMemory: input.longTermMemory } : {}),
     ...(input.modelContextProfile ? { modelContextProfile: input.modelContextProfile } : {}),
     modelName: input.runContext.model_name,
@@ -500,6 +535,8 @@ export const createDataFoundry = async (
     alwaysAllow: alwaysAllowTools,
     skillPolicy: input.skillSelection?.effectiveToolPolicy
   });
+  // Decisions come from a D-Trail receipt; without one the run keeps the baseline toolset.
+  const analysisDecisions = createDecisionsFromReceipt(input.assumptionReceipt);
   const agentToolPlanEntries: ToolPlanEntry[] = [
     ...toolPlan.entries,
     {
@@ -509,6 +546,15 @@ export const createDataFoundry = async (
       availability: "available",
       reasons: ["source:protocol-runtime"]
     },
+    ...(analysisDecisions.length > 0
+      ? [{
+          name: "analysis_decision_record",
+          source: "protocol-runtime",
+          exposed: true,
+          availability: "available" as const,
+          reasons: ["source:protocol-runtime"]
+        }]
+      : []),
     {
       name: "protocol_handoff",
       source: "protocol-runtime",
@@ -581,6 +627,7 @@ export const createDataFoundry = async (
       classifier: input.protocolClassifier ?? createModelProtocolClassifier(input.modelProvider),
       requirementExtractor: input.analysisRequirementExtractor
         ?? createModelAnalysisRequirementExtractor(input.modelProvider),
+      ...(analysisDecisions.length > 0 ? { analysisDecisions } : {}),
       analysisContractGrounder: advisoryContractGrounder(
         input.analysisContractGrounder ?? createModelAnalysisContractGrounder(input.modelProvider),
         input.runContext.advisory_contract === true
@@ -673,9 +720,40 @@ export const createDataFoundry = async (
       })
     })
   };
+  const decisionRecordTools = {
+    analysis_decision_record: createTool({
+      id: "analysis_decision_record",
+      description: "Record the choice for an open analysis decision (decision_id), or record a choice the analysis "
+        + "made that no decision covers yet (omit decision_id; give question and options). Pick a listed option by "
+        + "number or text. Use status \"undecided\" when the evidence does not settle the choice: it does not block "
+        + "the run, and the final answer must report it as NOT CONFIRMED with the reading used.",
+      inputSchema: z.object({
+        decision_id: z.string().min(1).optional(),
+        kind: z.enum(ANALYSIS_DECISION_KINDS).optional(),
+        question: z.string().min(1).optional(),
+        options: z.array(z.string().min(1)).max(8).optional(),
+        impact: z.enum(["low", "medium", "high"]).optional(),
+        choice: z.string().min(1),
+        status: z.enum(ANALYSIS_DECISION_RECORD_STATUSES).optional(),
+        basis: z.object({
+          kind: z.enum(ANALYSIS_DECISION_BASIS_KINDS),
+          detail: z.string().min(1)
+        }),
+        evidence_refs: z.array(z.string().min(1)).max(16).optional()
+      }),
+      execute: createProtocolBoundExecute({
+        actionName: "analysis.decision.record",
+        fallbackIdPrefix: "analysis-decision-record",
+        protocol,
+        runId: input.runContext.run_id,
+        toolName: "analysis_decision_record"
+      })
+    })
+  };
   const tools = {
     ...governedToolFactory.governTools(selectedTools),
     ...requirementsCommitTools,
+    ...(analysisDecisions.length > 0 ? decisionRecordTools : {}),
     protocol_handoff: createTool({
       id: "protocol_handoff",
       description: "Propose switching this run to another authorized protocol when the current protocol is unsuitable.",

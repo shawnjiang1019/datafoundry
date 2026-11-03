@@ -1,0 +1,2 @@
+doy,n_rows,min_kp,max_kp,min_kp_nonneg,n_kp_neg,n_kp_null,min_p,max_p,n_p_le0,n_p_null,min_n,min_v
+132,24,77,90,77,0,0,2.64,48.76,0,0,1.7,689

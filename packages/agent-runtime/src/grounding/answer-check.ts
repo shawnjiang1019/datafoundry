@@ -1,5 +1,6 @@
 import { computesAggregate, filtersOnColumn } from "../protocol/sql-semantic-validator.js";
 import { blockedUnfaithfulWords, type FrameDecision, type FrameOption } from "./answer-frame.js";
+import type { DefinedMeasure } from "./defined-measures.js";
 import type { EvidenceGroundingContext } from "./types.js";
 import { intersect, terms } from "./vocabulary.js";
 
@@ -9,7 +10,7 @@ const MIN_POPULATION_GAP = 0.25;
 const MIN_FLAGGED_SHARE = 0.05;
 
 export type AnswerChallenge = {
-  code: "LINKED_POPULATION_IGNORED" | "EXCLUSION_FLAG_IGNORED" | "READING_IGNORES_QUESTION";
+  code: "LINKED_POPULATION_IGNORED" | "EXCLUSION_FLAG_IGNORED" | "READING_IGNORES_QUESTION" | "DEFINED_MEASURE_IGNORED";
   message: string;
   evidence: Record<string, unknown>;
 };
@@ -62,6 +63,42 @@ export const checkAnswer = (input: {
     const challenge = unfaithfulReadingUsed(sql, decision);
     if (challenge) return challenge;
   }
+  return definedMeasureIgnored(sql, input.grounding?.measures ?? [], input.question);
+};
+
+/**
+ * The question asks for a measure the data already states, and the answer's query never reads it.
+ * A named measure counts when the question names the column outright; a stated share only when the
+ * query is about the category it states (its label appears in the SQL), so an unrelated query is
+ * never challenged for it.
+ */
+const definedMeasureIgnored = (sql: string, measures: DefinedMeasure[], question: string): AnswerChallenge | undefined => {
+  // The mistake is recomputing: a query that only looks rows up has nothing to compare (biomedical-hard-3
+  // ended right with a one-patient lookup after reading APP_Z_score in an earlier query).
+  if (!computesOwnFigure(sql)) return undefined;
+  for (const measure of measures) {
+    if (mentions(sql, measure.column)) continue;
+    // A stated share matters when the question is about shares; "Identity Theft" alone is named by
+    // nearly every legal question.
+    if (measure.kind === "share" && !SHARE_QUESTION.test(question)) continue;
+    if (measure.kind === "named") {
+      return {
+        code: "DEFINED_MEASURE_IGNORED",
+        message: `The question asks about "${measure.phrase}", and ${measure.table} already has a column ${measure.column} `
+          + "with that measure. Your query does not read it: if the question means that value, use the column "
+          + "instead of computing your own version.",
+        evidence: { table: measure.table, column: measure.column }
+      };
+    }
+    if (!sql.toLowerCase().includes(measure.label.toLowerCase())) continue;
+    return {
+      code: "DEFINED_MEASURE_IGNORED",
+      message: `${measure.table} states a ${measure.column} for "${measure.label}"`
+        + `${measure.value ? ` (${measure.value})` : ""}. Your query computes the share itself instead of reading it: `
+        + "if the question means the stated figure, use that column.",
+      evidence: { table: measure.table, column: measure.column, label: measure.label, ...(measure.value ? { value: measure.value } : {}) }
+    };
+  }
   return undefined;
 };
 
@@ -92,6 +129,18 @@ const appliesAny = (sql: string, option: FrameOption): boolean => {
   const identifiers = [...(option.sqlWhere ?? "").matchAll(/"([^"]+)"/gu)].map((match) => match[1] ?? "")
     .filter((name) => name && name !== option.table);
   return identifiers.some((name) => mentions(sql, name));
+};
+
+/** Questions about a share or distribution, where a stated percentage is the figure asked for. */
+const SHARE_QUESTION = /\b(?:distribut\w*|percent(?:age)?|share|proportion|fraction|rate)\b/iu;
+
+/**
+ * The query computes a figure of its own: a division, or a spread statistic (a z-score). String literals
+ * and quoted names are left out, so a date like '2024/01' or a column named "Reports/Day" does not count.
+ */
+const computesOwnFigure = (sql: string): boolean => {
+  const code = sql.replace(/'(?:[^']|'')*'/gu, "''").replace(/"(?:[^"]|"")*"/gu, "x");
+  return /\/|\b(?:stddev\w*|stdev\w*|variance|var_pop|var_samp)\s*\(/iu.test(code);
 };
 
 /** Questions answered by a calculation over many rows, not by looking up one. */

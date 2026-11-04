@@ -4,6 +4,7 @@ import type { SqlJoinKey, SqlSemanticConstraint } from "../protocol/analysis-con
 import type { SemanticRequest, SemanticResolution } from "../semantic/types.js";
 import type { AgentRunContext } from "../types.js";
 import { buildAnswerFrame, renderAnswerFrame, type AnswerFrameProposer } from "./answer-frame.js";
+import { definedMeasures } from "./defined-measures.js";
 import { definedReadings } from "./defined-readings.js";
 import { applyGroundingGate } from "./grounding-gate.js";
 import { readLakeSemantics } from "./lake-semantics.js";
@@ -75,9 +76,12 @@ export const groundEvidence = async (
           })
         })
       : undefined;
+    // Measures the data defines are looked for wherever readings are: they serve the same double-check.
+    const measures = deps.proposeFrame ? await definedMeasures({ question, schema, probe: deps.probe }) : [];
     const binding = noteBinding(deps.binding);
     return {
       question,
+      ...(measures.length > 0 ? { measures } : {}),
       facts: lake.facts,
       candidates: gated,
       duplicateTables: lake.duplicateTables,

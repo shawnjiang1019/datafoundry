@@ -670,6 +670,7 @@ def _load_workbook(con, path: str, name: str) -> int:
 # (biomedical-easy-9) and unrounded 6.326006 for "3 decimals" gets half credit on a list (wildfire-hard-16).
 # The marker line is required even when the answer is written in another language (legal-easy-20 answered
 # in Chinese prose with no marker, and the whole text was graded).
+# Names: legal-hard-2 answered "Miami-...FL" for "...FL Metropolitan Statistical Area" and scored 0 on exact match.
 ANSWER_FORMAT_INSTRUCTION = (
     "\n\nWhen you are done, end your response with one final line exactly of the form\n"
     "FINAL_ANSWER: <answer>\n"
@@ -677,6 +678,8 @@ ANSWER_FORMAT_INSTRUCTION = (
     "a short string, or a JSON list such as [\"a\", \"b\"]. "
     "Keep full precision in every intermediate step and round only this final value, exactly as the question "
     "asks; if the question gives no rounding, give at least 4 significant digits. "
+    "When the answer is a name or label from the data, copy it exactly as the data writes it, in full; "
+    "do not shorten or reword it. "
     "Always write this FINAL_ANSWER line in English, whatever language the rest of the response uses."
 )
 

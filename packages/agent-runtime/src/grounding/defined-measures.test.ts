@@ -67,6 +67,12 @@ describe("defined measures", () => {
     });
     expect(checkAnswer({ question: LEGAL_17, sql: "SELECT \"Percentage\" FROM report_categories WHERE \"Category\" = 'Auto Related'", grounding: legal }))
       .toBeUndefined();
+    // legal-hard-17's retry (2026-11-04): another table's Percentage, summed over rows, is not the stated figure.
+    const otherTable = "SELECT ROUND(1070447 * SUM(CAST(REPLACE(\"Percentage\", '%', '') AS DOUBLE)) / 100) "
+      + "FROM categories_over_years WHERE \"Category\" = 'Auto Related'";
+    expect(checkAnswer({ question: LEGAL_17, sql: otherTable, grounding: legal })).toMatchObject({
+      code: "DEFINED_MEASURE_IGNORED", evidence: { table: "report_categories", value: "2.28%" }
+    });
     // A query about another category is not challenged for this one.
     expect(checkAnswer({ question: LEGAL_17, sql: "SELECT COUNT(*) FROM report_categories WHERE \"Category\" = 'Imposter Scams'", grounding: legal }))
       .toBeUndefined();

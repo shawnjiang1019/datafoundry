@@ -77,11 +77,8 @@ const definedMeasureIgnored = (sql: string, measures: DefinedMeasure[], question
   // ended right with a one-patient lookup after reading APP_Z_score in an earlier query).
   if (!computesOwnFigure(sql)) return undefined;
   for (const measure of measures) {
-    if (mentions(sql, measure.column)) continue;
-    // A stated share matters when the question is about shares; "Identity Theft" alone is named by
-    // nearly every legal question.
-    if (measure.kind === "share" && !SHARE_QUESTION.test(question)) continue;
     if (measure.kind === "named") {
+      if (mentions(sql, measure.column)) continue;
       return {
         code: "DEFINED_MEASURE_IGNORED",
         message: `The question asks about "${measure.phrase}", and ${measure.table} already has a column ${measure.column} `
@@ -90,13 +87,20 @@ const definedMeasureIgnored = (sql: string, measures: DefinedMeasure[], question
         evidence: { table: measure.table, column: measure.column }
       };
     }
+    // A stated share is a figure to point at only when it is one value; a label on several rows (one per
+    // year, or split into sub-categories) states no single figure. legal-hard-17 (2026-11-04), told only
+    // that "a Percentage" existed, summed seven sub-category rows to 3.08% instead of the stated 2.28%.
+    // It matters when the question is about shares: "Identity Theft" is named by nearly every legal question.
+    if (!measure.value || !SHARE_QUESTION.test(question)) continue;
+    // Reading that table's column is using the stated figure; another table's Percentage is not.
+    if (mentions(sql, measure.table) && mentions(sql, measure.column)) continue;
     if (!sql.toLowerCase().includes(measure.label.toLowerCase())) continue;
     return {
       code: "DEFINED_MEASURE_IGNORED",
-      message: `${measure.table} states a ${measure.column} for "${measure.label}"`
-        + `${measure.value ? ` (${measure.value})` : ""}. Your query computes the share itself instead of reading it: `
-        + "if the question means the stated figure, use that column.",
-      evidence: { table: measure.table, column: measure.column, label: measure.label, ...(measure.value ? { value: measure.value } : {}) }
+      message: `The data states the share for "${measure.label}" directly: ${measure.table}.${measure.column} = `
+        + `${measure.value}. Your query computes the share another way: if the question means the stated figure, `
+        + "use that value.",
+      evidence: { table: measure.table, column: measure.column, label: measure.label, value: measure.value }
     };
   }
   return undefined;

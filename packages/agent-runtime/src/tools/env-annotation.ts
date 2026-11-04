@@ -76,6 +76,15 @@ const DESCRIPTIONS_NOTE =
   "model_descriptions are model-written readings of the facts, not facts: [inferred] is an "
   + "interpretation; [checked] only had its numbers and quoted values matched to the facts. "
   + "Verify before relying on either.";
+const ELIGIBILITY_NOTE =
+  "Apply the keep value by default; drop a flag only if the source's own text or the question says so, and say so.";
+const OVERVIEW_NOTE =
+  "Every other table in this datasource, one line each (the source's own text when it has some). "
+  + "Check which tables could hold what the question asks before choosing one; inspect_schema shows "
+  + "a table's columns and full annotation.";
+/** Character cap for the one-time datasource overview, and for each of its lines. */
+const MAX_OVERVIEW_CHARS = 4000;
+const MAX_OVERVIEW_LINE_CHARS = 140;
 
 /** The layers named by DF_ENV_ANNOTATION_LAYERS (unknown names are ignored). */
 export const envAnnotationLayersFromEnvironment = (
@@ -222,7 +231,7 @@ export const envAnnotationForTables = (
     ...summaries.filter((entry) => entry.summary.eligibility_flags),
     ...summaries.filter((entry) => !entry.summary.eligibility_flags)
   ];
-  const render = (entries: typeof ordered, withLinks: boolean, withText: boolean) => {
+  const render = (entries: typeof ordered, withLinks: boolean, withText: boolean, withNote = true) => {
     const tables = Object.fromEntries(entries.flatMap(({ name, summary }) => {
       const { links, author_text, model_descriptions, ...rest } = summary;
       const shown = {
@@ -238,6 +247,9 @@ export const envAnnotationForTables = (
     const omitted = ordered.length - entries.length;
     return {
       note: ANNOTATION_NOTE,
+      ...(withNote && entries.some((entry) => entry.summary.eligibility_flags)
+        ? { eligibility_note: ELIGIBILITY_NOTE }
+        : {}),
       ...(shownText("author_text") ? { author_text_note: AUTHOR_TEXT_NOTE } : {}),
       ...(shownText("model_descriptions") ? { model_descriptions_note: DESCRIPTIONS_NOTE } : {}),
       tables,
@@ -253,7 +265,8 @@ export const envAnnotationForTables = (
     [ordered, false, true],
     [compact, true, true],
     [compact, false, true],
-    [ordered, true, false]
+    [ordered, true, false],
+    [ordered, false, false]
   ];
   for (const [entries, withLinks, withText] of attempts) {
     const rendered = render(entries, withLinks, withText);
@@ -262,10 +275,55 @@ export const envAnnotationForTables = (
     }
   }
   const kept = [...ordered];
-  let rendered = render(kept, false, false);
+  // The eligibility note is dropped before any table's data is.
+  let rendered = render(kept, false, false, false);
   while (kept.length > 1 && !fits(rendered)) {
     kept.pop();
-    rendered = render(kept, false, false);
+    rendered = render(kept, false, false, false);
+  }
+  return rendered;
+};
+
+/**
+ * One line per annotated table not in `excludeNames`: the table's own source text if it has some,
+ * else its model-written summary (tagged), else its column count. Lets the agent see the whole
+ * datasource before committing to the tables it happened to inspect. Capped at `maxChars`;
+ * undefined when there is no other table.
+ */
+export const envAnnotationOverview = (
+  annotation: EnvAnnotation,
+  excludeNames: string[] = [],
+  maxChars = MAX_OVERVIEW_CHARS
+): Record<string, unknown> | undefined => {
+  const excluded = new Set(excludeNames.map((name) => name.toLowerCase()));
+  const lines: Array<[string, string]> = [];
+  for (const [name, table] of Object.entries(annotation.tables).sort(([a], [b]) => a.localeCompare(b))) {
+    if (excluded.has(name.toLowerCase())) {
+      continue;
+    }
+    const ownText = table.author_text?.table[0]?.text;
+    const summary = table.descriptions?.summary;
+    const line = ownText
+      ? ownText
+      : summary
+        ? `${summary.text} [${summary.verdict ?? "inferred"}]`
+        : `${Object.keys(table.columns).length} columns`;
+    const clipped = line.length > MAX_OVERVIEW_LINE_CHARS ? `${line.slice(0, MAX_OVERVIEW_LINE_CHARS)}…` : line;
+    lines.push([name, clipped.replace(/\s+/gu, " ").trim()]);
+  }
+  if (lines.length === 0) {
+    return undefined;
+  }
+  const kept = [...lines];
+  const render = () => ({
+    note: OVERVIEW_NOTE,
+    tables: Object.fromEntries(kept),
+    ...(kept.length < lines.length ? { omitted_tables: lines.length - kept.length } : {})
+  });
+  let rendered = render();
+  while (kept.length > 1 && JSON.stringify(rendered).length > maxChars) {
+    kept.pop();
+    rendered = render();
   }
   return rendered;
 };

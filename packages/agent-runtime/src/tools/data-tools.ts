@@ -14,6 +14,7 @@ import type { AgentRunContext, AgUiEventEmitter } from "../types.js";
 import {
   createEnvAnnotationGuard,
   envAnnotationForTables,
+  envAnnotationOverview,
   type EnvAnnotation
 } from "./env-annotation.js";
 import { enrichSqlDialectError, validateSqlDialect } from "./sql-dialect-validation.js";
@@ -47,6 +48,7 @@ type SchemaCapability = {
 };
 
 type InspectSchemaResult = SchemaSummary & {
+  datasource_overview?: Record<string, unknown>;
   env_annotation?: Record<string, unknown>;
   schema_id: string;
 };
@@ -130,6 +132,20 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
     const annotation = input.envAnnotation ? envAnnotationForTables(input.envAnnotation, tableNames) : undefined;
     return annotation ? { env_annotation: annotation } : {};
   };
+  // The first schema result of a run also lists every other annotated table in one line, so the
+  // agent sees the whole datasource, not only the tables it asked about. Shown once per run.
+  let overviewShown = false;
+  const datasourceOverview = (tableNames: string[]): { datasource_overview?: Record<string, unknown> } => {
+    if (overviewShown || !input.envAnnotation) {
+      return {};
+    }
+    const overview = envAnnotationOverview(input.envAnnotation, tableNames);
+    if (!overview) {
+      return {};
+    }
+    overviewShown = true;
+    return { datasource_overview: overview };
+  };
 
   const listDataSources = async (toolInput: { enabled_only?: boolean } = {}): Promise<unknown> => {
     throwIfAborted(input.abortSignal);
@@ -189,7 +205,8 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
       const rawResult = {
         ...result,
         schema_id,
-        ...annotationForTables(result.tables.map((table) => table.name))
+        ...annotationForTables(result.tables.map((table) => table.name)),
+        ...datasourceOverview(result.tables.map((table) => table.name))
       };
       resultMetadata.set(rawResult, { datasourceId, stepId });
       return rawResult;

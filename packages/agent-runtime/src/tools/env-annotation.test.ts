@@ -14,6 +14,7 @@ import {
   envAnnotationForTables,
   envAnnotationFromEnvironment,
   envAnnotationMaxCharsFromEnvironment,
+  envAnnotationOverview,
   parseEnvAnnotation,
   type EnvAnnotation
 } from "./env-annotation.js";
@@ -110,6 +111,7 @@ describe("env annotation enrichment", () => {
   it("summarizes only the named tables, flags and links included", () => {
     expect(envAnnotationForTables(annotation, [CLINICAL])).toEqual({
       note: expect.any(String),
+      eligibility_note: expect.stringContaining("Apply the keep value by default"),
       tables: {
         [CLINICAL]: {
           eligibility_flags: [{ column: "Case_excluded", keep_value: "'No'" }],
@@ -141,6 +143,44 @@ describe("env annotation enrichment", () => {
 
     const preview = await registry.previewTable({ schema_id: schema.schema_id, table: CLINICAL });
     expect(modelView("preview_table", preview)).toHaveProperty(["env_annotation", "tables", CLINICAL]);
+  });
+});
+
+describe("env annotation datasource overview", () => {
+  it("lists every other table in one line and says when flags apply by default", () => {
+    const overview = envAnnotationOverview(annotation, [CLINICAL]);
+    expect(Object.keys(overview?.tables as object)).toEqual([PHOSPHO, "plain"]);
+    expect((overview?.tables as Record<string, string>).plain).toBe("1 columns");
+    expect(envAnnotationOverview(annotation, [CLINICAL, PHOSPHO, "plain"])).toBeUndefined();
+    expect(envAnnotationForTables(annotation, [PHOSPHO])).not.toHaveProperty("eligibility_note");
+  });
+
+  it("prefers the source's own text, then the model summary, and stays within its cap", () => {
+    const withText = parseEnvAnnotation({
+      tables: {
+        a: { columns: { x: { roles: [] } } },
+        b: { columns: { y: { roles: [] } } },
+        c: { columns: { z: { roles: [] } } }
+      },
+      author_text: { a: { table: [{ text: "Orders placed online", source: "README#1" }], columns: {} } },
+      descriptions: { tables: { b: { summary: { text: "One row per refund", verdict: "checked" }, columns: {} } } }
+    }, ["author_text", "descriptions"])!;
+    expect(envAnnotationOverview(withText)?.tables).toEqual({
+      a: "Orders placed online", b: "One row per refund [checked]", c: "1 columns"
+    });
+    const capped = envAnnotationOverview(withText, [], 320);
+    expect(JSON.stringify(capped).length).toBeLessThanOrEqual(320);
+    expect(Object.keys(capped?.tables as object).length).toBeLessThan(3);
+    expect(capped).toHaveProperty("omitted_tables");
+  });
+
+  it("is attached to the first inspect_schema result of a run only, and reaches the model", async () => {
+    const registry = createRegistry(annotation);
+    const first = await registry.inspectSchema({ datasource_id: "bio" });
+    expect(Object.keys(first.datasource_overview?.tables as object)).toEqual([PHOSPHO]);
+    expect(modelView("inspect_schema", first)).toHaveProperty(["datasource_overview", "tables", PHOSPHO]);
+    const second = await registry.inspectSchema({ datasource_id: "bio" });
+    expect(second).not.toHaveProperty("datasource_overview");
   });
 });
 
@@ -270,7 +310,8 @@ describe("DF_ENV_ANNOTATION_LAYERS", () => {
     expect(plain.tables.rain).toEqual({ columns: { Mar: { type: "float" } }, links: [] });
     expect(envAnnotationForTables(plain, ["rain"])).toBeUndefined();
     const summary = envAnnotationForTables(plain, [CLINICAL]) as { tables: Record<string, unknown> };
-    expect(Object.keys(summary)).toEqual(["note", "tables"]);
+    // The eligibility note is part of the base annotation whenever a flag is shown.
+    expect(Object.keys(summary)).toEqual(["note", "eligibility_note", "tables"]);
     expect(summary.tables[CLINICAL]).toEqual({ eligibility_flags: [{ column: "Case_excluded", keep_value: "'No'" }] });
   });
 

@@ -1905,6 +1905,9 @@ const saveConfigResourceInTransaction = (
   if (kind === "model-profile") {
     validateModelFallback(id, mergedPayload, context);
   }
+  if (kind === "mcp-server") {
+    validateMcpServerPayload(id, mergedPayload);
+  }
   const description = stringValue(body.description) ?? current?.description;
   const expectedRevision = numberValue(body.revision);
   const explicitStatus = kind === "model-profile" ? undefined : resourceStatusValue(body, kind);
@@ -4000,6 +4003,25 @@ const handleSkillSelectionPreview = async (
       tags: skill.tags
     }))
   });
+};
+
+/**
+ * Refuse an MCP server the run resolver could never connect to, instead of saving it and having
+ * every run skip it later (which only shows up as unavailable_resources in a run event). Fields
+ * belong at the top level of the body; a nested "payload" object is a common client mistake.
+ */
+export const validateMcpServerPayload = (id: string, payload: Record<string, unknown>): void => {
+  if (isRecord(payload.payload)) {
+    throw new Error(`MCP_SERVER_PAYLOAD_NESTED:${id}: send transport, serverUrl and toolManifest as top-level fields`);
+  }
+  const transport = stringValue(payload.transport) ?? "streamable-http";
+  if (transport === "stdio") {
+    if (!stringValue(payload.command) && !stringValue(payload.serverUrl)) {
+      throw new Error(`MCP_STDIO_COMMAND_REQUIRED:${id}`);
+    }
+  } else if (!stringValue(payload.serverUrl) && !stringValue(payload.url)) {
+    throw new Error(`MCP_SERVER_URL_REQUIRED:${id}`);
+  }
 };
 
 const errorResponse = (error: unknown): ConfigApiResponse => {

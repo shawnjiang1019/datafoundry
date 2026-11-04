@@ -10,6 +10,7 @@ import { toolObservationProjectionToItems } from "../tool-observation-projection
 import type { ToolObservationAdapter } from "../tool-observation-adapter.js";
 
 type SchemaResultInput = SchemaSummary & {
+  datasource_overview?: Record<string, unknown>;
   env_annotation?: Record<string, unknown>;
   schema_id?: string;
 };
@@ -45,6 +46,11 @@ export class SchemaToolObservationAdapter implements ToolObservationAdapter {
       projection.model = { ...(projection.model as SchemaSummary), env_annotation: schema.env_annotation };
       projection.activity = { ...(projection.activity as SchemaSummary), env_annotation: schema.env_annotation };
     }
+    // Capped by envAnnotationOverview and shown once per run by the tool registry.
+    if (schema.datasource_overview) {
+      projection.model = { ...(projection.model as SchemaSummary), datasource_overview: schema.datasource_overview };
+      projection.activity = { ...(projection.activity as SchemaSummary), datasource_overview: schema.datasource_overview };
+    }
     return toolObservationProjectionToItems(projection, this.resultType, 10);
   }
 }
@@ -65,6 +71,9 @@ const normalizeSchemaResultInput = (raw: unknown): SchemaResultInput | undefined
   }
   if (isRecord(raw.env_annotation)) {
     schema.env_annotation = raw.env_annotation;
+  }
+  if (isRecord(raw.datasource_overview)) {
+    schema.datasource_overview = raw.datasource_overview;
   }
   return schema;
 };

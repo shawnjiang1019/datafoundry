@@ -1371,6 +1371,50 @@ describe("createRunProtocolBoundary", () => {
     }]);
   });
 
+  it("routes a data lookup to data-analysis without the model when a datasource is selected", async () => {
+    const boundary = (userInput: string, withDatasource: boolean) => createRunProtocolBoundary({
+      runId: `run-lookup-${withDatasource}`,
+      userInput,
+      authorizedProtocolIds: ["general-task", "data-analysis"],
+      initialContextPackageRef: { packageId: "context-lookup", revision: 0 },
+      tools: {},
+      ...(withDatasource ? { semanticRequest: { userId: "user-1", workspaceId: "default", datasourceId: "kb-archeology", datasourceRevision: "1" } } : {}),
+      classifier: async () => ({ protocolId: "general-task", protocolVersion: "1", confidence: 0.95, reasonCodes: ["GENERAL_KNOWLEDGE_QA"], taskRelation: "replace" }),
+      projectContext: () => ({ packageId: "context-lookup", revision: 0 })
+    });
+    // KramaBench archeology-easy-6 and -hard-12: sent to general-task by the classifier.
+    for (const question of [
+      "What city contained in both the southern and western hemispheres has the highest population?",
+      "Count the number of human conflicts between 800 and 1400 AD."
+    ]) {
+      const routed = await boundary(question, true);
+      expect([routed.route.definition.id, routed.route.reasonCodes]).toEqual(["data-analysis", ["DATASOURCE_LOOKUP_INTENT"]]);
+    }
+    // Without a datasource the same wording is left to the classifier.
+    expect((await boundary("Which city has the highest population?", false)).route.definition.id).toBe("general-task");
+    // With one, a question that is not a lookup is still left to the classifier.
+    expect((await boundary("Tell me about the Roman Empire", true)).route.definition.id).toBe("general-task");
+  });
+
+  it("tells the classifier a datasource is selected", async () => {
+    const classificationInputs: unknown[] = [];
+    await createRunProtocolBoundary({
+      runId: "run-classifier-datasource",
+      userInput: "Tell me about the Roman Empire",
+      authorizedProtocolIds: ["general-task", "data-analysis"],
+      initialContextPackageRef: { packageId: "context-datasource", revision: 0 },
+      tools: {},
+      semanticRequest: { userId: "user-1", workspaceId: "default", datasourceId: "kb-archeology", datasourceRevision: "1" },
+      classifier: async ({ value }) => {
+        classificationInputs.push(value);
+        return { protocolId: "data-analysis", protocolVersion: "1", confidence: 0.9, reasonCodes: ["DATA_LOOKUP"], taskRelation: "replace" };
+      },
+      projectContext: () => ({ packageId: "context-datasource", revision: 0 })
+    });
+
+    expect(classificationInputs).toEqual([{ userText: "Tell me about the Roman Empire", datasourceSelected: true }]);
+  });
+
   it("forwards the budgeted classifier background alongside the session intent", async () => {
     const classificationInputs: unknown[] = [];
     await createRunProtocolBoundary({

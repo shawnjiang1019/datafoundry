@@ -13,20 +13,22 @@
  *   or by naming a file as a table (`FROM '/path/answers.csv'`). Those reach outside the
  *   registered datasource, so they are blocked.
  * - datasource_scope: a `datasource_id` argument must be one of the run's enabled datasources.
- * - repeated_failure: an action that failed the same way several times in a row is stopped, so
- *   the agent changes approach instead of burning steps (for example guessing ids in a loop).
- *   Failures are compared by error class, the reason code before its first ":". After a few
- *   blocked attempts one real attempt is let through, in case the agent fixed the cause.
+ * - repeated_failure (opt-in, off by default): an action that failed the same way several times in
+ *   a row is stopped. Failures are compared by error class, the reason code before its first ":".
+ *   After a few blocked attempts one real attempt is let through. It is off by default because a
+ *   repeated failure is a correctness and cost problem, not a safety one: on KramaBench
+ *   (2026-11-04/05) every block turned a recoverable error into a run with no answer. Loops are
+ *   bounded by the run timeout and reported by the post-run verifier instead.
  *
  * Opt-in: set DF_PRE_ACTION_VERIFY=1. Without it the router keeps its default allow-all policy.
- * DF_PRE_ACTION_MAX_REPEATED_FAILURES sets the streak that triggers a block (default 5, 0 = off).
+ * DF_PRE_ACTION_MAX_REPEATED_FAILURES sets the streak that triggers a block (default 0 = off).
  */
 
 import type { ProtocolActionRecord, ProtocolGuardResult } from "../protocol/types.js";
 
 export const PRE_ACTION_VERIFY_VARIABLE = "DF_PRE_ACTION_VERIFY";
 export const PRE_ACTION_MAX_REPEATED_FAILURES_VARIABLE = "DF_PRE_ACTION_MAX_REPEATED_FAILURES";
-export const DEFAULT_MAX_REPEATED_FAILURES = 5;
+export const DEFAULT_MAX_REPEATED_FAILURES = 0;
 /** Blocked attempts after which one real attempt is allowed again. */
 export const REPEATED_FAILURE_COOLDOWN = 3;
 /**
@@ -39,6 +41,19 @@ export const NON_AGENT_ERROR_CLASSES = new Set([
   "RATE_LIMIT",
   "AI_APICallError",
   "PROTOCOL_COMMIT_CONTENTION"
+]);
+/**
+ * Contract and evidence checks: their failures may come from the check itself (a contract the model
+ * wrote that no correct query satisfies, evidence the protocol never bound), so blocking the agent
+ * cannot fix them and only ends the run without an answer. They never count toward a streak; the
+ * error message and the post-run verifier handle them instead. (KramaBench 2026-11-04: hard-4,
+ * hard-5 and easy-6 ended in such blocks with real evidence in hand.)
+ */
+export const CHECKER_DEPENDENT_ERROR_CLASSES = new Set([
+  "QUERY_CONTRACT_VALIDATION_FAILED",
+  "ANALYSIS_REQUIREMENT_EVIDENCE_INVALID",
+  "ANALYSIS_CLAIM_VALUE_NOT_VERIFIED",
+  "ANALYSIS_EVIDENCE_BINDING_INCOMPLETE"
 ]);
 
 export type PreActionRule = "external_access" | "datasource_scope" | "repeated_failure";
@@ -181,7 +196,7 @@ export const repeatedFailureStreak = (
       }
       continue;
     }
-    if (NON_AGENT_ERROR_CLASSES.has(cls)) {
+    if (NON_AGENT_ERROR_CLASSES.has(cls) || CHECKER_DEPENDENT_ERROR_CLASSES.has(cls)) {
       continue;
     }
     sawRealOutcome = true;

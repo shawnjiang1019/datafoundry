@@ -23,6 +23,8 @@ Prereqs (env vars):
                                     DataFoundry run; the receipt lands in explanation.assumptions)
     DTRAIL_TO_AGENT=1              (default; also pass the receipt to the agent as run_config
                                     assumptionReceipt, its "assumption ledger"; 0 = A/B baseline)
+    DF_ANSWER_FOLLOWUP=1           (default; a run that ends without the FINAL_ANSWER line gets one
+                                    follow-up turn asking only for that line; 0 = off)
     DF_MCP_SERVER_IDS=             (comma-separated MCP server ids to enable per run, e.g. the
                                     DataLink server; empty = none, the semantic step falls back
                                     to the physical schema)
@@ -90,6 +92,13 @@ RETRY_ATTEMPTS = int(os.environ.get("DF_RETRY_ATTEMPTS", "4"))
 RETRY_BASE_S = float(os.environ.get("DF_RETRY_BASE_S", "30"))
 RETRY_MAX_DELAY_S = float(os.environ.get("DF_RETRY_MAX_DELAY_S", "300"))
 MCP_SERVER_IDS = [s.strip() for s in os.environ.get("DF_MCP_SERVER_IDS", "").split(",") if s.strip()]
+# A run that ends without the FINAL_ANSWER line gets one follow-up turn asking only for that line.
+ANSWER_FOLLOWUP = os.environ.get("DF_ANSWER_FOLLOWUP", "1") == "1"
+ANSWER_FOLLOWUP_MESSAGE = (
+    "Your last message did not end with the required answer line. Reply with exactly one line, "
+    "FINAL_ANSWER: <answer>, giving the answer your analysis reached (as a bare value, list or short "
+    "string). Do not run new analysis."
+)
 DTRAIL_API_URL = os.environ.get("DTRAIL_API_URL", "").rstrip("/")
 DTRAIL_TOKEN = os.environ.get("DTRAIL_TOKEN", "")
 DTRAIL_ASSUME = os.environ.get("DTRAIL_ASSUME", "0") == "1"
@@ -259,13 +268,27 @@ class DataFoundryClient:
             },
         }
         self._last_thread_id = thread_id
+        self._stream(payload)
+        text = self._final_answer(thread_id)
+        if ANSWER_FOLLOWUP and not text.startswith("[DataFoundry") and not _FINAL_ANSWER_RE.search(text):
+            # The run ended without the answer line it was asked for. Ask once, in the same session,
+            # for that line only: a format request that adds no information about the task.
+            payload["body"] = {**payload["body"], "runId": f"run-{uuid.uuid4().hex[:8]}",
+                               "messages": [{"id": f"m-{uuid.uuid4().hex[:8]}", "role": "user",
+                                             "content": ANSWER_FOLLOWUP_MESSAGE}]}
+            self._stream(payload)
+            followed = self._final_answer(thread_id)
+            if _FINAL_ANSWER_RE.search(followed):
+                text = followed
+        return text
+
+    def _stream(self, payload: dict) -> None:
         headers = {**self._mutate_headers(), "accept": "text/event-stream"}
         with self.s.post(f"{self.api}/api/copilotkit", json=payload,
                          headers=headers, stream=True, timeout=RUN_TIMEOUT_S) as resp:
             resp.raise_for_status()
             for _ in resp.iter_lines(decode_unicode=True):
                 pass  # drain the AG-UI SSE stream to completion
-        return self._final_answer(thread_id)
 
     def _conversation(self, thread_id: str) -> dict:
         r = self.s.get(f"{self.api}/api/v1/sessions/{thread_id}/conversation")
@@ -295,6 +318,11 @@ class DataFoundryClient:
         # A provider fault mid-run leaves partial text behind; report the fault so it is retried.
         if failure and transient_failure_reason(failure):
             return failure
+        # The run may write its answer, be sent back (e.g. to commit evidence) and end on a later
+        # message without the marker; the latest message that carries the marker is the answer.
+        marked = [t for t in texts if _FINAL_ANSWER_RE.search(t)]
+        if marked:
+            return marked[-1]
         if texts:
             return texts[-1]
         return failure or "[DataFoundry] no answer"

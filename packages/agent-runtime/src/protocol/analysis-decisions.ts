@@ -170,7 +170,7 @@ export const recordDecision = (
   };
   if (input.decision_id) {
     if (!decisions.some((decision) => decision.id === input.decision_id)) {
-      throw new Error(`ANALYSIS_DECISION_NOT_FOUND:${input.decision_id}`);
+      throw new Error(`ANALYSIS_DECISION_NOT_FOUND:${input.decision_id}${unknownDecisionHint(input.decision_id, decisions)}`);
     }
     return decisions.map((decision) => decision.id === input.decision_id ? resolve(decision) : decision);
   }
@@ -192,6 +192,22 @@ export const recordDecision = (
   })];
 };
 
+/**
+ * What to do instead of retrying an unknown decision id: frame readings (F1, F1.2, ...) are passed
+ * in frame_choices, not decision_ids; otherwise name the recorded decision ids.
+ */
+const unknownDecisionHint = (id: string, decisions: AnalysisDecision[]): string => {
+  const known = decisions.map((decision) => decision.id);
+  const recorded = known.length > 0
+    ? `recorded decision ids: ${known.join(", ")}`
+    : "no decision is recorded yet (record one with analysis.decision.record, or omit decision_ids)";
+  if (/^F\d+(\.\d+)?$/u.test(id)) {
+    return `: ${id} is an answer-frame reading, not a decision; pass it in frame_choices as "${id}: <why>"`
+      + ` and leave it out of decision_ids; ${recorded}`;
+  }
+  return `: ${recorded}`;
+};
+
 /** Link query attempts to the decisions whose choice they apply. */
 export const linkDecisionsToAttempt = (
   decisions: AnalysisDecision[],
@@ -200,7 +216,7 @@ export const linkDecisionsToAttempt = (
 ): AnalysisDecision[] => {
   const unknownId = decisionIds.find((id) => !decisions.some((decision) => decision.id === id));
   if (unknownId) {
-    throw new Error(`ANALYSIS_DECISION_NOT_FOUND:${unknownId}`);
+    throw new Error(`ANALYSIS_DECISION_NOT_FOUND:${unknownId}${unknownDecisionHint(unknownId, decisions)}`);
   }
   return decisions.map((decision) => decisionIds.includes(decision.id)
     ? { ...decision, queryAttemptIds: unique([...decision.queryAttemptIds, attemptId]) }

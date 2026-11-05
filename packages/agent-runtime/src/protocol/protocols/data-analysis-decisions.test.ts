@@ -75,7 +75,10 @@ describe("data-analysis decisions", () => {
     expect(state.queryAttempts[0]?.decisionIds).toEqual(["D1"]);
     expect(state.decisions[0]?.queryAttemptIds).toEqual(["Q1"]);
     expect(() => reduceDataAnalysisAction(state, "data.query.plan", { sql: "select 1", decision_ids: ["D9"] }))
-      .toThrow("ANALYSIS_DECISION_NOT_FOUND:D9");
+      .toThrow("ANALYSIS_DECISION_NOT_FOUND:D9: recorded decision ids: D1");
+    // A frame reading put in decision_ids gets told where it belongs.
+    expect(() => reduceDataAnalysisAction(state, "data.query.plan", { sql: "select 1", decision_ids: ["F1.2"] }))
+      .toThrow(/ANALYSIS_DECISION_NOT_FOUND:F1\.2: F1\.2 is an answer-frame reading, not a decision; pass it in frame_choices/u);
   });
 
   it("validates a record against the decision, its options and the run's evidence", () => {

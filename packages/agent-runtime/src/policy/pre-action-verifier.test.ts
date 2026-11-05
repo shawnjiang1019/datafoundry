@@ -177,6 +177,19 @@ describe("repeated-failure rule", () => {
     expect(policy({ actionName: "inspect_schema", input: {} })).toEqual({ allowed: true });
   });
 
+  it("never blocks contract or evidence failures, which the check itself may cause", () => {
+    const commit = "analysis.requirements.commit";
+    const history = ["a", "b", "c", "d", "e", "f"].map((id) =>
+      record(commit, "failed", `ANALYSIS_REQUIREMENT_EVIDENCE_INVALID:R1:${id}`));
+    history.push(...["g", "h", "i", "j", "k"].map(() =>
+      record("run_sql_readonly", "failed", "QUERY_CONTRACT_VALIDATION_FAILED")));
+    const policy = createPreActionVerifier({ maxRepeatedFailures: 5 });
+    policy.attachHistory(() => history);
+    expect(repeatedFailureStreak(history, commit).failures).toBe(0);
+    expect(policy({ actionName: commit, input: {} })).toEqual({ allowed: true });
+    expect(policy({ actionName: "run_sql_readonly", input: { sql: "SELECT 1" } })).toEqual({ allowed: true });
+  });
+
   it("does not count failures the agent cannot cause, such as provider or parser errors", () => {
     const history = [
       ...["a", "b", "c"].map(fail),
@@ -198,6 +211,16 @@ describe("repeated-failure rule", () => {
     const fromEnv = preActionVerifierFromEnvironment({ DF_PRE_ACTION_VERIFY: "1", DF_PRE_ACTION_MAX_REPEATED_FAILURES: "3" });
     fromEnv?.attachHistory(() => history.slice(0, 3));
     expect(fromEnv?.({ actionName: plan, input: {} })).toMatchObject({ allowed: false });
+  });
+
+  it("does not block repeated failures unless a threshold is set", () => {
+    const history = ["a", "b", "c", "d", "e", "f", "g"].map(fail);
+    const byDefault = preActionVerifierFromEnvironment({ DF_PRE_ACTION_VERIFY: "1" });
+    byDefault?.attachHistory(() => history);
+    expect(byDefault?.({ actionName: plan, input: {} })).toEqual({ allowed: true });
+    // The safety rules stay on.
+    expect(byDefault?.({ actionName: "run_sql_readonly", input: { sql: "SELECT * FROM read_csv('/etc/passwd')" } }))
+      .toMatchObject({ allowed: false });
   });
 
   it("stops a failing loop in the real ActionRouter before the executor runs again", async () => {

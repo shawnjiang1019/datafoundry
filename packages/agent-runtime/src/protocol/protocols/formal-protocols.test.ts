@@ -515,6 +515,28 @@ describe("formal protocols", () => {
     });
   });
 
+  it("says why cited evidence is unusable: a real result that failed validation, or an unknown id", () => {
+    const requirements = createUserAnalysisRequirements([
+      { kind: "metric", description: "count orders", acceptanceCriteria: [] }
+    ]);
+    const protocol = createDataAnalysisProtocol([], requirements);
+    let state = protocol.createInitialState({ contextPackageRef, runId: "run-evidence-reason" });
+    state = reduceDataAnalysisAction(state, "data.query.plan", { requirement_ids: ["R1"], sql: "select count(*) from orders" });
+    state = reduceDataAnalysisAction(state, "run_sql_readonly", {
+      artifact_id: "artifact-1", result: { audit_log_id: "audit-1", columns: ["n"] }
+    });
+    state = reduceDataAnalysisAction(state, "analysis.result.validate", {
+      valid: false,
+      validation_findings: [{ code: "RESULT_COLUMN_MISSING:n_orders", message: "x", severity: "error" }]
+    });
+    expect(() => reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "12 orders", evidence_refs: ["artifact-1"] }]
+    })).toThrow(/ANALYSIS_REQUIREMENT_EVIDENCE_INVALID:R1:artifact-1: that result \(query Q1\) did not pass result validation \(RESULT_COLUMN_MISSING:n_orders\)/u);
+    expect(() => reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "12 orders", evidence_refs: ["artifact-9"] }]
+    })).toThrow(/no query result of this run has that artifact id/u);
+  });
+
   it("rejects unknown requirement ids and evidence from another requirement", () => {
     const requirements = createUserAnalysisRequirements([
       { kind: "metric", description: "计算利润", acceptanceCriteria: [] }

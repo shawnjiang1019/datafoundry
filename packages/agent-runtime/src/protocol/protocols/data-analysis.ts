@@ -851,6 +851,7 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
       const invalidRef = evidenceRefs[0];
       throw new Error(
         `ANALYSIS_REQUIREMENT_EVIDENCE_INVALID:${requirementId}:${invalidId ?? invalidRef ?? "missing"}`
+        + evidenceInvalidReason(next, requirementId, evidenceRefs)
       );
     }
     const values = recordArray(value, "values").map(parseClaimValue);
@@ -901,6 +902,31 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
     }));
   }
   return next;
+};
+
+/**
+ * Why cited evidence is not usable, so the agent can act on it instead of retrying the same commit:
+ * a real result whose query never passed result validation yields no evidence binding.
+ */
+const evidenceInvalidReason = (state: DataAnalysisState, requirementId: string, evidenceRefs: string[]): string => {
+  const cited = normalizedQueryAttempts(state).filter((attempt) =>
+    attempt.artifactId !== undefined && evidenceRefs.includes(attempt.artifactId));
+  if (cited.length === 0) {
+    return evidenceRefs.length > 0
+      ? `: no query result of this run has that artifact id; cite the artifact_id a run_sql_readonly result returned`
+      : `: cite the artifact_id of a validated query result for ${requirementId}`;
+  }
+  const attempt = cited.at(-1)!;
+  if (!attempt.requirementIds.includes(requirementId)) {
+    return `: that result came from query ${attempt.id} for ${attempt.requirementIds.join(", ") || "no requirement"}, `
+      + `not ${requirementId}; run a query with requirement_ids [${requirementId}] or cite it via evidence_requirement_ids`;
+  }
+  const failed = unique([...(attempt.resultValidationFindings ?? []), ...(attempt.validationFindings ?? [])]
+    .filter((finding) => finding.severity === "error")
+    .map((finding) => finding.code.split(":", 2).join(":")));
+  return `: that result (query ${attempt.id}) did not pass result validation`
+    + (failed.length > 0 ? ` (${failed.slice(0, 3).join("; ")})` : "")
+    + `, so it is not bound as evidence; fix what failed and validate again`;
 };
 
 const uniqueBindings = (bindings: AnalysisEvidenceBinding[]): AnalysisEvidenceBinding[] => [...new Map(

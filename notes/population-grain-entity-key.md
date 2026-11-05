@@ -128,7 +128,7 @@ overall rate       121 / 6,658  = 0.0182 per record
 difference                      = −0.0053   (expected −0.0059)
 ```
 
-Comparing per-fire rates gets −0.0053. The rest of the gap is the humidity boundary: the reference counts fires at exactly 30% (27 deaths across 2,201 fires), which gives −0.0059 exactly. A per-day grain gives −0.0240 and is ruled out. Full walkthrough: [`example-grain-wildfire-easy-9.md`](example-grain-wildfire-easy-9.md).
+Comparing per-fire rates gets −0.0053. The rest of the gap is the humidity boundary: the reference counts fires at exactly 30% (27 deaths across 2,201 fires), which gives −0.0059 exactly. A per-day grain gives −0.0240 and is ruled out. Full walkthrough (kept out of the repo for size; it embeds the full run trace): [`example-grain-wildfire-easy-9.md`](https://github.com/shawnjiang1019/datafoundry/blob/9eeaa5a/notes/example-grain-wildfire-easy-9.md).
 
 ### `archeology-hard-2`: grain slip in wording, but not the cause (unexplained)
 
@@ -179,7 +179,7 @@ Ask three questions in order and stop at the first one that fails:
 | `archeology-hard-9` | population | hypothesis; competing explanation |
 | `wildfire-hard-17` | population | inferred from the size of the gap |
 
-4 reproduced, 2 with the error pinpointed in the trace, 6 hypotheses, and 1 (`archeology-hard-2`) moved out as unexplained. Each sub-type has one reproduced, step-by-step walkthrough: [population](example-population-legal-easy-19.md), [entity key](example-entity-key-legal-hard-22.md), [grain](example-grain-wildfire-easy-9.md). The hypotheses cluster in biomedical, and a single check on the case-exclusion flag would confirm or rule out three of them.
+4 reproduced, 2 with the error pinpointed in the trace, 6 hypotheses, and 1 (`archeology-hard-2`) moved out as unexplained. Each sub-type has one reproduced, step-by-step walkthrough (kept out of the repo for size, at commit 9eeaa5a; rebuild traces with `eval/kramabench/export_traces.py --embed-into`): [population](https://github.com/shawnjiang1019/datafoundry/blob/9eeaa5a/notes/example-population-legal-easy-19.md), [entity key](https://github.com/shawnjiang1019/datafoundry/blob/9eeaa5a/notes/example-entity-key-legal-hard-22.md), [grain](https://github.com/shawnjiang1019/datafoundry/blob/9eeaa5a/notes/example-grain-wildfire-easy-9.md). The hypotheses cluster in biomedical, and a single check on the case-exclusion flag would confirm or rule out three of them.
 
 ---
 

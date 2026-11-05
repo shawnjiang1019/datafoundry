@@ -18,7 +18,9 @@ export const MAX_CHALLENGES = 2;
 
 /**
  * Without a model, the model's part of the readings is empty and only the readings the data itself
- * defines are built (verified links, exclusion flags). Those are what the double-check uses.
+ * defines are built (verified links, exclusion flags). Those, and the measures the data states (a named
+ * score column, a stated share), are what the double-check uses. Passing a proposer, even this empty one,
+ * is also what turns the measures on.
  */
 const NO_MODEL: AnswerFrameProposer = async () => JSON.stringify({ decisions: [] });
 

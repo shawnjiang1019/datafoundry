@@ -50,7 +50,11 @@ beforeAll(async () => {
       + "\"NWS ID\" VARCHAR, \"Station Name\" VARCHAR, \"Elevation\" BIGINT)",
     `INSERT INTO raws_registry VALUES ${registry.join(", ")}`,
     "CREATE TABLE patients (patient_id VARCHAR, age BIGINT, excluded VARCHAR)",
-    `INSERT INTO patients VALUES ${patients.join(", ")}`
+    `INSERT INTO patients VALUES ${patients.join(", ")}`,
+    // A report that states each category's share, like KramaBench legal-hard-17/18.
+    "CREATE TABLE report_categories (\"Category\" VARCHAR, \"# of Reports\" BIGINT, \"Percentage\" VARCHAR)",
+    "INSERT INTO report_categories VALUES ('Identity Theft', 1135291, '17.54%'), ('Auto Related', 147561, '2.28%'), "
+      + "('Imposter Scams', 845806, '13.07%')"
   ];
   execFileSync(process.execPath, ["--input-type=module", "-e", `
     import duckdb from "duckdb";
@@ -126,6 +130,20 @@ describe("notes tools", () => {
       .toMatchObject({ status: "challenge", code: "EXCLUSION_FLAG_IGNORED" });
     expect(await service.checkAnswer({ notes_id, final_sql: "SELECT AVG(age) FROM patients WHERE excluded = 'No'" }))
       .toEqual({ status: "ok" });
+  });
+
+  it("challenges an answer that works out a share the data already states, and not one that reads it", async () => {
+    const service = tools();
+    const question = "If 2007 had 1,070,447 reports with the same category distribution, how many would be Auto Related?";
+    const { notes_id } = await service.ground({ question, datasource: "wildfire" });
+    const computed = "SELECT ROUND(1070447 * \"# of Reports\" / (SELECT SUM(\"# of Reports\") FROM report_categories)) "
+      + "FROM report_categories WHERE \"Category\" = 'Auto Related'";
+
+    const challenge = await service.checkAnswer({ notes_id, final_sql: computed });
+    expect(challenge).toMatchObject({ status: "challenge", code: "DEFINED_MEASURE_IGNORED" });
+    expect(challenge.status === "challenge" && challenge.message).toContain("2.28%");
+    expect(await service.checkAnswer({ notes_id, final_sql: "SELECT ROUND(1070447 * CAST(REPLACE(\"Percentage\", '%', '') AS DOUBLE) / 100) "
+      + "FROM report_categories WHERE \"Category\" = 'Auto Related'" })).toEqual({ status: "ok" });
   });
 
   it("challenges at most twice per question, then lets the answer stand", async () => {

@@ -17,6 +17,7 @@ import {
   envAnnotationOverview,
   type EnvAnnotation
 } from "./env-annotation.js";
+import { scaleNote } from "./scale-note.js";
 import { enrichSqlDialectError, validateSqlDialect } from "./sql-dialect-validation.js";
 
 type DataToolExecutionOptions = {
@@ -124,8 +125,11 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
   const resultMetadata = new WeakMap<object, { datasourceId: string; stepId: string }>();
   const sqlResultCache = new Map<string, RawSqlToolResult>();
   const envAnnotationGuard = input.envAnnotation ? createEnvAnnotationGuard(input.envAnnotation) : undefined;
-  const annotationWarnings = (sql: string): { env_annotation_warnings?: string[] } => {
-    const warnings = envAnnotationGuard?.check(sql) ?? [];
+  // Log-scale columns already noted this run, so the scale note shows once per column.
+  const scaleNoted = new Set<string>();
+  const annotationWarnings = (sql: string, columns: string[] = []): { env_annotation_warnings?: string[] } => {
+    const note = scaleNote(sql, columns, scaleNoted);
+    const warnings = [...(envAnnotationGuard?.check(sql) ?? []), ...(note ? [note] : [])];
     return warnings.length > 0 ? { env_annotation_warnings: warnings } : {};
   };
   const annotationForTables = (tableNames: string[]): { env_annotation?: Record<string, unknown> } => {
@@ -242,7 +246,7 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
     const cacheKey = sqlCacheKey(toolInput);
     const cached = sqlResultCache.get(cacheKey);
     if (cached) {
-      const rawResult = { ...cached, cache_hit: true as const, ...annotationWarnings(toolInput.sql) };
+      const rawResult = { ...cached, cache_hit: true as const, ...annotationWarnings(toolInput.sql, cached.result.columns) };
       resultMetadata.set(rawResult, { datasourceId, stepId: `sql-cache-${randomUUID()}` });
       return rawResult;
     }
@@ -292,7 +296,7 @@ export const createDataFoundryToolRegistry = (input: CreateDataFoundryToolRegist
       }
       emitSqlReferences(input, datasourceId, result);
       sqlResultCache.set(cacheKey, { result, sql: toolInput.sql });
-      const rawResult = { result, sql: toolInput.sql, ...annotationWarnings(toolInput.sql) };
+      const rawResult = { result, sql: toolInput.sql, ...annotationWarnings(toolInput.sql, result.columns) };
       resultMetadata.set(rawResult, { datasourceId, stepId });
       return rawResult;
     } catch (error) {

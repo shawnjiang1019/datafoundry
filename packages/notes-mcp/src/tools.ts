@@ -18,7 +18,9 @@ export const MAX_CHALLENGES = 2;
 
 /**
  * Without a model, the model's part of the readings is empty and only the readings the data itself
- * defines are built (verified links, exclusion flags). Those are what the double-check uses.
+ * defines are built (verified links, exclusion flags). Those, and the measures the data states (a named
+ * score column, a stated share), are what the double-check uses. Passing a proposer, even this empty one,
+ * is also what turns the measures on.
  */
 const NO_MODEL: AnswerFrameProposer = async () => JSON.stringify({ decisions: [] });
 
@@ -43,8 +45,21 @@ export type GroundResult = {
   warnings: string[];
 };
 
+/**
+ * A run_sql reply is cut to about this many characters of rows. Agents read the reply in their
+ * context window: a 1,000-row schema listing (75,000 characters) overflowed Claude Code's tool
+ * output limit on 2026-11-03, and a smaller agent would choke sooner.
+ */
+export const MAX_RESULT_CHARS = 20_000;
+/** Longer text cells are shortened, so one wide column cannot fill the reply on its own. */
+export const MAX_CELL_CHARS = 300;
+
 export type RunSqlResult =
-  | { status: "ok"; columns: string[]; rows: unknown[][]; row_count: number; problems: Problem[] }
+  | {
+      status: "ok"; columns: string[]; rows: unknown[][]; row_count: number; problems: Problem[];
+      /** Set when the reply holds fewer rows than the query returned. */
+      truncated?: { rows_shown: number; note: string };
+    }
   | { status: "blocked"; problems: Problem[] }
   | { status: "error"; message: string };
 
@@ -115,7 +130,15 @@ export const createNotesTools = (options: NotesServiceOptions) => {
       try {
         const result = await datasource.query(input.sql, MAX_ROWS);
         if (entry) entry.lastSql = input.sql;
-        return { status: "ok", ...result, row_count: result.rows.length, problems: problems.map(asProblem) };
+        const rows = fitRows(result.rows);
+        return {
+          status: "ok", columns: result.columns, rows, row_count: result.rows.length, problems: problems.map(asProblem),
+          ...(rows.length < result.rows.length ? { truncated: {
+            rows_shown: rows.length,
+            note: `Showing ${rows.length} of ${result.rows.length}${result.rows.length >= MAX_ROWS ? "+" : ""} rows to keep the `
+              + "reply small. Filter, aggregate or select fewer columns to see the rest."
+          } } : {})
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return { status: "error", message: error instanceof ReadonlySqlError ? `Read-only: ${message}` : message };
@@ -150,6 +173,20 @@ export const createNotesTools = (options: NotesServiceOptions) => {
 };
 
 export type NotesTools = ReturnType<typeof createNotesTools>;
+
+/** The leading rows that fit in MAX_RESULT_CHARS, with long text cells shortened. */
+const fitRows = (rows: unknown[][]): unknown[][] => {
+  const kept: unknown[][] = [];
+  let size = 0;
+  for (const row of rows) {
+    const shortened = row.map((cell) => typeof cell === "string" && cell.length > MAX_CELL_CHARS
+      ? `${cell.slice(0, MAX_CELL_CHARS)}…` : cell);
+    size += JSON.stringify(shortened).length;
+    if (size > MAX_RESULT_CHARS && kept.length > 0) break;
+    kept.push(shortened);
+  }
+  return kept;
+};
 
 const safeSqlFindings = (sql: string, entry: NotesEntry): AnalysisValidationFinding[] => {
   try {

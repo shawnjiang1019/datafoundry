@@ -71,13 +71,13 @@ describe("acquireDuckDb", () => {
     await memoryB.release();
   });
 
-  it("cannot reopen a file this process has closed, which is why handles are kept", async () => {
-    // Documents the DuckDB behaviour the shared handle works around: close() does not
-    // return the process-level file lock, so a reopen fails for the process lifetime.
+  it("reopens a file after its shared handle is closed", async () => {
+    // DuckDB 1.4.4 releases the file on close() (checked 2026-11-05). This used to assert the
+    // opposite, the lock that the shared handle was first written around.
     const scratchPath = join(directory, "closed.duckdb");
     await query(scratchPath, "SELECT 1 AS a");
     await closeSharedDuckDb(scratchPath);
-    await expect(query(scratchPath, "SELECT 1 AS a")).rejects.toThrow(/already open|IO Error/iu);
+    await expect(query(scratchPath, "SELECT 1 AS a")).resolves.toEqual([{ a: 1 }]);
   });
 
   it("reports the real open failure instead of a closed-connection error", async () => {

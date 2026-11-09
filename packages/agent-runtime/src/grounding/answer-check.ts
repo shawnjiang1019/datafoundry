@@ -1,4 +1,6 @@
+import { computesAggregate, filtersOnColumn } from "../protocol/sql-semantic-validator.js";
 import { blockedUnfaithfulWords, type FrameDecision, type FrameOption } from "./answer-frame.js";
+import type { DefinedMeasure } from "./defined-measures.js";
 import type { EvidenceGroundingContext } from "./types.js";
 import { intersect, terms } from "./vocabulary.js";
 
@@ -8,7 +10,7 @@ const MIN_POPULATION_GAP = 0.25;
 const MIN_FLAGGED_SHARE = 0.05;
 
 export type AnswerChallenge = {
-  code: "LINKED_POPULATION_IGNORED" | "EXCLUSION_FLAG_IGNORED" | "READING_IGNORES_QUESTION";
+  code: "LINKED_POPULATION_IGNORED" | "EXCLUSION_FLAG_IGNORED" | "READING_IGNORES_QUESTION" | "DEFINED_MEASURE_IGNORED";
   message: string;
   evidence: Record<string, unknown>;
 };
@@ -46,7 +48,7 @@ export const checkAnswer = (input: {
           evidence: { table: option.table, allRows: whole.rows, linkedRows: option.rows, linkedFrom: defined.fromTable }
         };
       }
-      if (defined?.kind === "flag" && whole && !mentions(sql, defined.column)
+      if (defined?.kind === "flag" && whole && !appliesFlag(sql, defined.column, input.question)
         && whole.rows !== undefined && option.rows !== undefined && whole.rows > 0
         && (whole.rows - option.rows) / whole.rows >= MIN_FLAGGED_SHARE) {
         return {
@@ -60,6 +62,46 @@ export const checkAnswer = (input: {
     }
     const challenge = unfaithfulReadingUsed(sql, decision);
     if (challenge) return challenge;
+  }
+  return definedMeasureIgnored(sql, input.grounding?.measures ?? [], input.question);
+};
+
+/**
+ * The question asks for a measure the data already states, and the answer's query never reads it.
+ * A named measure counts when the question names the column outright; a stated share only when the
+ * query is about the category it states (its label appears in the SQL), so an unrelated query is
+ * never challenged for it.
+ */
+const definedMeasureIgnored = (sql: string, measures: DefinedMeasure[], question: string): AnswerChallenge | undefined => {
+  // The mistake is recomputing: a query that only looks rows up has nothing to compare (biomedical-hard-3
+  // ended right with a one-patient lookup after reading APP_Z_score in an earlier query).
+  if (!computesOwnFigure(sql)) return undefined;
+  for (const measure of measures) {
+    if (measure.kind === "named") {
+      if (mentions(sql, measure.column)) continue;
+      return {
+        code: "DEFINED_MEASURE_IGNORED",
+        message: `The question asks about "${measure.phrase}", and ${measure.table} already has a column ${measure.column} `
+          + "with that measure. Your query does not read it: if the question means that value, use the column "
+          + "instead of computing your own version.",
+        evidence: { table: measure.table, column: measure.column }
+      };
+    }
+    // A stated share is a figure to point at only when it is one value; a label on several rows (one per
+    // year, or split into sub-categories) states no single figure. legal-hard-17 (2026-11-04), told only
+    // that "a Percentage" existed, summed seven sub-category rows to 3.08% instead of the stated 2.28%.
+    // It matters when the question is about shares: "Identity Theft" is named by nearly every legal question.
+    if (!measure.value || !SHARE_QUESTION.test(question)) continue;
+    // Reading that table's column is using the stated figure; another table's Percentage is not.
+    if (mentions(sql, measure.table) && mentions(sql, measure.column)) continue;
+    if (!sql.toLowerCase().includes(measure.label.toLowerCase())) continue;
+    return {
+      code: "DEFINED_MEASURE_IGNORED",
+      message: `The data states the share for "${measure.label}" directly: ${measure.table}.${measure.column} = `
+        + `${measure.value}. Your query computes the share another way: if the question means the stated figure, `
+        + "use that value.",
+      evidence: { table: measure.table, column: measure.column, label: measure.label, value: measure.value }
+    };
   }
   return undefined;
 };
@@ -91,6 +133,39 @@ const appliesAny = (sql: string, option: FrameOption): boolean => {
   const identifiers = [...(option.sqlWhere ?? "").matchAll(/"([^"]+)"/gu)].map((match) => match[1] ?? "")
     .filter((name) => name && name !== option.table);
   return identifiers.some((name) => mentions(sql, name));
+};
+
+/** Questions about a share or distribution, where a stated percentage is the figure asked for. */
+const SHARE_QUESTION = /\b(?:distribut\w*|percent(?:age)?|share|proportion|fraction|rate)\b/iu;
+
+/**
+ * The query computes a figure of its own: a division, or a spread statistic (a z-score). String literals
+ * and quoted names are left out, so a date like '2024/01' or a column named "Reports/Day" does not count.
+ */
+const computesOwnFigure = (sql: string): boolean => {
+  const code = sql.replace(/'(?:[^']|'')*'/gu, "''").replace(/"(?:[^"]|"")*"/gu, "x");
+  return /\/|\b(?:stddev\w*|stdev\w*|variance|var_pop|var_samp)\s*\(/iu.test(code);
+};
+
+/** Questions answered by a calculation over many rows, not by looking up one. */
+const AGGREGATE_QUESTION = /\b(?:average|mean|median|sum|total|count|how many|number of|percent(?:age)?|proportion|share|ratio|rate)\b/iu;
+
+/**
+ * Whether the answer's query took the flag into account.
+ *
+ * Where the flag decides which rows count, it sits in a filter (WHERE, JOIN ON, HAVING, CASE, GROUP BY).
+ * A query that only lists it is enough for a lookup: biomedical-hard-3 (2026-11-03) read one patient's
+ * Case_excluded to see whether to keep that patient, and was right. It is not enough when the answer is a
+ * calculation the query does not do: biomedical-easy-2 listed the 14 serous rows with their flag and
+ * averaged all of them, excluded ones included. SQL the parser cannot read falls back to "mentions the
+ * column", so an unreadable query is never challenged for it.
+ */
+const appliesFlag = (sql: string, column: string, question: string): boolean => {
+  const filtered = filtersOnColumn(sql, "duckdb", column);
+  if (filtered === undefined) return mentions(sql, column);
+  if (filtered) return true;
+  const listingForALookup = computesAggregate(sql, "duckdb") === false && !AGGREGATE_QUESTION.test(question);
+  return listingForALookup && mentions(sql, column);
 };
 
 const gap = (all: number | undefined, part: number | undefined): number =>

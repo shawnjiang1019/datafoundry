@@ -1,5 +1,5 @@
 import { Agent } from "@mastra/core/agent";
-import { createCustomEvent } from "@datafoundry/agent-runtime";
+import { createCustomEvent, sharedHelperMastra } from "@datafoundry/agent-runtime";
 import type { MetadataStore, SessionRecord } from "@datafoundry/metadata";
 import type { BaseEvent } from "@ag-ui/client";
 
@@ -53,6 +53,7 @@ const generateLlmTitle = async (
   const agent = new Agent({
     id: "session-title-generator",
     name: "Session Title Generator",
+    mastra: sharedHelperMastra(),
     instructions: [
       "你为数据分析 Agent 的新会话生成左侧会话列表标题。",
       "只根据用户第一条请求生成 3 到 8 个中文字符或短词。",

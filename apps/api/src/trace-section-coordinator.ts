@@ -2,6 +2,7 @@ import { EventType } from "@ag-ui/client";
 import type { RunEventEnvelope } from "@datafoundry/contracts";
 import type { MetadataStore, TraceSectionRecord } from "@datafoundry/metadata";
 import { Agent } from "@mastra/core/agent";
+import { sharedHelperMastra } from "@datafoundry/agent-runtime";
 
 const CONTEXT_STEPS_PER_SECTION_CHECK = 3;
 const MAX_CONTEXT_STEPS_PER_SUMMARY_CHUNK = 3;
@@ -43,6 +44,7 @@ export class TraceSectionCoordinator {
     this.agent = new Agent({
       id: "trace-section-summarizer",
       name: "Trace Section Summarizer",
+      mastra: sharedHelperMastra(),
       instructions: "You turn agent execution evidence into concise, user-facing task phases.",
       model: modelProvider.model as never,
       defaultOptions: {

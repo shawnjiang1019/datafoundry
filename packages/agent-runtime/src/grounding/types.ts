@@ -1,4 +1,5 @@
 import type { AnswerFrame } from "./answer-frame.js";
+import type { DefinedMeasure } from "./defined-measures.js";
 
 /**
  * Evidence-aware grounding: semantic candidates (dictionary text, names) validated against
@@ -70,6 +71,8 @@ export type EvidenceGroundingContext = {
   binding?: NoteBinding;
   /** The question the notes were made for (without response-format paragraphs). */
   question?: string;
+  /** Measures the data already defines for the question (defined-measures.ts), for the double-check. */
+  measures?: DefinedMeasure[];
   warnings: string[];
 };
 

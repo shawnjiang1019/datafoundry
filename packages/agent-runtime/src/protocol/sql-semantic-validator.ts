@@ -131,19 +131,61 @@ export const missingWhereParts = (
     return undefined;
   }
   if (Array.isArray(query) || Array.isArray(chosen)) return undefined;
-  const applied = new Set(collectSelects(query).flatMap((select) => [
-    select.where,
-    select.having,
-    ...fromItems(select).map((item) => item.on),
-    // An aggregate can select its own rows: COUNT(*) FILTER (WHERE ...) or SUM(CASE WHEN ... END).
-    ...findAggregateExpressions(select.columns).flatMap((aggregate) => [
-      asRecord(asRecord(aggregate.filter).where),
-      ...caseConditions(aggregate.args)
-    ])
-  ]).flatMap(andParts).map(canonicalPredicate));
+  const applied = new Set(rowSelections(query).flatMap(andParts).map(canonicalPredicate));
   return andParts(asRecord(chosen).where)
     .filter((part) => !applied.has(canonicalPredicate(part)))
     .map((part) => parser.exprToSQL(part as never, { database }));
+};
+
+/** Every condition that picks rows, in any SELECT of the query (CTEs and subqueries included). */
+const rowSelections = (query: unknown): unknown[] => collectSelects(query).flatMap((select) => [
+  select.where,
+  select.having,
+  ...fromItems(select).map((item) => item.on),
+  // An aggregate can select its own rows: COUNT(*) FILTER (WHERE ...) or SUM(CASE WHEN ... END).
+  ...findAggregateExpressions(select.columns).flatMap((aggregate) => [
+    asRecord(asRecord(aggregate.filter).where),
+    ...caseConditions(aggregate.args)
+  ])
+]);
+
+/**
+ * Whether the query uses the column to decide which rows count: in a WHERE, HAVING or JOIN ... ON
+ * condition, an aggregate's FILTER or CASE, any CASE WHEN of a select list, or a GROUP BY. Only listing the
+ * column does not count: on 2026-11-03 a biomedical answer selected Case_excluded to look at it,
+ * averaged every row anyway, and the double-check let it through because the SQL mentioned the
+ * column. Returns undefined when the SQL cannot be parsed, so callers can fall back to a looser test.
+ */
+export const filtersOnColumn = (sql: string, dialect: string | undefined, column: string): boolean | undefined => {
+  let query: unknown;
+  try {
+    query = parser.astify(parseableSql(sql, dialect), { database: parserDialect(dialect) });
+  } catch {
+    return undefined;
+  }
+  if (Array.isArray(query)) return undefined;
+  const wanted = normalizeIdentifier(column);
+  const conditions = [
+    ...rowSelections(query),
+    ...collectSelects(query).flatMap((select) => caseConditions(select.columns)),
+    // Grouping by the column splits the rows it marks from the rest: the answer then reads one group.
+    ...collectSelects(query).map((select) => select.groupby)
+  ];
+  return conditions.some((condition) => findColumnRefRecords(condition)
+    .some((ref) => normalizeIdentifier(columnRefName(ref) ?? "") === wanted));
+};
+
+/** Whether any SELECT of the query computes an aggregate (AVG, COUNT, MEDIAN, ...); undefined if unparseable. */
+export const computesAggregate = (sql: string, dialect: string | undefined): boolean | undefined => {
+  let query: unknown;
+  try {
+    query = parser.astify(parseableSql(sql, dialect), { database: parserDialect(dialect) });
+  } catch {
+    return undefined;
+  }
+  if (Array.isArray(query)) return undefined;
+  return collectSelects(query).some((select) => findAggregateExpressions(select.columns).length > 0
+    || findAggregateExpressions(select.having).length > 0);
 };
 
 /**

@@ -197,10 +197,25 @@ export const createRunProtocolBoundary = async (
                   reasonCode: "ANALYTIC_INTENT",
                   taskRelation: "replace" as const
                 }]
+              : []),
+            ...(!input.sessionIntent && input.semanticRequest?.datasourceId && dataLookupIntent(input.userInput)
+              ? [{
+                  protocolId: "data-analysis",
+                  protocolVersion: "1",
+                  priority: 90,
+                  reasonCode: "DATASOURCE_LOOKUP_INTENT",
+                  taskRelation: "replace" as const
+                }]
               : [])
           ],
       classificationInput: {
         userText: input.userInput,
+        // A selected datasource is a fact about the run: without it the classifier sent lookups that the
+        // data answers ("which city in both hemispheres has the highest population?") to general-task as
+        // world knowledge (KramaBench archeology-easy-6 and -hard-12, 2026-11-03, both arms).
+        // Only whether one is selected: its name misleads ("kb-archeology" read as DATASOURCE_MISMATCH for a
+        // question its worldcities table answers).
+        ...(input.semanticRequest?.datasourceId ? { datasourceSelected: true } : {}),
         ...(input.sessionIntent
           ? {
               sessionIntent: {
@@ -624,6 +639,17 @@ const stripLeadingSqlComments = (sql: string): string => {
  * semantic grounding follow the resolved route, never this regex — so a miss costs
  * one classifier call and a false hit is corrected by session-intent inheritance.
  */
+/**
+ * With a datasource selected, a question asking for a superlative, count, average, total, share or ranking
+ * is about the data, however much it sounds like world knowledge. The model classifier sent KramaBench
+ * archeology-easy-6 ("which city ... has the highest population?") and -hard-12 ("count the number of human
+ * conflicts ...") to general-task in nearly every run of both arms (2026-11-03), even when told a
+ * datasource was selected.
+ */
+const dataLookupIntent = (userInput: string): boolean =>
+  /\b(?:highest|lowest|most|least|largest|smallest|biggest|maximum|minimum|top\s+\d+|how\s+many|count|number\s+of|average|mean|median|total|sum|percent(?:age)?|proportion|ratio|rank(?:ed|ing)?)\b|最多|最少|最高|最低|多少|平均|总数|比例|排名/iu
+    .test(userInput);
+
 const analyticIntent = (userInput: string): boolean =>
   /\b(?:sql|queries?|metrics?|analytics?|analyz(?:e|ing|ed)?|analys(?:e|is|ing|ed)|statistics?|data\s+(?:analysis|query)|revenue\s+trend|group\s+by|cohort\s+analysis|retention\s+analysis|conversion\s+funnel)\b|分析|统计|查询数据|指标分析|(?:计算.*(?:数据|订单|利润|指标))|销售额分析|营收分析|订单量分析|环比分析|同比分析|留存分析|转化漏斗/iu
     .test(userInput);

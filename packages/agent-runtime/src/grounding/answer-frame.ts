@@ -4,6 +4,7 @@ import { DISABLE_THINKING_HEADER, type ModelProvider } from "@datafoundry/provid
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 import type { GroundingSchema, GroundingSqlProbe, SemanticFact } from "./types.js";
 import { quoteIdent } from "./vocabulary.js";
+import { sharedHelperMastra } from "../runtime/shared-mastra.js";
 
 const MAX_DECISIONS = 4;
 const MAX_OPTIONS = 3;
@@ -92,6 +93,7 @@ export const createModelAnswerFrameProposer = (
   const agent = new Agent({
     id: "answer-frame-proposer",
     name: "Answer Frame Proposer",
+    mastra: sharedHelperMastra(),
     instructions: "List readings of a data question as JSON. Never answer the question.",
     model: provider.model as never
   });

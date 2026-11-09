@@ -74,6 +74,24 @@ describe("checkAnswer", () => {
     })).toBeUndefined();
   });
 
+  it("counts a flag as applied only where it picks rows, not where it is only listed", () => {
+    const check = (sql: string) => checkAnswer({ question: "Average age of patients?", sql, grounding: grounding(FLAG) })?.code;
+
+    // biomedical-easy-2, 2026-11-03: the final query listed Case_excluded and the answer averaged every row.
+    expect(check("SELECT \"Proteomics_Participant_ID\", \"Age\", \"Case_excluded\" FROM clinical WHERE \"Histologic_type\" = 'Serous'"))
+      .toBe("EXCLUSION_FLAG_IGNORED");
+    expect(check("SELECT AVG(CASE WHEN \"Case_excluded\" = 'No' THEN \"Age\" END) FROM clinical")).toBeUndefined();
+    expect(check("SELECT AVG(\"Age\") FROM clinical GROUP BY \"Case_excluded\" HAVING \"Case_excluded\" = 'No'")).toBeUndefined();
+    expect(check("WITH kept AS (SELECT * FROM clinical WHERE \"Case_excluded\" <> 'Yes') SELECT AVG(\"Age\") FROM kept")).toBeUndefined();
+    // Grouping by the flag splits the marked rows from the rest.
+    expect(check("SELECT \"Case_excluded\", AVG(\"Age\") FROM clinical GROUP BY \"Case_excluded\"")).toBeUndefined();
+    // A lookup that reads the flag of the row it answers from uses it (biomedical-hard-3, right at 60).
+    expect(checkAnswer({ question: "What is the age of the patient with the lowest APP-Z score?",
+      sql: "SELECT idx, \"Age\", \"Case_excluded\" FROM clinical WHERE idx = 'S019'", grounding: grounding(FLAG) })).toBeUndefined();
+    // SQL the parser cannot read is judged by mention, so it is not challenged when it names the flag.
+    expect(check("SELECT AVG(\"Age\") FROM clinical WHERE \"Case_excluded\" = 'No' QUALIFY 1 = 1 ;; garbage(")).toBeUndefined();
+  });
+
   it("challenges the whole table when a reading that applies the question's words differs a lot", () => {
     const challenge = checkAnswer({ question: QUESTION, sql: "SELECT AVG(\"Elevation\") FROM raws", grounding: grounding(WORDS) });
 

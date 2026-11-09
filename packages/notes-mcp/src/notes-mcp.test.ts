@@ -14,7 +14,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { duckDbDatasource } from "./datasource.js";
 import { createNotesMcpServer } from "./mcp.js";
 import { NotesStore } from "./notes-store.js";
-import { createNotesTools, NotesToolError } from "./tools.js";
+import { createNotesTools, MAX_CELL_CHARS, MAX_RESULT_CHARS, NotesToolError } from "./tools.js";
 
 // A lake shaped like KramaBench wildfire-hard-17, with invented names and values: fire records
 // reference 12 of 30 stations by an integer whose only match is a zero-padded VARCHAR column in
@@ -50,7 +50,11 @@ beforeAll(async () => {
       + "\"NWS ID\" VARCHAR, \"Station Name\" VARCHAR, \"Elevation\" BIGINT)",
     `INSERT INTO raws_registry VALUES ${registry.join(", ")}`,
     "CREATE TABLE patients (patient_id VARCHAR, age BIGINT, excluded VARCHAR)",
-    `INSERT INTO patients VALUES ${patients.join(", ")}`
+    `INSERT INTO patients VALUES ${patients.join(", ")}`,
+    // A report that states each category's share, like KramaBench legal-hard-17/18.
+    "CREATE TABLE report_categories (\"Category\" VARCHAR, \"# of Reports\" BIGINT, \"Percentage\" VARCHAR)",
+    "INSERT INTO report_categories VALUES ('Identity Theft', 1135291, '17.54%'), ('Auto Related', 147561, '2.28%'), "
+      + "('Imposter Scams', 845806, '13.07%')"
   ];
   execFileSync(process.execPath, ["--input-type=module", "-e", `
     import duckdb from "duckdb";
@@ -128,6 +132,20 @@ describe("notes tools", () => {
       .toEqual({ status: "ok" });
   });
 
+  it("challenges an answer that works out a share the data already states, and not one that reads it", async () => {
+    const service = tools();
+    const question = "If 2007 had 1,070,447 reports with the same category distribution, how many would be Auto Related?";
+    const { notes_id } = await service.ground({ question, datasource: "wildfire" });
+    const computed = "SELECT ROUND(1070447 * \"# of Reports\" / (SELECT SUM(\"# of Reports\") FROM report_categories)) "
+      + "FROM report_categories WHERE \"Category\" = 'Auto Related'";
+
+    const challenge = await service.checkAnswer({ notes_id, final_sql: computed });
+    expect(challenge).toMatchObject({ status: "challenge", code: "DEFINED_MEASURE_IGNORED" });
+    expect(challenge.status === "challenge" && challenge.message).toContain("2.28%");
+    expect(await service.checkAnswer({ notes_id, final_sql: "SELECT ROUND(1070447 * CAST(REPLACE(\"Percentage\", '%', '') AS DOUBLE) / 100) "
+      + "FROM report_categories WHERE \"Category\" = 'Auto Related'" })).toEqual({ status: "ok" });
+  });
+
   it("challenges at most twice per question, then lets the answer stand", async () => {
     const service = tools();
     const { notes_id } = await service.ground({ question: STATIONS_QUESTION, datasource: "wildfire" });
@@ -145,6 +163,19 @@ describe("notes tools", () => {
     expect(await service.checkAnswer({ notes_id })).toMatchObject({ status: "ok", note: expect.stringContaining("No SQL") });
     expect(await service.runSql({ notes_id, sql: "DROP TABLE fires" })).toMatchObject({ status: "error", message: expect.stringMatching(/^Read-only/u) });
     expect(await service.runSql({ datasource: "wildfire", sql: "SELECT COUNT(*) AS n FROM fires" })).toMatchObject({ status: "ok", rows: [[60]] });
+  });
+
+  it("cuts a large result to a reply an agent can read, and says how to see the rest", async () => {
+    const big = await tools().runSql({ datasource: "wildfire", sql: "SELECT i, repeat('x', 400) AS s FROM range(5000) t(i)" });
+
+    expect(big.status).toBe("ok");
+    if (big.status !== "ok") return;
+    expect(JSON.stringify(big.rows).length).toBeLessThanOrEqual(MAX_RESULT_CHARS + 1000);
+    expect(String(big.rows[0]?.[1])).toHaveLength(MAX_CELL_CHARS + 1);
+    expect(big.row_count).toBe(1000);
+    expect(big.truncated?.note).toMatch(/^Showing \d+ of 1000\+ rows/u);
+    // A small result comes back whole, with no truncation note.
+    expect(await tools().runSql({ datasource: "wildfire", sql: "SELECT COUNT(*) AS n FROM fires" })).not.toHaveProperty("truncated");
   });
 
   it("reports caller mistakes as tool errors", async () => {

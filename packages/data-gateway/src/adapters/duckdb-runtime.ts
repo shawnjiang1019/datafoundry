@@ -42,12 +42,12 @@ export const openDuckDb = async (path: string, options: DuckDbOpenOptions = {}):
  * One open Database per file, shared by every query on it and kept for the lifetime of
  * the process.
  *
- * DuckDB takes a process-level lock on a database file and never releases it back to
- * the same process: after close() (and even after a forced GC) reopening the same path
- * fails with `IO Error: ... File is already open in <this process>`. Opening per query
- * therefore fails from the second query onwards — the cause of the "Connection was
- * already closed" errors seen across the KramaBench runs. Connections, not Databases,
- * are the per-query unit, so the handle is opened once and reused.
+ * Written when DuckDB kept a process-level lock on a closed file: reopening the same path
+ * failed with `IO Error: ... File is already open in <this process>`, so opening per query
+ * failed from the second query onwards (the "Connection was already closed" errors seen
+ * across the KramaBench runs). DuckDB 1.4.4 reopens a closed file (checked 2026-11-05), but
+ * the handle is still opened once and reused: connections, not Databases, are the
+ * per-query unit, and no query can find its database closed under it.
  *
  * Consequence for external writers: while this process has a .duckdb file open, another
  * process cannot open it read-write. Re-ingesting a file that is already in use needs a
@@ -81,8 +81,7 @@ export const acquireDuckDb = async (path: string, options: DuckDbOpenOptions = {
 const sharedKey = (path: string, options: DuckDbOpenOptions): string => options.readOnly ? `${path}\u0000readonly` : path;
 
 /**
- * Close shared handles (shutdown, tests). The paths stay unusable in this process
- * afterwards, since DuckDB will not reopen a file it has already opened.
+ * Close shared handles (shutdown, tests). A later acquire opens the file again.
  */
 export const closeSharedDuckDb = async (path?: string): Promise<void> => {
   const entries = [...shared.entries()]

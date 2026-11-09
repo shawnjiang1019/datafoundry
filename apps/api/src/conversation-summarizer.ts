@@ -2,6 +2,7 @@ import { Agent } from "@mastra/core/agent";
 import type { ConversationMessageRecord, ConversationSummaryRecord } from "@datafoundry/metadata";
 
 import { type ConversationSummarizer, type ConversationSummarizerInput } from "./conversation-memory.js";
+import { sharedHelperMastra } from "@datafoundry/agent-runtime";
 
 export type MastraConversationSummarizerInput = {
   maxOutputTokens?: number | undefined;
@@ -21,6 +22,7 @@ export class MastraConversationSummarizer implements ConversationSummarizer {
     this.agent = new Agent({
       id: "conversation-summarizer",
       name: "Conversation Summarizer",
+      mastra: sharedHelperMastra(),
       instructions: [
         "You maintain compact conversation memory for a data analysis agent.",
         "Summarize only facts, user preferences, decisions, active goals, unresolved questions, and verified results.",

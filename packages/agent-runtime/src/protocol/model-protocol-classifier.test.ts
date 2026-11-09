@@ -23,6 +23,19 @@ describe("createProtocolClassificationPrompt", () => {
     expect(prompt).not.toContain("sessionIntent");
   });
 
+  it("tells the classifier a datasource is selected, so data lookups are not routed as world knowledge", () => {
+    const candidates = [
+      { protocolId: "general-task", protocolVersion: "1" },
+      { protocolId: "data-analysis", protocolVersion: "1" }
+    ];
+    // KramaBench archeology-easy-6 (2026-11-03): routed to general-task as GENERAL_KNOWLEDGE_QA.
+    const userText = "What city contained in both the southern and western hemispheres has the highest population?";
+
+    expect(createProtocolClassificationPrompt({ candidates, value: { userText, datasourceSelected: true } }))
+      .toContain("datasourceSelected 表示本次运行已选定数据源");
+    expect(createProtocolClassificationPrompt({ candidates, value: { userText } })).not.toContain("datasourceSelected");
+  });
+
   it("adds continuation guidance when the classification input carries a session intent", () => {
     const prompt = createProtocolClassificationPrompt({
       candidates: [

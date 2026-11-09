@@ -24,7 +24,8 @@ export const createNotesMcpServer = (tools: NotesTools, datasources: string[]): 
 
   server.registerTool("run_sql", {
     description: "Run one read-only SQL query (DuckDB). Pass the notes_id from ground so the query is checked "
-      + "against the notes first: a join the data proved wrong is blocked, other problems come back with the rows.",
+      + "against the notes first: a join the data proved wrong is blocked, other problems come back with the rows. "
+      + "Large results are cut to the first rows that fit (see truncated); filter or aggregate to see more.",
     inputSchema: {
       sql: z.string().describe("One SELECT or WITH statement."),
       notes_id: z.string().optional().describe("From ground. Without it the query runs unchecked."),

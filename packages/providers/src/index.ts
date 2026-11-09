@@ -96,7 +96,7 @@ export const createThinkingSwitchFetch = (
 ): typeof fetch => async (input, init) => {
   const headers = new Headers(init?.headers);
   if (!headers.has(DISABLE_THINKING_HEADER)) {
-    return baseFetch(input, init);
+    return denseToolCallIndexes(await baseFetch(input, init));
   }
   headers.delete(DISABLE_THINKING_HEADER);
   let body = init?.body;
@@ -107,7 +107,54 @@ export const createThinkingSwitchFetch = (
       // Not a JSON body: send it unchanged.
     }
   }
-  return baseFetch(input, { ...init, headers, ...(body === undefined ? {} : { body }) });
+  return denseToolCallIndexes(await baseFetch(input, { ...init, headers, ...(body === undefined ? {} : { body }) }));
+};
+
+/**
+ * Renumber streamed tool calls 0, 1, 2... in the order they first appear. The AI SDK keeps tool calls in
+ * an array by `index` and walks it when the stream ends; GLM sometimes streams an index with a gap, the
+ * array gets a hole, and the run dies with "Cannot read properties of undefined (reading 'hasFinished')"
+ * (KramaBench archeology-hard-7, 2026-11-06). Responses that are not event streams pass through untouched.
+ */
+export const denseToolCallIndexes = (response: Response): Response => {
+  if (!response.body || !(response.headers.get("content-type") ?? "").includes("text/event-stream")) return response;
+  const dense = new Map<number, number>();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let pending = "";
+  const rewrite = (line: string): string => {
+    if (!line.startsWith("data:") || !line.includes("\"tool_calls\"")) return line;
+    try {
+      const chunk = JSON.parse(line.slice(5)) as { choices?: Array<{ delta?: { tool_calls?: Array<{ index?: unknown }> } }> };
+      let changed = false;
+      for (const choice of chunk.choices ?? []) {
+        for (const call of choice.delta?.tool_calls ?? []) {
+          if (typeof call.index !== "number") continue;
+          const next = dense.get(call.index) ?? dense.size;
+          dense.set(call.index, next);
+          if (next !== call.index) {
+            call.index = next;
+            changed = true;
+          }
+        }
+      }
+      return changed ? `data: ${JSON.stringify(chunk)}` : line;
+    } catch {
+      return line;
+    }
+  };
+  const body = response.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(bytes, controller) {
+      const lines = (pending + decoder.decode(bytes, { stream: true })).split("\n");
+      pending = lines.pop() ?? "";
+      if (lines.length > 0) controller.enqueue(encoder.encode(`${lines.map(rewrite).join("\n")}\n`));
+    },
+    flush(controller) {
+      const rest = pending + decoder.decode();
+      if (rest) controller.enqueue(encoder.encode(rewrite(rest)));
+    }
+  }));
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 };
 
 const normalizeChatProviderName = (provider: string): "openai-compatible" | undefined => {

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { AGENT_RUNTIME_LIMITS } from "../config/agent-runtime-limits.js";
 import type { ProtocolClassifier, ProtocolIdentity } from "./protocol-router.js";
+import { sharedHelperMastra } from "../runtime/shared-mastra.js";
 
 const classificationSchema = z.object({
   protocolId: z.string().min(1),
@@ -74,6 +75,7 @@ export const createModelProtocolClassifier = (
   const agent = new Agent({
     id: "protocol-route-classifier",
     name: "Protocol Route Classifier",
+    mastra: sharedHelperMastra(),
     instructions: "Classify only. Never answer the user's task.",
     model: provider.model as never
   });

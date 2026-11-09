@@ -7,6 +7,7 @@ import {
   type LongTermMemoryExtractor,
   sanitizeLongTermMemoryCandidates
 } from "./long-term-memory.js";
+import { sharedHelperMastra } from "@datafoundry/agent-runtime";
 
 export type MastraLongTermMemoryExtractorInput = {
   maxOutputTokens?: number | undefined;
@@ -27,6 +28,7 @@ export class MastraLongTermMemoryExtractor implements LongTermMemoryExtractor {
     this.agent = new Agent({
       id: "long-term-memory-extractor",
       name: "Long-Term Memory Extractor",
+      mastra: sharedHelperMastra(),
       instructions: [
         "You extract durable long-term memory for a data analysis agent.",
         "Return only strict JSON. No markdown, prose, or XML.",

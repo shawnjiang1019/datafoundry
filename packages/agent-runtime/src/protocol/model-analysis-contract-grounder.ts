@@ -16,6 +16,7 @@ import {
 } from "./analysis-contract.js";
 import type { AnalysisRequirement } from "./analysis-requirements.js";
 import type { SemanticResolution } from "../semantic/types.js";
+import { sharedHelperMastra } from "../runtime/shared-mastra.js";
 
 const groundedContractSchema = z.object({
   requirementId: z.string().min(1),
@@ -268,6 +269,7 @@ export const createModelAnalysisContractGrounder = (
   const agent = new Agent({
     id: "analysis-contract-grounder",
     name: "Analysis Contract Grounder",
+    mastra: sharedHelperMastra(),
     instructions: "Ground analysis requirements against supplied schema only. Never execute or answer the task.",
     model: provider.model as never
   });

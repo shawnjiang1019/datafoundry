@@ -10,6 +10,7 @@ import {
   type AnalysisRequirementDraft
 } from "./analysis-requirements.js";
 import { analysisAssertionDraftSchema } from "./analysis-contract.js";
+import { sharedHelperMastra } from "../runtime/shared-mastra.js";
 
 const requirementDraftSchema = z.object({
   id: z.string().optional(),
@@ -76,6 +77,7 @@ export const createModelAnalysisRequirementExtractor = (
   const agent = new Agent({
     id: "analysis-requirement-extractor",
     name: "Analysis Requirement Extractor",
+    mastra: sharedHelperMastra(),
     instructions: "Extract verification requirements only. Never answer the user's task.",
     model: provider.model as never
   });

@@ -7,7 +7,6 @@ import {
   taskUpdateTool,
   taskWriteTool
 } from "@mastra/core/harness";
-import { Mastra } from "@mastra/core/mastra";
 import { WorkingMemory } from "@mastra/core/processors";
 import { createSkillTools, createWorkspaceTools } from "@mastra/core/workspace";
 import type { Message } from "@ag-ui/core";
@@ -74,6 +73,7 @@ import {
 import { createMastraStreamNormalizerHooks } from "./stream/mastra-stream-hooks.js";
 import { createTokenUsageCorrelationStore } from "./stream/token-usage-correlation.js";
 import { wrapAgentForAgUi } from "./stream/mastra-stream-normalizer.js";
+import { sharedHelperMastra, sharedMastraFor } from "./runtime/shared-mastra.js";
 import type { AgentRunContext, AgentRunContextInput, AgUiEventEmitter } from "./types.js";
 import { createCustomEvent } from "./events.js";
 import { createTool, type ToolAction } from "@mastra/core/tools";
@@ -707,6 +707,8 @@ export const createDataFoundry = async (
       workspaceAttachments
     }),
     model: input.modelProvider.model as never,
+    // A shared Mastra, never one per run: each Mastra keeps timers alive (see runtime/shared-mastra.ts).
+    mastra: input.taskStateRuntime ? sharedMastraFor(input.taskStateRuntime.storage) : sharedHelperMastra(),
     tools,
     ...(input.taskStateRuntime ? { memory: input.taskStateRuntime.memory } : {}),
     ...(input.goal ? { goal: { judge: input.modelProvider.model as never, maxRuns: input.goal.maxRuns ?? 10 } } : {}),
@@ -753,14 +755,8 @@ export const createDataFoundry = async (
       : {}),
     { ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}) },
   );
-  const mastra = input.taskStateRuntime
-    ? new Mastra({
-        agents: { dataFoundry: agentForAgUi },
-        storage: input.taskStateRuntime.storage
-      })
-    : undefined;
   let goalRuntime: GoalRuntimeAdapter | undefined;
-  if (input.goal && mastra) {
+  if (input.goal && input.taskStateRuntime) {
     goalRuntime = new GoalRuntimeAdapter(agentForAgUi, input.runContext.user_id, input.runContext.session_id);
     const snapshot = await goalRuntime.setObjective(input.goal);
     // R-016: stable goal.updated contract. `objective` is the spec key; `goal` is kept
@@ -849,6 +845,7 @@ export const probeModelProvider = async (
   const agent = new Agent({
     id: "model-profile-probe",
     name: "Model Profile Probe",
+    mastra: sharedHelperMastra(),
     instructions: "Reply with OK only.",
     model: provider.model as never
   });
@@ -1583,6 +1580,7 @@ export { buildHelperContext } from "./context/helper-context.js";
 export type * from "./context/helper-context.js";
 export { createModelProtocolClassifier } from "./protocol/model-protocol-classifier.js";
 export { createRunProtocolBoundary } from "./protocol/run-protocol-boundary.js";
+export { sharedHelperMastra, sharedMastraFor } from "./runtime/shared-mastra.js";
 export type * from "./protocol/run-protocol-boundary.js";
 export { createGeneralTaskProtocol } from "./protocol/protocols/general-task.js";
 export { createDataAnalysisProtocol } from "./protocol/protocols/data-analysis.js";

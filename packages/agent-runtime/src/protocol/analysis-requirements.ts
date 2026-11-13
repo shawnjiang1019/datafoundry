@@ -4,6 +4,7 @@ import {
   type AnalysisAssertion,
   type AnalysisAssertionDraft,
   type AnalysisClaimValue,
+  type AnalysisScalar,
   type AnalysisValidationFinding,
   type AnalysisVerifiedValue
 } from "./analysis-contract.js";
@@ -51,6 +52,8 @@ export type AnalysisQueryAttempt = {
   artifactId?: string;
   auditLogId?: string;
   resultFields: string[];
+  /** The first rows of the result, kept so the answer check can tell which query an answer came from. */
+  resultRows?: AnalysisScalar[][];
   validationFindings: AnalysisValidationFinding[];
   resultValidationFindings: AnalysisValidationFinding[];
   verifiedValues: AnalysisVerifiedValue[];

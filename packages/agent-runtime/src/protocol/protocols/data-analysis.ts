@@ -427,6 +427,10 @@ export const reduceDataAnalysisAction = (
     const artifactId = nestedArtifactId(result);
     const auditLogId = nestedString(result, "result", "audit_log_id");
     const resultFields = nestedStrings(result, "result", "columns");
+    const resultRows = recordArray(recordValue(result, "result"), "rows")
+      .slice(0, KEPT_RESULT_ROWS)
+      .filter(Array.isArray)
+      .map((row) => (row as unknown[]).slice(0, KEPT_RESULT_COLUMNS).map(scalarCell));
     return {
       ...state,
       queryExecuted: true,
@@ -438,7 +442,8 @@ export const reduceDataAnalysisAction = (
         status: "executed",
         ...(artifactId ? { artifactId } : {}),
         ...(auditLogId ? { auditLogId } : {}),
-        resultFields
+        resultFields,
+        ...(resultRows.length > 0 ? { resultRows } : {})
       }))
     };
   }
@@ -1026,6 +1031,13 @@ const recordArray = (value: unknown, key: string): unknown[] => {
   const field = recordValue(value, key);
   return Array.isArray(field) ? field : [];
 };
+
+/** Enough rows to find an answer value in, small enough to keep in the run state. */
+const KEPT_RESULT_ROWS = 50;
+const KEPT_RESULT_COLUMNS = 20;
+
+const scalarCell = (cell: unknown): AnalysisScalar =>
+  isAnalysisScalar(cell) ? cell : typeof cell === "bigint" ? Number(cell) : String(cell);
 
 const parseClaimValue = (value: unknown): AnalysisClaimValue => {
   const name = recordString(value, "name");

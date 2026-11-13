@@ -998,6 +998,8 @@ ANSWER_FORMAT_INSTRUCTION = (
     "a short string, or a JSON list such as [\"a\", \"b\"]. "
     "Keep full precision in every intermediate step and round only this final value, exactly as the question "
     "asks; if the question gives no rounding, give at least 4 significant digits. "
+    "Precision is about rounding only: when the data already states a value the question asks about, "
+    "use that stated value rather than recomputing a more precise one. "
     "When the answer is a name or label from the data, copy it exactly as the data writes it, in full; "
     "do not shorten or reword it. "
     "Always write this FINAL_ANSWER line in English, whatever language the rest of the response uses."

@@ -275,6 +275,7 @@ describe("formal protocols", () => {
     });
 
     expect(state.requirements.find((requirement) => requirement.id === "R1")?.status).toBe("evidenced");
+    expect(state.queryAttempts.at(-1)?.resultRows).toEqual([[0]]);
     expect(protocol.completionPolicy({ contextPackageRef, state })).toMatchObject({
       status: "continue",
       reasons: expect.arrayContaining(["ANALYSIS_REQUIREMENT_NOT_REPORTED:R1", "ANALYSIS_REQUIREMENT_PENDING:R2"])

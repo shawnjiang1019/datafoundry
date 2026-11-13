@@ -228,14 +228,30 @@ export const openDecisionReasons = (decisions: AnalysisDecision[]): string[] => 
   .filter((decision) => decision.status === "open" && decision.impact === "high")
   .map((decision) => `ANALYSIS_DECISION_OPEN:${decision.id}`);
 
-/** The option a choice refers to: its number (1-based), or its text ignoring case and spacing. */
-const matchOption = (choice: string, options: string[]): string | undefined => {
-  const number = /^(?:option|reading)?\s*(\d+)$/iu.exec(choice.trim());
-  if (number) {
-    return options[Number(number[1]) - 1];
+/**
+ * The option a choice refers to, or undefined when it names none or is ambiguous. Accepted forms:
+ * its number ("2", "Reading 2", "Option 2"), a number that opens a longer choice ("2. text",
+ * "Reading 2: text"), its text ignoring case and spacing, a choice that starts with an option's text,
+ * or exactly one "(reading N)" mention. A number whose text names a different option is ambiguous.
+ */
+export const matchOption = (choice: string, options: string[]): string | undefined => {
+  const key = (value: string): string => value.toLowerCase().replaceAll(/[\s'"`]+/gu, " ").replace(/[.:;,]+$/u, "").trim();
+  const trimmed = choice.trim();
+  const exact = options.find((option) => key(option) === key(trimmed));
+  if (exact !== undefined) return exact;
+  const leading = /^(?:option|reading)?\s*#?(\d+)\s*(?:[.:)\-\u2013\u2014]\s*|$)(.*)$/isu.exec(trimmed);
+  if (leading) {
+    const byNumber = options[Number(leading[1]) - 1];
+    const rest = key(leading[2] ?? "");
+    const byText = rest ? options.find((option) => key(option) === rest || rest.startsWith(key(option))) : undefined;
+    if (byNumber === undefined) return undefined;
+    return byText === undefined || byText === byNumber ? byNumber : undefined;
   }
-  const key = (value: string): string => value.toLowerCase().replaceAll(/\s+/gu, " ").trim();
-  return options.find((option) => key(option) === key(choice));
+  const starts = options.filter((option) => key(option).length >= 12 && key(trimmed).startsWith(key(option)));
+  if (starts.length === 1) return starts[0];
+  const mentions = unique([...trimmed.matchAll(/\b(?:reading|option)\s*#?(\d+)\b/giu)].map((match) => match[1] ?? ""));
+  if (mentions.length === 1) return options[Number(mentions[0]) - 1];
+  return undefined;
 };
 
 const readResolution = (value: unknown): AnalysisDecisionResolution | undefined => {

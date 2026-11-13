@@ -407,11 +407,18 @@ describe("formal protocols", () => {
       claims: [{
         requirement_id: "R1",
         claim: "提交未验证指标",
-        values: [{ name: "unknown_rate", value: 0.4 }]
+        values: [{ name: "unknown_rate", value: 0.7 }]
       }]
     })).toThrow(
-      "ANALYSIS_CLAIM_VALUE_UNKNOWN:R1:unknown_rate: use an exact verified name; allowed names: conversion_rate."
+      "ANALYSIS_CLAIM_VALUE_UNKNOWN:R1:unknown_rate: use one of the verified values (name=value): conversion_rate=0.4."
     );
+    // A name that is not verified takes the verified name of the one value it equals; the unit check still applies.
+    expect(() => reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "订单转化率为 40%", values: [{ name: "rate_pct", value: 0.4 }] }]
+    })).toThrow('ANALYSIS_CLAIM_VALUE_MISMATCH:R1:conversion_rate: expected value=0.4, unit="%"');
+    expect(() => reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "订单转化率为 40%", values: [{ name: "rate_pct", value: 0.4, unit: "%" }] }]
+    })).not.toThrow();
     expect(() => reduceDataAnalysisAction(state, "analysis.requirements.commit", {
       claims: [{
         requirement_id: "R1",
@@ -628,5 +635,20 @@ describe("formal protocols", () => {
     });
 
     expect(committed.requirements.find((requirement) => requirement.id === "R1")?.status).toBe("reported");
+
+    // A unit on a unitless verified value is a label, not a different value.
+    const withUnit = reduceDataAnalysisAction(state, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "Average age is 68.5 years", values: [{ name: "avg_age", value: 68.5, unit: "years" }] }]
+    });
+    expect(withUnit.reportedClaims.at(-1)?.values).toEqual([{ name: "avg_age", value: 68.5 }]);
+    // Re-sending the accepted claim unchanged is accepted and adds nothing.
+    const again = reduceDataAnalysisAction(committed, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "Average age is 68.5", values: [{ name: "mean_age", value: 68.5 }] }]
+    });
+    expect(again.reportedClaims).toHaveLength(committed.reportedClaims.length);
+    // A different value is still checked against the verified result.
+    expect(() => reduceDataAnalysisAction(committed, "analysis.requirements.commit", {
+      claims: [{ requirement_id: "R1", claim: "Average age is 68.1", values: [{ name: "avg_age", value: 68.1 }] }]
+    })).toThrow("ANALYSIS_CLAIM_VALUE_MISMATCH:R1:avg_age");
   });
 });

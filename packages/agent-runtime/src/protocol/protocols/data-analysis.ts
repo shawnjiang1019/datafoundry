@@ -683,6 +683,43 @@ const assertAdvisoryClaim = (
   }
 };
 
+/**
+ * Match submitted claim values to verified ones before checking them. A value whose name is not a
+ * verified name takes the name of the one verified value with the same number (none or several:
+ * left as is, so the check still rejects it). A unit is dropped when the verified value has none:
+ * "%" or "count" on a unitless result is a label, not a different value. The value itself is never
+ * changed, so every check below still compares it with the executed result.
+ */
+const resolveClaimValues = (values: AnalysisClaimValue[], verified: AnalysisVerifiedValue[]): AnalysisClaimValue[] => {
+  const names = new Set(verified.map((candidate) => candidate.name));
+  const taken = new Set(values.filter((value) => names.has(value.name)).map((value) => value.name));
+  return values.map((value) => {
+    let resolved = value;
+    if (!names.has(value.name)) {
+      const byValue = unique(verified.filter((candidate) => !taken.has(candidate.name)
+        && sameScalar(candidate.value, value.value, candidate.tolerance)).map((candidate) => candidate.name));
+      if (byValue.length === 1) {
+        resolved = { ...value, name: byValue[0]! };
+        taken.add(byValue[0]!);
+      }
+    }
+    const units = verified.filter((candidate) => candidate.name === resolved.name).map((candidate) => candidate.unit);
+    if (resolved.unit !== undefined && units.length > 0 && units.every((unit) => unit === undefined)) {
+      const { unit: _unit, ...withoutUnit } = resolved;
+      resolved = withoutUnit;
+    }
+    return resolved;
+  });
+};
+
+const claimValueKey = (values: AnalysisClaimValue[]): string =>
+  JSON.stringify(values.map((value) => [value.value]).sort());
+
+/** True when the requirement already has a reported claim carrying the same values. */
+const sameReportedValues = (state: DataAnalysisState, requirementId: string, values: AnalysisClaimValue[]): boolean =>
+  values.length > 0 && normalizedReportedClaims(state).some((claim) =>
+    claim.requirementId === requirementId && claimValueKey(claim.values ?? []) === claimValueKey(values));
+
 const sameScalar = (left: unknown, right: unknown, tolerance: number): boolean =>
   typeof left === "number" && typeof right === "number"
     ? Math.abs(left - right) <= Math.max(tolerance, Math.abs(left) * 1e-9)
@@ -859,7 +896,10 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
         + evidenceInvalidReason(next, requirementId, evidenceRefs)
       );
     }
-    const values = recordArray(value, "values").map(parseClaimValue);
+    const submitted = recordArray(value, "values").map(parseClaimValue);
+    // Re-sending an already accepted claim unchanged is not new evidence to check again: the agent
+    // often re-commits every claim when it commits the last one, after newer queries changed the bindings.
+    if (requirement?.status === "reported" && sameReportedValues(next, requirementId, submitted)) continue;
     const boundAttemptIds = new Set(validBindings.map((binding) => binding.queryAttemptId));
     const boundAttempts = normalizedQueryAttempts(next).filter((attempt) => boundAttemptIds.has(attempt.id));
     const requirementAssertionIds = new Set(boundAttempts.flatMap((attempt) => attempt.assertions
@@ -867,6 +907,7 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
       .map((assertion) => assertion.id)));
     const verifiedValues = boundAttempts.flatMap((attempt) => attempt.verifiedValues ?? [])
       .filter((verifiedValue) => requirementAssertionIds.has(verifiedValue.assertionId));
+    const values = resolveClaimValues(submitted, verifiedValues);
     if (next.contractAdvisory) {
       assertAdvisoryClaim(next, requirementId, values, verifiedValues, boundAttempts, requirement?.assertions ?? []);
     }
@@ -891,7 +932,8 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
       }
     }
     const requiredValueNames = unique(requiredValueSpecs.map((spec) => spec.name));
-    validateClaimValues(requirementId, values, verifiedValues, requiredValueNames);
+    validateClaimValues(requirementId, values, verifiedValues, requiredValueNames,
+      (requirement?.assertions ?? []).filter((assertion) => assertion.kind !== "manual").map((assertion) => assertion.id));
     const claimId = `C${next.reportedClaims.length + 1}`;
     next.reportedClaims.push({
       id: claimId,
@@ -1051,7 +1093,8 @@ const validateClaimValues = (
   requirementId: string,
   values: AnalysisClaimValue[],
   verifiedValues: AnalysisVerifiedValue[],
-  requiredValueNames: string[]
+  requiredValueNames: string[],
+  assertionIds: string[] = []
 ): void => {
   const submittedNames = new Set<string>();
   for (const value of values) {
@@ -1062,10 +1105,14 @@ const validateClaimValues = (
     const verified = named.find((candidate) => candidate.unit === value.unit
       && claimScalarsEqual(value.value, candidate.value, candidate.tolerance)) ?? named.at(-1);
     if (!verified) {
-      const allowedNames = unique(verifiedValues.map((candidate) => candidate.name)).join(", ") || "none";
+      const allowed = unique(verifiedValues.map((candidate) => `${candidate.name}=${JSON.stringify(candidate.value)}`));
       throw new Error(
-        `ANALYSIS_CLAIM_VALUE_UNKNOWN:${requirementId}:${value.name}: use an exact verified name; `
-        + `allowed names: ${allowedNames}.`
+        `ANALYSIS_CLAIM_VALUE_UNKNOWN:${requirementId}:${value.name}: `
+        + (allowed.length > 0
+          ? `use one of the verified values (name=value): ${allowed.join(", ")}.`
+          : `no value is verified for ${requirementId} yet: a value is verified only by a validated query run with `
+            + `requirement_ids [${requirementId}]${assertionIds.length > 0 ? ` and assertion_ids [${assertionIds.join(", ")}]` : ""}`
+            + ` that returns it as a column. Run that query, then cite its artifact_id in evidence_refs.`)
       );
     }
     const unitMatches = verified.unit === value.unit;

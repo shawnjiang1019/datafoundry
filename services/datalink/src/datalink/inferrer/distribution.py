@@ -56,7 +56,8 @@ class DistributionInferrer:
                 if profile_a.dtype != profile_b.dtype:
                     continue
 
-                similarity = self._compute_similarity(profile_a, profile_b)
+                # Rounding can put a perfect match just past 1.0, which Edge.confidence rejects.
+                similarity = min(self._compute_similarity(profile_a, profile_b), 1.0)
                 if similarity >= self.similarity_threshold:
                     edge = Edge(
                         id=f"edge:dist_similar:{col_a.id}:{col_b.id}",

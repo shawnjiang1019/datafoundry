@@ -60,7 +60,9 @@ type ResolvedMcpTool = {
 
 const MAX_TOOL_NAME_LENGTH = 64;
 const DEFAULT_MAX_ITERATIONS = 32;
-const DEFAULT_MCP_TIMEOUT_MS = 30000;
+// DF_MCP_TIMEOUT_MS overrides the default for servers whose config sets none: DataLink explore calls on
+// a large graph (environment: 6,598 edges) ran past 30 s during KramaBench runs.
+const DEFAULT_MCP_TIMEOUT_MS = positiveInt(process.env.DF_MCP_TIMEOUT_MS) ?? 30000;
 
 /** AG-UI MCP loop with runtime tool allowlist and timeout policy applied before tool injection. */
 export class PolicyMcpMiddleware extends Middleware {
@@ -332,6 +334,11 @@ export const callPolicyMcpTool = async (
     return stringifyMcpResult(result);
   } catch (error) {
     console.error(`[PolicyMcpMiddleware] Tool execution failed for ${toolName}:`, error);
+    if (String(error).includes("MCP_TIMEOUT:")) {
+      // A timed-out call usually times out again: say so, so the agent moves on instead of retrying it.
+      return `Error executing tool ${toolName}: no answer within ${serverConfig.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS} ms. `
+        + "Do not repeat this call; continue with the schema, previews and SQL instead.";
+    }
     return `Error executing tool ${toolName}: ${String(error)}`;
   } finally {
     await closeClient(client);
@@ -436,3 +443,8 @@ const closeClient = async (client: Client | undefined): Promise<void> => {
 };
 
 const sanitizeMcpName = (value: string): string => value.replace(/[^a-zA-Z0-9_-]/gu, "_");
+
+function positiveInt(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}

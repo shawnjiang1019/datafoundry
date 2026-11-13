@@ -420,7 +420,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                 try:
                     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                 "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
-                    _fix_csv_header(con, name, path)
+                    _fix_csv_header(con, name, path, notes)
                 except duckdb.InvalidInputException:
                     # Several KramaBench CSVs are Windows-1252 (curly quotes, en dashes in 0x80-0x9F),
                     # which DuckDB's latin-1 reader rejects; transcode to a UTF-8 copy first.
@@ -431,9 +431,11 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                     try:
                         con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
                                     "SELECT * FROM read_csv_auto(?, sample_size=-1)", [utf8_copy])
-                        _fix_csv_header(con, name, utf8_copy)
+                        _fix_csv_header(con, name, utf8_copy, notes)
                     finally:
                         os.remove(utf8_copy)
+                if ext == ".txt":
+                    _reload_plain_list(con, name, path, notes)
                 made += 1
             elif ext in (".parquet", ".pq"):
                 con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM read_parquet(?)', [path])
@@ -858,7 +860,8 @@ def _best_delimiter(lines: list[str]) -> str:
     return max([",", "\t", ";", "|"], key=score)
 
 
-def _fix_csv_header(con, name: str, path: str) -> None:
+def _fix_csv_header(con, name: str, path: str,
+                    notes: dict[str, list[tuple[str, str]]] | None = None) -> None:
     """Re-read a CSV whose header or delimiter DuckDB got wrong.
 
     Two shapes appear in the KramaBench lakes: title/licence lines before the header
@@ -874,8 +877,6 @@ def _fix_csv_header(con, name: str, path: str) -> None:
         or any("\t" in c for c in columns)
         or sum(1 for c in columns if _looks_numeric(c)) > len(columns) / 2
     )
-    if not degenerate:
-        return
     with open(path, encoding="utf-8", errors="replace") as handle:
         lines = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
     if not lines:
@@ -883,6 +884,15 @@ def _fix_csv_header(con, name: str, path: str) -> None:
     delimiter = _best_delimiter(lines)
     rows = [_split_csv_line(line, delimiter) for line in lines]
     skip = detect_header_row(rows)
+    if not degenerate:
+        # DuckDB's sniffer may have skipped title lines itself; keep them when it read the
+        # header this file's scan found below them.
+        if skip and [c.strip() for c in rows[skip]] == [c.strip() for c in columns]:
+            found = preheader_notes(rows[:skip], [_named(c) for c in columns])
+            if notes is not None and found:
+                notes.setdefault(name, []).extend(found)
+                print(f"[ingest] {name}: {len(found)} note(s) kept from {skip} line(s) above the header")
+        return
     # A file of pure data (e.g. the SILSO sunspot series) has no header-like row at all;
     # reading one anyway would consume a data row and name the columns after its values.
     headed = _header_row_score(rows[skip]) > 0 if skip < len(rows) else False
@@ -893,8 +903,16 @@ def _fix_csv_header(con, name: str, path: str) -> None:
     except Exception as error:  # noqa: BLE001 — keep whatever the first read produced
         print(f"[ingest] {name}: kept the sniffed layout ({str(error).splitlines()[0][:80]})")
         return
+    found: list[tuple[str, str]] = []
+    if headed and skip:
+        final = [r[0] for r in con.execute(
+            "select column_name from information_schema.columns where table_name = ? "
+            "order by ordinal_position", [name]).fetchall()]
+        found = preheader_notes(rows[:skip], [_named(c) for c in final])
+        if notes is not None and found:
+            notes.setdefault(name, []).extend(found)
     print(f"[ingest] {name}: re-read with delimiter {delimiter!r}"
-          + (f", skipping {skip} preamble row(s)" if headed and skip else "")
+          + (f", skipping {skip} preamble row(s) ({len(found)} kept as notes)" if headed and skip else "")
           + ("" if headed else ", no header row (columns named positionally)"))
 
 
@@ -919,6 +937,75 @@ def _looks_numeric(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def plain_text_list(path: str) -> list[str] | None:
+    """The lines of a text file that is a plain list (no delimiter on any line), else None.
+
+    Read as CSV, such a file loses its first item to the header.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            lines = [line.strip() for line in handle if line.strip()]
+    except OSError:
+        return None
+    if len(lines) < 2 or any(sep in line for line in lines for sep in (",", "\t", ";", "|")):
+        return None
+    # Same word count on every line with numbers in it: a space-separated table, not a list.
+    widths = {len(line.split()) for line in lines}
+    if len(widths) == 1 and widths != {1} and any(re.fullmatch(r"-?[\d.]+", w) for line in lines[1:] for w in line.split()):
+        return None
+    return lines
+
+
+def _reload_plain_list(con, name: str, path: str, notes: dict) -> None:
+    """Reload a one-column text file as a plain list, so its first line stays a row."""
+    if len(con.execute(f'DESCRIBE "{name}"').fetchall()) != 1:
+        return
+    items = plain_text_list(path)
+    if not items:
+        return
+    con.execute(f'CREATE OR REPLACE TABLE "{name}" ("value" VARCHAR)')
+    con.executemany(f'INSERT INTO "{name}" VALUES (?)', [[item] for item in items])
+    notes.setdefault(name, []).append(("note", "A plain list: one value per line, no header row"))
+    print(f"[ingest] {name}: plain list -> {len(items)} row(s)")
+
+
+def _blank(value) -> bool:
+    return value is None or str(value).strip() in ("", "nan", "NaN", "None")
+
+
+def preheader_notes(above: list[list], columns: list[str | None]) -> list[tuple[str, str]]:
+    """Notes from the rows above a table's header, which loading the table drops.
+
+    Those rows are the authors' own text: a title, notes, a units row. A row with one filled
+    cell in the first column is a line of text (the first one the title). A row whose cells sit
+    over named columns, such as '(ppm)' over Al and K, says something about each of them and
+    becomes `"<column>: <text>"` column notes. `columns` gives the final column name at each
+    position, None where the column was dropped or has no real name.
+    """
+    notes: list[tuple[str, str]] = []
+    for row in above:
+        cells = [(index, str(value).strip()) for index, value in enumerate(row) if not _blank(value)]
+        if not cells:
+            continue
+        if len(cells) == 1 and cells[0][0] == 0:
+            notes.append(("title" if not notes else "note", cells[0][1]))
+            continue
+        loose = []
+        for index, text in cells:
+            column = columns[index] if index < len(columns) else None
+            if column:
+                notes.append(("column", f"{column}: {text}"))
+            else:
+                loose.append(text)
+        if loose:
+            notes.append(("note", " ".join(loose)))
+    return notes
+
+
+def _named(column: str) -> str | None:
+    return None if _GENERIC_COLUMN.match(column) else column
 
 
 def detect_header_row(rows: list[list]) -> int:
@@ -972,10 +1059,16 @@ def _load_workbook(con, path: str, name: str, override: dict | None = None,
                 # Re-read through pandas so duplicate names get its .1/.2 suffixes, which is
                 # what the KramaBench reference pipelines refer to (e.g. 'Age_ky.1').
                 df = pd.read_excel(path, sheet_name=sheet, header=header_index)
+                positional = [str(c) for c in df.columns]
                 df = df.dropna(axis=1, how="all").dropna(axis=0, how="all")
                 if header_index > 0:
+                    kept = {str(c) for c in df.columns}
+                    found = preheader_notes(rows[:header_index],
+                                            [_named(c) if c in kept else None for c in positional])
+                    if notes is not None and found:
+                        notes.setdefault(table, []).extend(found)
                     print(f"[ingest] {table}: header row {header_index} "
-                          f"({', '.join(str(c) for c in df.columns[:6])}…)")
+                          f"({', '.join(str(c) for c in df.columns[:6])}…), {len(found)} note(s) kept from above it")
         df.columns = [str(c) for c in df.columns]
         for col in df.columns[df.dtypes == object]:
             df[col] = df[col].astype("string")  # mixed-type columns break DuckDB's type inference

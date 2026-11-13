@@ -4,7 +4,7 @@ import {
   renderOptionResults,
   type AnalysisDecision
 } from "./analysis-decisions.js";
-import { finalAnswerValue } from "./answer-form-check.js";
+import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { ProtocolRunState } from "./types.js";
 
@@ -35,7 +35,7 @@ const mentions = (text: string, value: string): boolean => {
 export const decisionOutcomeIssue = (decisions: AnalysisDecision[], response: string): string | undefined => {
   const changing = answerChangingDecisions(decisions);
   if (changing.length === 0) return undefined;
-  const answer = finalAnswerValue(response);
+  const answer = finalAnswerText(response);
   const issues: string[] = [];
   for (const decision of changing) {
     const results = decision.optionResults ?? [];

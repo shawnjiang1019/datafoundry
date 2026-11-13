@@ -1,4 +1,5 @@
 import { checkAnswer } from "../grounding/answer-check.js";
+import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { AnalysisScalar } from "./analysis-contract.js";
 import type { AnalysisQueryAttempt } from "./analysis-requirements.js";
@@ -77,7 +78,7 @@ type AnswerValue = { number: number; tolerance: number } | string | AnswerValue[
 
 /** The value on the run's last FINAL_ANSWER line, or undefined when there is none. */
 export const finalAnswerValue = (text: string): AnswerValue | undefined => {
-  const line = [...text.matchAll(/FINAL_ANSWER\s*[:：]\s*(.+)/giu)].at(-1)?.[1];
+  const line = finalAnswerText(text);
   return line === undefined ? undefined : parseAnswer(line);
 };
 
@@ -128,8 +129,6 @@ const attemptHolds = (attempt: AnalysisQueryAttempt, answer: AnswerValue): boole
     || attempt.verifiedValues.some((verified) => cellMatches(verified.value, answer));
 };
 
-const answerLabel = (text: string): string | undefined =>
-  [...text.matchAll(/FINAL_ANSWER\s*[:：]\s*(.+)/giu)].at(-1)?.[1]?.trim();
 
 /**
  * Multi-stage notes: in check mode the agent never sees the frame. When it tries to finish, the query its
@@ -154,7 +153,7 @@ export const createAnswerCheck = (input: { getState: () => ProtocolRunState; max
         const sql = finalAnswerSql(domain, text);
         if (!sql) return { score: 1 };
         const challenge = checkAnswer({ question: domain.evidenceGrounding.question ?? "", sql, grounding: domain.evidenceGrounding });
-        const answer = text === undefined ? undefined : answerLabel(text);
+        const answer = text === undefined ? undefined : finalAnswerText(text);
         const repeated = challenge !== undefined && answer !== undefined
           && last?.code === challenge.code && last.answer === answer;
         reason = challenge

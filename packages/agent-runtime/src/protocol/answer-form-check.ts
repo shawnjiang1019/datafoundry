@@ -1,3 +1,4 @@
+import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { ProtocolRunState } from "./types.js";
 
@@ -10,15 +11,6 @@ import type { ProtocolRunState } from "./types.js";
  */
 
 const DEFAULT_MAX_CHALLENGES = 1;
-
-/** The value after the last FINAL_ANSWER: marker, without markdown emphasis or quotes. */
-export const finalAnswerValue = (text: string): string | undefined => {
-  const matches = [...text.matchAll(/FINAL_ANSWER\s*:\s*\**\s*(.+?)\s*$/gimu)];
-  const raw = matches.at(-1)?.[1];
-  if (raw === undefined) return undefined;
-  const value = raw.replace(/\*+$/u, "").replace(/^[`"']+|[`"']+$/gu, "").trim();
-  return value.length > 0 ? value : undefined;
-};
 
 const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
 
@@ -72,7 +64,7 @@ export const answerFormIssue = (input: { question: string; answer: string; respo
   const shownDecimals = (/\.(\d+)/u.exec(compact)?.[1] ?? "").length;
   if (decimals !== undefined && shownDecimals > decimals) {
     issues.push(`The question asks for ${decimals === 0 ? "an integer" : `${decimals} decimal place${decimals === 1 ? "" : "s"}`}, `
-      + `but the final answer ${answer} has ${shownDecimals}. Round the full-precision value once, at the end.`);
+      + `but the final answer ${answer} has ${shownDecimals}. Round it once, at the end.`);
   }
 
   // Percent vs proportion: a rate or percentage below 1 that the question or the agent's own text
@@ -85,7 +77,8 @@ export const answerFormIssue = (input: { question: string; answer: string; respo
   if (!compact.endsWith("%") && value !== 0 && Math.abs(value) < 1 && !proportionWords.test(question)
       && (asksPercent || (asksRate && responseSpeaksPercent))) {
     issues.push(`The question asks for a ${asksPercent ? "percentage" : "rate"} and the final answer ${answer} is below 1. `
-      + "If it is a proportion (0-1), the percentage is the full-precision value times 100, rounded once at the end"
+      + "If it is a proportion (0-1), the percentage is the unrounded proportion times 100 (not the rounded answer "
+      + "times 100), rounded once at the end"
       + (decimals !== undefined ? ` to ${decimals} decimal place${decimals === 1 ? "" : "s"}` : "")
       + ". Use the unit the question and the data use for this rate (check how the question and your own summary "
       + "state it); if the answer is already in percent, keep it.");
@@ -97,7 +90,7 @@ export const answerFormIssue = (input: { question: string; answer: string; respo
  * How to act on a challenge. Environment-hard-7 (2026-11-13) agreed the answer should be 10.87, then
  * repeated its committed 0.11: the commit result had said "do not commit again", so it never changed it.
  */
-const CHANGE_STEPS = "If you change the value: compute it in a query (for example 100 * the proportion at full precision), "
+const CHANGE_STEPS = "If you change the value: compute it in a query (for example 100 * the proportion, before any rounding), "
   + "commit it again with analysis_requirements_commit (a new value replaces the committed one), and give that value "
   + "as FINAL_ANSWER. If you keep it, say why in one sentence and give FINAL_ANSWER again.";
 
@@ -125,7 +118,7 @@ export const createAnswerFormCheck = (input: { getState: () => ProtocolRunState;
       let reason: string | undefined;
       try {
         const response = typeof args?.output === "string" ? args.output : "";
-        const answer = finalAnswerValue(response);
+        const answer = finalAnswerText(response);
         if (!answer) return { score: 1 };
         let state: ProtocolRunState | undefined;
         try {

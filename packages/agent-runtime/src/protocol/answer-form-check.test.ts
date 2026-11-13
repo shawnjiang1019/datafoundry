@@ -4,9 +4,9 @@ import {
   allowedAnswers,
   answerFormIssue,
   createAnswerFormCheck,
-  finalAnswerValue,
   requestedDecimals
 } from "./answer-form-check.js";
+import { finalAnswerText } from "./final-answer.js";
 import type { ProtocolRunState } from "./types.js";
 
 const HARD_7 = "What was the difference in bacterial exceedance rates (to 2 decimal places) for marine beach samples "
@@ -20,10 +20,12 @@ const state = (question?: string): ProtocolRunState => ({
 }) as unknown as ProtocolRunState;
 
 describe("answer form", () => {
-  it("reads the last FINAL_ANSWER value", () => {
-    expect(finalAnswerValue("draft FINAL_ANSWER: 1\n...\nFINAL_ANSWER: **0.11**")).toBe("0.11");
-    expect(finalAnswerValue("FINAL_ANSWER: \"Marine\"")).toBe("Marine");
-    expect(finalAnswerValue("no marker here")).toBeUndefined();
+  it("reads the last FINAL_ANSWER value the same way for every check", () => {
+    expect(finalAnswerText("draft FINAL_ANSWER: 1\n...\nFINAL_ANSWER: **0.11**")).toBe("0.11");
+    expect(finalAnswerText("FINAL_ANSWER: \"Marine\"")).toBe("Marine");
+    expect(finalAnswerText("FINAL_ANSWER：`True`")).toBe("True");
+    expect(finalAnswerText("FINAL_ANSWER: [\"a\", \"b\"]")).toBe("[\"a\", \"b\"]");
+    expect(finalAnswerText("no marker here")).toBeUndefined();
   });
 
   it("reads decimal places and allowed values from the question", () => {
@@ -41,7 +43,7 @@ describe("answer form", () => {
       answer: "0.11",
       response: "about 11 percentage points (as a proportion, 0.11) higher"
     });
-    expect(issue).toMatch(/asks for a rate.*below 1.*times 100.*2 decimal places.*keep it/su);
+    expect(issue).toMatch(/asks for a rate.*below 1.*unrounded proportion times 100.*2 decimal places.*keep it/su);
     // The "50%" threshold alone does not make the question ask for a percentage.
     expect(answerFormIssue({ question: HARD_7, answer: "0.11", response: "difference = 0.11" })).toBeUndefined();
   });

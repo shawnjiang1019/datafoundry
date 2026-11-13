@@ -98,6 +98,8 @@ import {
 import type { ProtocolClassifier, ProtocolIdentity } from "./protocol/protocol-router.js";
 import { createModelProtocolClassifier } from "./protocol/model-protocol-classifier.js";
 import { createAnswerCheck, createAnswerCommitCheck } from "./protocol/answer-commit-check.js";
+import { createAnswerFormCheck } from "./protocol/answer-form-check.js";
+import { createDecisionOutcomeCheck } from "./protocol/decision-outcome-check.js";
 import {
   createModelAnalysisRequirementExtractor,
   type AnalysisRequirementExtractor
@@ -726,7 +728,9 @@ export const createDataFoundry = async (
       description: "Record the choice for an open analysis decision (decision_id), or record a choice the analysis "
         + "made that no decision covers yet (omit decision_id; give question and options). Pick a listed option by "
         + "number or text. Use status \"undecided\" when the evidence does not settle the choice: it does not block "
-        + "the run, and the final answer must report it as NOT CONFIRMED with the reading used.",
+        + "the run, and the final answer must report it as NOT CONFIRMED with the reading used. When you computed the "
+        + "answer under more than one option, pass option_results: if the options give different answers, the choice "
+        + "decides the answer and needs an evidence or question-wording basis (not a convention), or status \"undecided\".",
       inputSchema: z.object({
         decision_id: z.string().min(1).optional(),
         kind: z.enum(ANALYSIS_DECISION_KINDS).optional(),
@@ -739,7 +743,12 @@ export const createDataFoundry = async (
           kind: z.enum(ANALYSIS_DECISION_BASIS_KINDS),
           detail: z.string().min(1)
         }),
-        evidence_refs: z.array(z.string().min(1)).max(16).optional()
+        evidence_refs: z.array(z.string().min(1)).max(16).optional(),
+        option_results: z.array(z.object({
+          option: z.string().min(1).describe("The option, by number or text"),
+          value: z.union([z.string(), z.number(), z.boolean()]).describe("The final answer under that option"),
+          evidence_ref: z.string().min(1).optional()
+        })).max(8).optional()
       }),
       execute: createProtocolBoundExecute({
         actionName: "analysis.decision.record",
@@ -810,11 +819,16 @@ export const createDataFoundry = async (
     outputProcessors: mastraContextProcessors.outputProcessors,
     defaultOptions: {
       maxSteps: AGENT_MAX_STEPS,
-      // With frame binding on, an answer left uncommitted skips the frame check: send the agent back.
+      // Completion checks, in order: answer committed (frame binding), answer against the notes, decisions whose
+      // options lead to different answers, then the answer's form (unit, rounding, allowed values).
       isTaskComplete: {
         scorers: [createAnswerCommitCheck({
           getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
         }) as never, createAnswerCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never, createDecisionOutcomeCheck({
+          getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
+        }) as never, createAnswerFormCheck({
           getState: () => protocol.protocolRuntime.getState(input.runContext.run_id, protocol.segmentId)
         }) as never]
       },

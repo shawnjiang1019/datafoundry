@@ -1,4 +1,5 @@
 import { ToolExecutionError } from "../errors/tool-execution-error.js";
+import { distinctOutcomes, renderOptionResults } from "./analysis-decisions.js";
 import { renderAnswerFrame } from "../grounding/answer-frame.js";
 import { renderGroundingForAgent, summarizeGrounding } from "../grounding/evidence-grounding-provider.js";
 import type { EvidenceGroundingContext } from "../grounding/types.js";
@@ -52,16 +53,22 @@ export const projectDecisionObservation = (
   const recorded = decisions.find((decision) => decision.id === requestedId) ?? decisions.at(-1);
   const open = decisions.filter((decision) => decision.status === "open");
   const undecided = undecidedDecisionIds(state);
+  const results = recorded?.optionResults ?? [];
+  const changesAnswer = distinctOutcomes(results) > 1;
   return {
     decision_result: {
       decision_id: recorded?.id,
       status: recorded?.status,
       choice: recorded?.choice,
+      ...(results.length > 0 ? { option_results: results } : {}),
       open_decision_ids: open.map((decision) => decision.id),
       undecided_decision_ids: undecided,
       instruction: (open.length === 0
         ? "Every decision is recorded. Do not record it again."
         : `Recorded. Still open: ${open.map((decision) => decision.id).join(", ")}.`)
+        + (changesAnswer
+          ? ` This choice changes the answer (${renderOptionResults(results)}): do not call the answer invariant to it.`
+          : "")
         + (undecided.length > 0 ? ` ${undecidedReminder(undecided)}` : "")
     }
   };
@@ -111,9 +118,10 @@ export const projectCommitObservation = (
         ? `Committed. Still to commit: ${pending.map((requirement) => requirement.id).join(", ")}. `
           + "Do not resubmit a claim whose requirement already shows status 'reported'."
         : openDecisionIds.length > 0
-          ? `Every required claim is committed. Do not commit again; resolve open decisions `
+          ? `Every required claim is committed. Do not commit the same values again; resolve open decisions `
             + `${openDecisionIds.join(", ")} with analysis_decision_record, then write the final answer.`
-          : "Every required claim is committed. Do not commit again; write the final answer.")
+          : "Every required claim is committed. Do not commit the same values again (commit again only when a "
+            + "check or new evidence changes a value); write the final answer.")
         + (undecided.length > 0 ? ` ${undecidedReminder(undecided)}` : "")
     }
   };

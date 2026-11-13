@@ -27,6 +27,13 @@ export type AnalysisDecisionResolution = {
   rationale: string;
 };
 
+/** The answer the analysis gets under one option, when the agent computed it. */
+export type AnalysisDecisionOptionResult = {
+  option: string;
+  value: string;
+  evidenceRef?: string;
+};
+
 export type AnalysisDecision = {
   id: string;
   kind: (typeof ANALYSIS_DECISION_KINDS)[number];
@@ -40,6 +47,8 @@ export type AnalysisDecision = {
   basis?: { kind: (typeof ANALYSIS_DECISION_BASIS_KINDS)[number]; detail: string };
   evidenceRefs: string[];
   queryAttemptIds: string[];
+  /** The answer under each option the agent ran, so a choice that changes the answer is visible. */
+  optionResults?: AnalysisDecisionOptionResult[];
   /** D-Trail context: the model's hypothesis, its check level and what the checks showed. */
   hypothesis?: string;
   level?: string;
@@ -116,6 +125,7 @@ export type AnalysisDecisionRecordInput = {
   status?: string;
   basis?: { kind?: string; detail?: string };
   evidence_refs?: string[];
+  option_results?: Array<{ option?: string; value?: unknown; evidence_ref?: string }>;
 };
 
 /** Resolve a known decision, or raise and resolve a new one when decision_id is omitted. */
@@ -159,13 +169,26 @@ export const recordDecision = (
       throw new Error(`ANALYSIS_DECISION_NOT_CONFIRMED_BY_QUOTE:${decision.id}: record it with status "undecided" `
         + "(it will not block completion), or resolve it with an evidence basis");
     }
+    const finalOptions = matched === undefined ? [...options, choice] : options;
+    const optionResults = mergeOptionResults(decision.optionResults ?? [], input.option_results ?? [], finalOptions);
+    // A choice between options that lead to different answers decides the answer: a convention
+    // (or no basis) does not settle that. Environment-hard-12 kept Tenean Beach (34) over Wollaston
+    // Beach (129) on a "canonical frame" convention and then called the answer invariant.
+    if (status === "resolved" && (basisKind === "convention" || basisKind === "unresolved")
+        && distinctOutcomes(optionResults) > 1) {
+      throw new Error(`ANALYSIS_DECISION_OUTCOME_DEPENDS_ON_CHOICE:${decision.id}: the options give different answers (${
+        renderOptionResults(optionResults)}). A convention does not settle a choice that changes the answer: resolve it `
+        + "with evidence (a list, note or definition in the data) or the question's own words, or record it with "
+        + "status \"undecided\" and report the alternative answer.");
+    }
     return {
       ...decision,
-      options: matched === undefined ? [...options, choice] : options,
+      options: finalOptions,
       status,
       choice: matched ?? choice,
       basis: { kind: basisKind, detail: basisDetail },
-      evidenceRefs: unique([...decision.evidenceRefs, ...evidenceRefs.filter((ref) => ref)])
+      evidenceRefs: unique([...decision.evidenceRefs, ...evidenceRefs.filter((ref) => ref)]),
+      ...(optionResults.length > 0 ? { optionResults } : {})
     };
   };
   if (input.decision_id) {
@@ -222,6 +245,56 @@ export const linkDecisionsToAttempt = (
     ? { ...decision, queryAttemptIds: unique([...decision.queryAttemptIds, attemptId]) }
     : decision);
 };
+
+/** Add option results, naming each by the option it matches; a later result for an option replaces the earlier. */
+const mergeOptionResults = (
+  existing: AnalysisDecisionOptionResult[],
+  incoming: NonNullable<AnalysisDecisionRecordInput["option_results"]>,
+  options: string[]
+): AnalysisDecisionOptionResult[] => {
+  const merged = [...existing];
+  for (const entry of incoming) {
+    const optionText = text(entry?.option);
+    const value = entry?.value === undefined || entry.value === null ? "" : String(entry.value).trim();
+    if (!optionText || !value) continue;
+    const option = matchOption(optionText, options) ?? optionText;
+    const evidenceRef = text(entry.evidence_ref);
+    const result: AnalysisDecisionOptionResult = { option, value, ...(evidenceRef ? { evidenceRef } : {}) };
+    const index = merged.findIndex((item) => item.option === option);
+    if (index >= 0) merged[index] = result; else merged.push(result);
+  }
+  return merged;
+};
+
+/** A value compared across options: numbers by value (to 1e-9), text without case, quotes or spacing. */
+export const outcomeKey = (value: string): string => {
+  const plain = value.replaceAll(",", "").replace(/%$/u, "").trim();
+  if (/^[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?$/iu.test(plain)) {
+    return `n:${Number(Number(plain).toPrecision(10))}`;
+  }
+  return `s:${value.toLowerCase().replaceAll(/["'`\s]+/gu, " ").trim()}`;
+};
+
+/**
+ * An answer value rather than a description: a number, or text of at most 8 words. Agents also
+ * record sentences ("excluded: the list has all nine beaches") as results; those are not answers to
+ * compare, and counting them made every such decision look answer-changing (2026-11-13 check run).
+ */
+export const isAnswerValue = (value: string): boolean => {
+  const plain = value.trim();
+  if (/^[-+]?[\d,]*\.?\d+(?:e[-+]?\d+)?%?$/iu.test(plain)) return true;
+  return plain.length > 0 && plain.length <= 80 && plain.split(/\s+/u).length <= 8 && !/[.;:]\s/u.test(plain);
+};
+
+export const distinctOutcomes = (results: AnalysisDecisionOptionResult[]): number =>
+  new Set(results.filter((result) => isAnswerValue(result.value)).map((result) => outcomeKey(result.value))).size;
+
+export const renderOptionResults = (results: AnalysisDecisionOptionResult[]): string =>
+  results.map((result) => `"${oneLine(result.option)}" -> ${result.value}`).join("; ");
+
+/** Decisions whose recorded options lead to different answers. */
+export const answerChangingDecisions = (decisions: AnalysisDecision[]): AnalysisDecision[] =>
+  decisions.filter((decision) => distinctOutcomes(decision.optionResults ?? []) > 1);
 
 /** High-impact decisions still open block completion. */
 export const openDecisionReasons = (decisions: AnalysisDecision[]): string[] => decisions

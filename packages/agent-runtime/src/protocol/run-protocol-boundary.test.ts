@@ -134,7 +134,7 @@ describe("createRunProtocolBoundary", () => {
       }
     });
     expect((commit.observation as { commit_result: { instruction: string } }).commit_result.instruction)
-      .toMatch(/Do not commit again/u);
+      .toMatch(/Do not commit the same values again/u);
     state = boundary.protocolRuntime.getState("run-requirement-evidence");
     const terminal = boundary.protocolRuntime.proposeCompletion({
       runId: "run-requirement-evidence",

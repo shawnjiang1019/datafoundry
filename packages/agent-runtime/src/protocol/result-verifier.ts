@@ -161,8 +161,12 @@ export const verifyAnalysisResult = (
       }
     }
   }
-  const valid = !findings.some((finding) => finding.severity === "error");
-  const verifiedValues = valid ? assertions.flatMap((assertion) => assertion.claimValues.flatMap((spec) => {
+  // An error on one assertion voids only that assertion's values. A query run for two requirements
+  // used to lose both requirements' values when it lacked a column of one: environment-easy-3 then
+  // looped on "no value is verified for R2" for half an hour while R2's values were in the result.
+  const failed = (assertionId: string | undefined): boolean => findings.some((finding) =>
+    finding.severity === "error" && (finding.assertionId === undefined || finding.assertionId === assertionId));
+  const verifiedValues = assertions.flatMap((assertion) => failed(assertion.id) ? [] : assertion.claimValues.flatMap((spec) => {
     const value = resolveOperand({
       field: spec.field,
       ...(spec.selector ? { selector: spec.selector } : {})
@@ -188,11 +192,11 @@ export const verifyAnalysisResult = (
       tolerance: spec.tolerance ?? 0,
       assertionId: assertion.id
     }];
-  })) : [];
+  }));
   return {
-    valid: valid && !findings.some((finding) => finding.severity === "error"),
+    valid: !findings.some((finding) => finding.severity === "error"),
     findings,
-    verifiedValues: findings.some((finding) => finding.severity === "error") ? [] : verifiedValues
+    verifiedValues: verifiedValues.filter((value) => !failed(value.assertionId))
   };
 };
 

@@ -933,7 +933,8 @@ const commitReportedClaims = (state: DataAnalysisState, result: unknown): DataAn
     }
     const requiredValueNames = unique(requiredValueSpecs.map((spec) => spec.name));
     validateClaimValues(requirementId, values, verifiedValues, requiredValueNames,
-      (requirement?.assertions ?? []).filter((assertion) => assertion.kind !== "manual").map((assertion) => assertion.id));
+      (requirement?.assertions ?? []).filter((assertion) => assertion.kind !== "manual").map((assertion) => assertion.id),
+      unverifiedReason(next, requirementId, requirement?.assertions ?? []));
     const claimId = `C${next.reportedClaims.length + 1}`;
     next.reportedClaims.push({
       id: claimId,
@@ -1094,7 +1095,8 @@ const validateClaimValues = (
   values: AnalysisClaimValue[],
   verifiedValues: AnalysisVerifiedValue[],
   requiredValueNames: string[],
-  assertionIds: string[] = []
+  assertionIds: string[] = [],
+  reason = ""
 ): void => {
   const submittedNames = new Set<string>();
   for (const value of values) {
@@ -1112,7 +1114,8 @@ const validateClaimValues = (
           ? `use one of the verified values (name=value): ${allowed.join(", ")}.`
           : `no value is verified for ${requirementId} yet: a value is verified only by a validated query run with `
             + `requirement_ids [${requirementId}]${assertionIds.length > 0 ? ` and assertion_ids [${assertionIds.join(", ")}]` : ""}`
-            + ` that returns it as a column. Run that query, then cite its artifact_id in evidence_refs.`)
+            + ` that returns it as a column. Run that query, then cite its artifact_id in evidence_refs.`
+            + (reason ? ` ${reason}` : ""))
       );
     }
     const unitMatches = verified.unit === value.unit;
@@ -1150,6 +1153,30 @@ const isAnalysisValidationFinding = (value: unknown): value is AnalysisQueryAtte
   && typeof (value as Record<string, unknown>).code === "string"
   && typeof (value as Record<string, unknown>).message === "string"
   && ["error", "warning"].includes(String((value as Record<string, unknown>).severity));
+
+/**
+ * Why queries run for a requirement verified none of its values: the result checks' own findings
+ * (a missing column, a failed check) and the columns its assertions read. Without this the agent
+ * only heard "no value is verified" and kept rewriting queries (environment-easy-3, 2026-11-16).
+ */
+const unverifiedReason = (
+  state: DataAnalysisState,
+  requirementId: string,
+  assertions: AnalysisRequirement["assertions"]
+): string => {
+  const ids = new Set(assertions.map((assertion) => assertion.id));
+  const tagged = normalizedQueryAttempts(state).filter((attempt) => attempt.requirementIds.includes(requirementId));
+  const findings = unique(tagged.flatMap((attempt) => attempt.resultValidationFindings ?? [])
+    .filter((finding) => finding.assertionId !== undefined && ids.has(finding.assertionId))
+    .map((finding) => finding.message)).slice(-2);
+  const columns = unique(assertions.flatMap((assertion) => assertion.claimValues.map((spec) =>
+    spec.field && spec.field !== spec.name ? `${spec.name} (column ${spec.field})` : spec.name)));
+  return [
+    tagged.length > 0 ? `${tagged.length} query run(s) for ${requirementId} verified nothing for it.` : "",
+    findings.length > 0 ? `The result check said: ${findings.join(" | ")}` : "",
+    columns.length > 0 ? `${requirementId} reads: ${columns.join(", ")}.` : ""
+  ].filter(Boolean).join(" ");
+};
 
 const isAnalysisVerifiedValue = (value: unknown): value is AnalysisQueryAttempt["verifiedValues"][number] =>
   typeof value === "object" && value !== null && !Array.isArray(value)

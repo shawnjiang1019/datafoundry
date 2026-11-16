@@ -4,6 +4,32 @@ import { createAnalysisAssertions } from "./analysis-contract.js";
 import { verifyAnalysisResult } from "./result-verifier.js";
 
 describe("analysis result verifier", () => {
+  it("keeps one requirement's values when a query for two requirements lacks the other's column (environment-easy-3)", () => {
+    const assertions = [
+      ...createAnalysisAssertions("R1", [{
+        kind: "metric",
+        description: "beach names in scope",
+        claimValues: [{ name: "n_beach_names_raw", field: "n_beach_names_raw", required: true }]
+      }]),
+      ...createAnalysisAssertions("R2", [{
+        kind: "metric",
+        description: "beaches with 2012 samples",
+        claimValues: [{ name: "n_names_with_2012", field: "n_names_with_2012", required: true }]
+      }])
+    ];
+
+    const verification = verifyAnalysisResult(
+      { columns: ["n_names_with_2012", "n_names_with_both"], rows: [[1155, 1124]], rowCount: 1 }, assertions);
+
+    expect(verification.verifiedValues).toEqual([
+      expect.objectContaining({ name: "n_names_with_2012", value: 1155, assertionId: "R2.A1" })
+    ]);
+    expect(verification.valid).toBe(false);
+    expect(verification.findings).toEqual([
+      expect.objectContaining({ code: "RESULT_CLAIM_VALUE_MISSING:n_beach_names_raw", assertionId: "R1.A1" })
+    ]);
+  });
+
   it("recomputes a ratio and extracts verified claim values", () => {
     const assertions = createAnalysisAssertions("R1", [{
       kind: "metric",

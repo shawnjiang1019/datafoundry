@@ -60,6 +60,7 @@ import {
   resolveSessionIntentForRun
 } from "./session-intent.js";
 import { assistantMessageIdFromEvent, completeProtocolRun } from "./protocol-run-completion.js";
+import { finalAssistantText, learnFromFinishedRun, precheckTaskIdOf, runtimeEvolution } from "./runtime-evolution.js";
 import { persistCurrentUserMessage } from "./conversation-memory.js";
 import { resolveEvidenceReferenceContext } from "./evidence-reference-context.js";
 import { createRunAgentAssembly, createRunAgentContext } from "./run-agent-assembly.js";
@@ -691,7 +692,17 @@ class DataFoundryAgUiAgent extends AbstractAgent {
           recentQueries: recentUserQueries(conversationMessages),
           relevantMemories: longTermMemories.map((memory) => memory.content_text)
         });
+        // Runtime evolution: this run starts with the lessons learned so far (DF_RUNTIME_EVOLUTION=1).
+        const evolution = runtimeEvolution();
+        const learnedLessons = evolution?.current(this.input.user.id);
+        // Text is collected when anything learns from this run: DataFoundry's lessons or D-TRAIL feedback.
+        const collectText = Boolean(evolution) || process.env.DF_DTRAIL_FEEDBACK === "1";
+        if (learnedLessons) {
+          console.warn(`[evolution] run ${runId} starts with lesson version ${learnedLessons.version} `
+            + `(${learnedLessons.lessons.map((lesson) => lesson.id).join(", ") || "no lessons"})`);
+        }
         const agentAssembly = await createRunAgentAssembly({
+          ...(learnedLessons ? { learnedLessons } : {}),
           abortSignal: runAbortController.signal,
           contextPackageRecorder,
           contextPackageExists: (reference) => Boolean(
@@ -754,6 +765,8 @@ class DataFoundryAgUiAgent extends AbstractAgent {
         let terminalStarted = false;
         let sessionTitleStarted = false;
         let lastAssistantMessageId: string | undefined;
+        /** Assistant text by message id, so a finished run can be learned from without waiting on storage. */
+        const assistantTexts = new Map<string, string>();
         /** toolCallIds that already emitted TOOL_CALL_START / END in this run (HITL bridge). */
         const startedToolCallIds = new Set<string>();
         const endedToolCallIds = new Set<string>();
@@ -827,6 +840,10 @@ class DataFoundryAgUiAgent extends AbstractAgent {
             const assistantMessageId = assistantMessageIdFromEvent(event);
             if (assistantMessageId) {
               lastAssistantMessageId = assistantMessageId;
+              const delta = (event as { delta?: unknown }).delta;
+              if (collectText && typeof delta === "string" && event.type !== EventType.TOOL_CALL_START) {
+                assistantTexts.set(assistantMessageId, (assistantTexts.get(assistantMessageId) ?? "") + delta);
+              }
             }
             const interactionRequested = interactionRuntime.capture(event);
             if (interactionRequested) {
@@ -884,7 +901,17 @@ class DataFoundryAgUiAgent extends AbstractAgent {
                     session_id: sessionId,
                     run_id: runId
                   });
-              finalization = completeProtocolRun({
+              finalization = learnFromFinishedRun({
+                evolution,
+                userId: this.input.user.id,
+                runId,
+                sessionId,
+                question: userInput,
+                state: () => agentAssembly.protocol.protocolRuntime.getState(runId, agentAssembly.protocol.segmentId),
+                finalText: finalAssistantText(assistantTexts, lastAssistantMessageId),
+                model: modelProvider.model,
+                precheckTaskId: precheckTaskIdOf(effectiveRunConfig.assumptionReceipt)
+              }).then(() => completeProtocolRun({
                 finalizer,
                 ...(agentAssembly.goalRuntime ? { goalRuntime: agentAssembly.goalRuntime } : {}),
                 ...(lastAssistantMessageId ? { lastAssistantMessageId } : {}),
@@ -894,7 +921,7 @@ class DataFoundryAgUiAgent extends AbstractAgent {
                 protocol: agentAssembly.protocol,
                 runId,
                 terminalEvent: event
-              });
+              }));
               return;
             }
             if (event.type === EventType.RUN_ERROR) {

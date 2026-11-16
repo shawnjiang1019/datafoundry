@@ -1,3 +1,4 @@
+import { recordRunSignal } from "../evolution/run-signals.js";
 import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { ProtocolRunState } from "./types.js";
@@ -116,13 +117,17 @@ export const createAnswerFormCheck = (input: { getState: () => ProtocolRunState;
     name: "Answer form matches the question",
     run: async (args?: ScorerRunInput): Promise<{ score: number; reason?: string }> => {
       let reason: string | undefined;
+      let runId: string | undefined;
+      let answerNow: string | undefined;
       try {
         const response = typeof args?.output === "string" ? args.output : "";
         const answer = finalAnswerText(response);
+        answerNow = answer;
         if (!answer) return { score: 1 };
         let state: ProtocolRunState | undefined;
         try {
           state = input.getState();
+          runId = state.runId;
         } catch {
           state = undefined;
         }
@@ -136,6 +141,7 @@ export const createAnswerFormCheck = (input: { getState: () => ProtocolRunState;
       }
       if (!reason || challenges >= (input.maxChallenges ?? DEFAULT_MAX_CHALLENGES)) return { score: 1 };
       challenges += 1;
+      recordRunSignal(runId, { source: "answer-form", ...(answerNow ? { answer: answerNow } : {}), detail: reason });
       return { score: 0, reason: `${reason} ${CHANGE_STEPS}` };
     }
   };

@@ -4,6 +4,7 @@ import {
   renderOptionResults,
   type AnalysisDecision
 } from "./analysis-decisions.js";
+import { recordRunSignal } from "../evolution/run-signals.js";
 import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { ProtocolRunState } from "./types.js";
@@ -75,11 +76,14 @@ export const createDecisionOutcomeCheck = (input: { getState: () => ProtocolRunS
     name: "Answer agrees with the decisions it depends on",
     run: async (args?: ScorerRunInput): Promise<{ score: number; reason?: string }> => {
       let reason: string | undefined;
+      let runId: string | undefined;
+      let response = "";
       try {
         const state = input.getState();
+        runId = state.runId;
         const domain = state.domain as DataAnalysisState | undefined;
         if (state.protocolId !== "data-analysis" || !domain?.decisions?.length) return { score: 1 };
-        const response = typeof args?.output === "string" ? args.output : "";
+        response = typeof args?.output === "string" ? args.output : "";
         if (!response) return { score: 1 };
         reason = decisionOutcomeIssue(domain.decisions, response);
         console.warn(`[decision-outcome-check] run=${state.runId} issue=${reason ? "yes" : "none"} challenges=${challenges}`);
@@ -89,6 +93,8 @@ export const createDecisionOutcomeCheck = (input: { getState: () => ProtocolRunS
       }
       if (!reason || challenges >= (input.maxChallenges ?? DEFAULT_MAX_CHALLENGES)) return { score: 1 };
       challenges += 1;
+      const answer = finalAnswerText(response);
+      recordRunSignal(runId, { source: "decision-outcomes", ...(answer ? { answer } : {}), detail: reason });
       return { score: 0, reason };
     }
   };

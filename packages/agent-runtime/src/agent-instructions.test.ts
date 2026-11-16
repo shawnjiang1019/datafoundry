@@ -47,6 +47,16 @@ describe("buildAgentInstructions", () => {
     expect(instructions).not.toContain("This run is governed by data-analysis@1");
   });
 
+  it("adds the learned lessons with their version, and nothing when there are none", () => {
+    const lessons = [{ id: "L1", text: "Commit the corrected value again before answering.", why: "", fromRuns: ["r1"], addedInVersion: 1 }];
+    const instructions = buildAgentInstructions({ ...baseInput, protocolId: "data-analysis", learnedLessons: { version: 1, lessons } });
+
+    expect(instructions).toContain("Lessons learned from your earlier runs (lesson version 1)");
+    expect(instructions).toContain("- L1: Commit the corrected value again before answering.");
+    expect(buildAgentInstructions({ ...baseInput, protocolId: "data-analysis", learnedLessons: { version: 0, lessons: [] } }))
+      .not.toContain("Lessons learned");
+  });
+
   it("omits the data tool group entirely when no data tools are selected", () => {
     const instructions = buildAgentInstructions({
       ...baseInput,

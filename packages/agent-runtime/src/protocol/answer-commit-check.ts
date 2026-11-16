@@ -1,4 +1,6 @@
+
 import { checkAnswer } from "../grounding/answer-check.js";
+import { recordRunSignal } from "../evolution/run-signals.js";
 import { finalAnswerText } from "./final-answer.js";
 import type { DataAnalysisState } from "./protocols/data-analysis.js";
 import type { AnalysisScalar } from "./analysis-contract.js";
@@ -49,6 +51,7 @@ export const createAnswerCommitCheck = (input: { getState: () => ProtocolRunStat
         return { score: 1 };
       }
       const nudge = reason !== undefined && nudges < (input.maxNudges ?? DEFAULT_MAX_NUDGES);
+      if (nudge) recordRunSignal(state.runId, { source: "answer-committed", detail: reason as string });
       console.warn(`[answer-commit-check] run=${state.runId} protocol=${state.protocolId} status=${state.status} `
         + `uncommitted=${reason !== undefined} nudges=${nudges} -> ${nudge ? "send back" : "pass"}`);
       if (!nudge) return { score: 1 };
@@ -145,8 +148,11 @@ export const createAnswerCheck = (input: { getState: () => ProtocolRunState; max
     name: "Answer checked against the notes",
     run: async (context?: { output?: unknown }): Promise<{ score: number; reason?: string }> => {
       let reason: string | undefined;
+      let runId: string | undefined;
+      let answerNow: string | undefined;
       try {
         const state = input.getState();
+        runId = state.runId;
         const domain = state.domain as DataAnalysisState | undefined;
         if (state.protocolId !== "data-analysis" || !domain?.evidenceGrounding?.binding?.check) return { score: 1 };
         const text = typeof context?.output === "string" ? context.output : undefined;
@@ -160,6 +166,7 @@ export const createAnswerCheck = (input: { getState: () => ProtocolRunState; max
           ? `${challenge.code}: ${repeated ? `Your answer is still ${answer}, and the query it comes from has the same problem. ` : ""}${challenge.message}`
           : undefined;
         if (challenge) last = { code: challenge.code, answer };
+        answerNow = answer;
         console.warn(`[answer-check] run=${state.runId} challenge=${challenge?.code ?? "none"} challenges=${challenges}`
           + `${repeated ? " repeated" : ""}`);
       } catch (error) {
@@ -168,6 +175,7 @@ export const createAnswerCheck = (input: { getState: () => ProtocolRunState; max
       }
       if (!reason || challenges >= (input.maxChallenges ?? DEFAULT_MAX_CHALLENGES)) return { score: 1 };
       challenges += 1;
+      recordRunSignal(runId, { source: "answer-check", ...(answerNow ? { answer: answerNow } : {}), detail: reason });
       return { score: 0, reason };
     }
   };

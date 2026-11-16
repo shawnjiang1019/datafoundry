@@ -15,7 +15,8 @@ import {
   type ProtocolStateStore,
   type SessionIntent,
   type TaskStateRuntime,
-  type WorkspaceAttachment
+  type WorkspaceAttachment,
+  type Lesson
 } from "@datafoundry/agent-runtime";
 import type { DataGateway } from "@datafoundry/data-gateway";
 import type { FileAssetService } from "@datafoundry/files";
@@ -80,6 +81,8 @@ type CreateRunAgentAssemblyInput = {
   runContext: AgentRunContext;
   sessionOutputService: SessionOutputService;
   selectedSkills: SkillRecord[];
+  /** Runtime evolution: the lesson version this run starts with. */
+  learnedLessons?: { version: number; lessons: Lesson[] };
   /** Session intent resolved by the caller; enables deterministic protocol
    * inheritance for weak follow-ups. */
   sessionIntent?: SessionIntent | undefined;
@@ -188,6 +191,7 @@ export const createRunAgentAssembly = async (
     runContext: input.runContext,
     sessionOutputService: input.sessionOutputService,
     selectedSkills: input.selectedSkills,
+    ...(input.learnedLessons ? { learnedLessons: input.learnedLessons } : {}),
     ...(input.sessionIntent ? { sessionIntent: input.sessionIntent } : {}),
     ...(input.classifierContext ? { classifierContext: input.classifierContext } : {}),
     skillSelection: input.skillSelection,

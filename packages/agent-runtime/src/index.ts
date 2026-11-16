@@ -79,6 +79,7 @@ import { createMastraStreamNormalizerHooks } from "./stream/mastra-stream-hooks.
 import { createTokenUsageCorrelationStore } from "./stream/token-usage-correlation.js";
 import { wrapAgentForAgUi } from "./stream/mastra-stream-normalizer.js";
 import { sharedHelperMastra, sharedMastraFor } from "./runtime/shared-mastra.js";
+import { renderLessons, type Lesson } from "./evolution/lessons.js";
 import type { AgentRunContext, AgentRunContextInput, AgUiEventEmitter } from "./types.js";
 import { createCustomEvent } from "./events.js";
 import { createTool, type ToolAction } from "@mastra/core/tools";
@@ -273,6 +274,8 @@ export type CreateDataFoundryInput = {
   selectedSkills?: SkillRecord[];
   skillSelection?: SkillSelectionResult;
   taskStateRuntime?: TaskStateRuntime;
+  /** Runtime evolution: the lesson version this run starts with (DF_RUNTIME_EVOLUTION). */
+  learnedLessons?: { version: number; lessons: Lesson[] };
   longTermMemory?: {
     records: AgentLongTermMemoryRecord[];
     maxChars?: number;
@@ -800,7 +803,8 @@ export const createDataFoundry = async (
       mcpToolNames: input.mcpToolNames ?? [],
       protocolId: protocolState.protocolId,
       analysisRequirements,
-      workspaceAttachments
+      workspaceAttachments,
+      ...(input.learnedLessons ? { learnedLessons: input.learnedLessons } : {})
     }),
     model: input.modelProvider.model as never,
     // A shared Mastra, never one per run: each Mastra keeps timers alive (see runtime/shared-mastra.ts).
@@ -974,6 +978,7 @@ type AgentInstructionsInput = {
   protocolId: string;
   analysisRequirements: AnalysisRequirement[];
   workspaceAttachments: MaterializedWorkspaceAttachment[];
+  learnedLessons?: { version: number; lessons: Lesson[] };
 };
 
 type MaterializedWorkspaceAttachment = {
@@ -1308,7 +1313,12 @@ Tool groups:
 
 Operating policy:
 ${policies.map((policy, index) => `${index + 1}. ${policy}`).join("\n")}
-`;
+${lessonSection(input.learnedLessons)}`;
+};
+
+const lessonSection = (learned: AgentInstructionsInput["learnedLessons"]): string => {
+  const rendered = learned ? renderLessons(learned.version, learned.lessons) : undefined;
+  return rendered ? `\n${rendered}\n` : "";
 };
 
 
@@ -1645,6 +1655,7 @@ const protocolToolCallId = (options: unknown): string | undefined => {
 };
 
 export { validateProtocolDefinition } from "./protocol/definition-validator.js";
+export * from "./evolution/index.js";
 export { ActionRouter } from "./capabilities/action-router.js";
 export { CapabilityRegistry } from "./capabilities/capability-registry.js";
 export { createToolCapabilityPlugin } from "./capabilities/tool-capability-plugin.js";

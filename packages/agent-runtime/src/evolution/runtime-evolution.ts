@@ -91,7 +91,10 @@ export class RuntimeEvolution {
         ...input.summary,
         question: earlier.question,
         signals: [...earlier.signals, ...input.summary.signals],
-        flags: [...new Set([...earlier.flags, ...input.summary.flags])]
+        flags: [...new Set([...earlier.flags, ...input.summary.flags])],
+        ...(earlier.compressed || input.summary.compressed
+          ? { compressed: [...(earlier.compressed ?? []), ...(input.summary.compressed ?? [])] }
+          : {})
       };
       this.write(input.userId, state);
       this.log(`[evolution] run ${input.summary.runId} continues ${earlier.runId} (same session), still ${state.pending.length}/${this.every}`);
@@ -183,6 +186,9 @@ const safeSegment = (value: string): string => value.replaceAll(/[^A-Za-z0-9_-]/
 export const LESSON_WRITER_INSTRUCTIONS = [
   "You improve a data-analysis agent between questions. You read short summaries of its latest runs and write",
   "working rules that will be added to its instructions for every later question, on any dataset.",
+  "A run may also come with its compressed trajectory: its key events (inputs, failures, the queries behind the",
+  "answer) and the relations between them. Use it to see what actually went wrong and what the agent did next;",
+  "never copy its names or values into a lesson.",
   "Rules for a lesson:",
   "- It is about how to work: reading the question, choosing between readings, checking, committing, answering.",
   "- Write one only for a problem a summary shows: a flag, a check that sent the agent back, a decision that",
@@ -208,8 +214,18 @@ export const buildLessonPrompt = (summaries: TrajectorySummary[], existing: Less
     decisions: summary.decisions,
     queries: summary.queries,
     failed_actions: summary.failedActions
-  })), null, 2)
+  })), null, 2),
+  ...compressedSection(summaries)
 ].join("\n");
+
+/** The runs' compressed trajectories: the evidence behind each summary, one block per run. */
+const compressedSection = (summaries: TrajectorySummary[]): string[] => {
+  const blocks = summaries.flatMap((summary) => (summary.compressed ?? []).map((packet, index) =>
+    `### run ${packet.runId}${index > 0 ? ` (follow-up turn of run ${summary.compressed?.[0]?.runId ?? summary.runId})` : ""}: `
+    + `${packet.tokens} of ${packet.sourceTokens} tokens kept${packet.budgetSatisfied ? "" : ", over budget to keep every failure"}\n`
+    + packet.text.trim()));
+  return blocks.length === 0 ? [] : ["", "Compressed trajectories (key events and how they depend on each other):", ...blocks];
+};
 
 /** The proposals in the model's reply; anything that is not the expected JSON gives none. */
 export const parseLessonReply = (reply: string): Array<{ text: string; why: string; fromRuns: string[] }> => {

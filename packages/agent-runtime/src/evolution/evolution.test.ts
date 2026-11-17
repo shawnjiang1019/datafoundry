@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import type { ProtocolRunState } from "../protocol/types.js";
 import { forbiddenTerms, lessonRejection, renderLessons, type Lesson } from "./lessons.js";
 import { recordRunSignal, takeRunSignals } from "./run-signals.js";
-import { parseLessonReply, RuntimeEvolution, runtimeEvolutionFromEnvironment } from "./runtime-evolution.js";
-import { summarizeTrajectory, type TrajectorySummary } from "./trajectory.js";
+import { buildLessonPrompt, parseLessonReply, RuntimeEvolution, runtimeEvolutionFromEnvironment } from "./runtime-evolution.js";
+import { summarizeTrajectory, type CompressedTrajectory, type TrajectorySummary } from "./trajectory.js";
 
 const HARD_7 = "What was the difference in bacterial exceedance rates (to 2 decimal places) for marine beach samples "
   + "collected in 2023 between communities with more than 50% environmental justice (EJ) populations?";
@@ -68,6 +68,53 @@ describe("trajectory summary", () => {
   });
 });
 
+const compressed = (runId: string, overrides: Partial<CompressedTrajectory> = {}): CompressedTrajectory => ({
+  runId,
+  text: `GOAL: "How many?"\nKEY EVENTS:\n{"id":"S4","status":"failed","tool":"analysis_requirements_commit"}\n`,
+  tokens: 900,
+  sourceTokens: 12000,
+  budgetSatisfied: true,
+  archive: "abc",
+  failures: [
+    { action: "analysis_requirements_commit", code: "ANALYSIS_CLAIM_VALUE_UNKNOWN", count: 6, repaired: false,
+      message: "ANALYSIS_CLAIM_VALUE_UNKNOWN:R1:total: no value is verified for R1 yet" },
+    { action: "run_sql_readonly", code: "QUERY_CONTRACT_VALIDATION_FAILED", count: 2, repaired: true }
+  ],
+  unrepaired: 1,
+  repeated: 1,
+  ...overrides
+});
+
+describe("compressed trajectories", () => {
+  it("take the failed actions from the compression digest, with whether each was repaired", () => {
+    const result = summarizeTrajectory({
+      runId: "run-c", question: "How many?", state: state({}), finalText: "FINAL_ANSWER: 3", signals: [],
+      compressed: compressed("run-c")
+    });
+    expect(result.failedActions[0]).toEqual({ action: "analysis_requirements_commit", reason: "ANALYSIS_CLAIM_VALUE_UNKNOWN",
+      count: 6, message: "no value is verified for R1 yet", repaired: false });
+    expect(result.flags).toContain("analysis_requirements_commit failed 6 times with ANALYSIS_CLAIM_VALUE_UNKNOWN, and no later attempt succeeded.");
+    expect(result.flags.join(" ")).not.toContain("QUERY_CONTRACT_VALIDATION_FAILED");
+    expect(result.compressed?.[0]?.runId).toBe("run-c");
+  });
+
+  it("put each run's packet in the lesson prompt, follow-up turns included", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "evolution-compressed-"));
+    const evolution = new RuntimeEvolution({ dir, every: 2, log: () => undefined });
+    const prompts: string[] = [];
+    const model = async (prompt: string) => { prompts.push(prompt); return "{\"lessons\": []}"; };
+    await evolution.afterRun({ userId: "u", summary: summary("run-1", { sessionId: "s1", compressed: [compressed("run-1")] }), model });
+    await evolution.afterRun({ userId: "u", summary: summary("run-1b", { sessionId: "s1", compressed: [compressed("run-1b", { budgetSatisfied: false })] }), model });
+    await evolution.afterRun({ userId: "u", summary: summary("run-2"), model });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Compressed trajectories");
+    expect(prompts[0]).toContain("### run run-1: 900 of 12000 tokens kept");
+    expect(prompts[0]).toContain("### run run-1b (follow-up turn of run run-1): 900 of 12000 tokens kept");
+    expect(prompts[0]).toContain("over budget to keep every failure");
+    expect(buildLessonPrompt([summary("run-3")], [])).not.toContain("Compressed trajectories");
+  });
+});
+
 describe("lesson filter", () => {
   const forbidden = forbiddenTerms([summary("run-1", {
     question: "Which Boston Harbor beach had the most failures? Wollaston Beach is in Quincy.",
@@ -93,6 +140,11 @@ describe("lesson filter", () => {
     expect(lessonRejection("Use the \"Violation\" flag.", { existing: [], forbidden })).toMatch(/quotes/u);
     const existing: Lesson[] = [{ id: "L1", text: "Commit the corrected value again after a check changes it.", why: "", fromRuns: [], addedInVersion: 1 }];
     expect(lessonRejection("After a check changes it, commit the corrected value again.", { existing, forbidden })).toMatch(/repeats lesson L1/u);
+  });
+
+  it("refuses a lesson that names a data file", () => {
+    expect(lessonRejection("Before querying, check that sales.csv exists in the source list.", { existing: [], forbidden }))
+      .toBe("names a file (sales.csv)");
   });
 
   it("renders lessons as an instruction section with their version", () => {

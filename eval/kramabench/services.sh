@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Start, check or watch the three services a KramaBench run needs, for one domain:
-#   DataLink (8080, the domain's graph), D-TRAIL (8061) and the DataFoundry API (8787, the domain's annotations).
+# Start, check or watch the services a KramaBench run needs, for one domain:
+#   DataLink (8080, the domain's graph), D-TRAIL (8061), the trajectory compressor (8071, reads the
+#   API's run database) and the DataFoundry API (8787, the domain's annotations).
+#   The API compresses each finished run for learning when DF_TRAJECTORY_COMPRESSION=1 is exported.
 #
 #   services.sh start  <domain>   start whatever is down (restart DataLink if it serves another domain)
 #   services.sh status <domain>   one line per service
 #   services.sh watch  <domain>   check every WATCH_EVERY seconds (default 60) and restart a service
 #                                 that fails two checks in a row; run it in the background during a run
-#   services.sh stop              stop all three
+#   services.sh stop              stop them all
 #
 # Logs go to $KRAMABENCH_DIR/eval_runs/services/. Secrets are read from the env files, never printed.
 set -uo pipefail
@@ -27,6 +29,12 @@ domain=${2:-}
 up() { [ "$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$1")" != "000" ]; }
 api_up() { up http://127.0.0.1:8787/health; }
 dtrail_up() { up http://127.0.0.1:8061/healthz; }
+compressor_up() { up http://127.0.0.1:8071/health; }
+# The compressor reads the API's metadata database read-only (the API runs in apps/api).
+COMPRESSOR_DB=${COMPRESSOR_DB:-$DF_ROOT/apps/api/storage/metadata/workbench.sqlite}
+COMPRESSOR_DIR=${COMPRESSOR_DIR:-$INTEGRATION/text_compresor}
+# Compact packets that keep the queries behind the answer; COMPRESSOR_POLICY= (empty) gives plain V5.
+COMPRESSOR_POLICY=${COMPRESSOR_POLICY-$COMPRESSOR_DIR/config/policy_compact_answer_path.json}
 datalink_up() { up http://127.0.0.1:8080/; }
 datalink_db() { ps -ax -o command | grep "datalink serve" | grep -v grep | grep -o -- "--db [^ ]*" | head -1 | cut -c6-; }
 stamp() { date -u +%FT%TZ; }
@@ -60,6 +68,14 @@ start_dtrail() {
   echo "[$(stamp)] started D-TRAIL" | tee -a "$LOGS/watch.log"
 }
 
+start_compressor() {
+  free_port 8071
+  ( cd "$COMPRESSOR_DIR" || exit 1
+    nohup python3 -m dtrail serve --db "$COMPRESSOR_DB" --output "$K/system_scratch/compression" \
+      --port 8071 --budget "${COMPRESSOR_BUDGET:-12000}" ${COMPRESSOR_POLICY:+--policy "$COMPRESSOR_POLICY"} >> "$LOGS/compressor.log" 2>&1 < /dev/null & ) > /dev/null 2>&1
+  echo "[$(stamp)] started compressor" | tee -a "$LOGS/watch.log"
+}
+
 start_api() {
   free_port 8787
   # The server alone is backgrounded (not a "cd && server" list, whose wrapper shell would wait on it
@@ -76,6 +92,7 @@ wait_up() { for _ in $(seq 1 30); do "$1" && return 0; sleep 2; done; echo "[$(s
 status() {
   datalink_up && echo "DataLink  up   ($(datalink_db))" || echo "DataLink  DOWN"
   dtrail_up && echo "D-TRAIL   up" || echo "D-TRAIL   DOWN"
+  compressor_up && echo "Compressor up" || echo "Compressor DOWN"
   api_up && echo "API       up" || echo "API       DOWN"
 }
 
@@ -83,20 +100,23 @@ start_all() {
   # DataLink first (D-TRAIL reads it), and restart it when it serves another domain's graph.
   if ! datalink_up || [ "$(datalink_db)" != "$G/datalink/$domain.db" ]; then start_datalink; wait_up datalink_up DataLink; fi
   dtrail_up || { start_dtrail; wait_up dtrail_up D-TRAIL; }
+  compressor_up || { start_compressor; wait_up compressor_up Compressor; }
   api_up || { start_api; wait_up api_up API; }
   status
 }
 
 watch_all() {
-  local misses_datalink=0 misses_dtrail=0 misses_api=0
+  local misses_datalink=0 misses_dtrail=0 misses_compressor=0 misses_api=0
   echo "[$(stamp)] watching services for $domain every ${WATCH_EVERY}s" | tee -a "$LOGS/watch.log"
   while true; do
     if datalink_up; then misses_datalink=0; else misses_datalink=$((misses_datalink + 1)); fi
     if dtrail_up; then misses_dtrail=0; else misses_dtrail=$((misses_dtrail + 1)); fi
+    if compressor_up; then misses_compressor=0; else misses_compressor=$((misses_compressor + 1)); fi
     if api_up; then misses_api=0; else misses_api=$((misses_api + 1)); fi
     # Two misses in a row: one can be a busy server between requests.
     if [ $misses_datalink -ge 2 ]; then echo "[$(stamp)] DataLink down" >> "$LOGS/watch.log"; start_datalink; wait_up datalink_up DataLink; misses_datalink=0; fi
     if [ $misses_dtrail -ge 2 ]; then echo "[$(stamp)] D-TRAIL down" >> "$LOGS/watch.log"; start_dtrail; wait_up dtrail_up D-TRAIL; misses_dtrail=0; fi
+    if [ $misses_compressor -ge 2 ]; then echo "[$(stamp)] compressor down" >> "$LOGS/watch.log"; start_compressor; wait_up compressor_up Compressor; misses_compressor=0; fi
     if [ $misses_api -ge 2 ]; then echo "[$(stamp)] API down" >> "$LOGS/watch.log"; start_api; wait_up api_up API; misses_api=0; fi
     sleep "$WATCH_EVERY"
   done
@@ -107,6 +127,6 @@ case "$cmd" in
   status) status ;;
   watch) need_domain; watch_all ;;
   stop)
-    free_port 8080; free_port 8061; free_port 8787; status ;;
-  *) sed -n '2,11p' "$0"; exit 2 ;;
+    free_port 8080; free_port 8061; free_port 8071; free_port 8787; status ;;
+  *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

@@ -3,6 +3,7 @@ import { finalAnswerText } from "../protocol/final-answer.js";
 import type { DataAnalysisState } from "../protocol/protocols/data-analysis.js";
 import type { ProtocolRunState } from "../protocol/types.js";
 import type { RunSignal } from "./run-signals.js";
+import type { CompressedTrajectory } from "./trajectory.js";
 
 /**
  * Feedback for the D-TRAIL pre-check: what this analysis did with the readings the pre-check gave
@@ -24,6 +25,8 @@ export const precheckFeedback = (input: {
   state: ProtocolRunState | undefined;
   finalText: string;
   signals: RunSignal[];
+  /** The run compressed by the trajectory compressor: its failure digest becomes observations. */
+  compressed?: CompressedTrajectory | undefined;
 }): PrecheckFeedback => {
   const domain = (input.state?.protocolId === "data-analysis" ? input.state.domain : undefined) as DataAnalysisState | undefined;
   const decisions = domain?.decisions ?? [];
@@ -34,6 +37,7 @@ export const precheckFeedback = (input: {
   for (const signal of input.signals) {
     observations.push(`A ${signal.source} check sent the analysis back: ${short(signal.detail)}`);
   }
+  observations.push(...compressedObservations(input.compressed));
   const committed = (domain?.reportedClaims ?? []).flatMap((claim) => claim.values ?? []).map((value) => String(value.value));
   const answer = finalAnswerText(input.finalText);
   return {
@@ -70,6 +74,30 @@ const observe = (decision: AnalysisDecision): string[] => {
   }
   return lines;
 };
+
+/**
+ * What the compressed run shows about failures: actions that failed and whether a later attempt
+ * repaired them. A failure the pre-check could have prevented (a missing file or column, a reading
+ * the data does not support) is for D-TRAIL's lesson writer to recognise; the protocol's own
+ * bookkeeping errors are left out, since no assumption could have avoided them.
+ */
+const compressedObservations = (compressed: CompressedTrajectory | undefined): string[] => {
+  if (!compressed) return [];
+  return compressed.failures
+    .filter((failure) => !PROTOCOL_ONLY_CODES.has(failure.code))
+    .slice(0, MAX_COMPRESSED_OBSERVATIONS)
+    .map((failure) => `The compressed run shows ${failure.action} failed ${failure.count} time(s) with ${failure.code}`
+      + `${failure.repaired ? ", repaired by a later attempt" : ", never repaired"}${failure.message ? `: ${short(failure.message)}` : "."}`);
+};
+
+const MAX_COMPRESSED_OBSERVATIONS = 5;
+
+/** Errors about the protocol's own steps (ids, phases, commit order): no assumption could have prevented them. */
+const PROTOCOL_ONLY_CODES = new Set([
+  "ANALYSIS_ASSERTION_IDS_REQUIRED",
+  "ACTION_NOT_ALLOWED_IN_PHASE",
+  "ANALYSIS_REQUIREMENTS_COMMIT_REQUIRED"
+]);
 
 const short = (value: string): string => {
   const flat = value.replaceAll(/\s+/gu, " ").trim();

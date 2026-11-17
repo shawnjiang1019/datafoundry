@@ -106,6 +106,8 @@ export const lessonRejection = (
     .map((match) => match[0].toLowerCase())
     .find((name) => !ALLOWED_IDENTIFIERS.has(name));
   if (identifier) return `names an identifier (${identifier})`;
+  const file = /\b[\p{L}\p{N}_-]+\.(?:csv|tsv|jsonl?|parquet|xlsx?|txt|sql|duckdb|db)\b/iu.exec(trimmed);
+  if (file) return `names a file (${file[0]})`;
   const lowered = trimmed.toLowerCase();
   const bounded = (term: string): RegExp => new RegExp(`(?<![\\p{L}\\p{N}])${escape(term)}(?![\\p{L}\\p{N}])`, "u");
   const value = context.forbidden.values.find((candidate) => bounded(candidate).test(lowered));

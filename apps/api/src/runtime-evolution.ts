@@ -10,6 +10,8 @@ import {
   type ProtocolRunState
 } from "@datafoundry/agent-runtime";
 
+import { compressRun } from "./trajectory-compressor.js";
+
 /**
  * The API's one RuntimeEvolution (DF_RUNTIME_EVOLUTION=1), shared by every run so all of a user's
  * runs learn into the same lesson file. Undefined when evolution is off.
@@ -36,7 +38,9 @@ const LEARN_TIMEOUT_MS = 180_000;
 /**
  * Learn from a finished run before it is reported complete, so the next question already starts
  * with the new lessons: DataFoundry's own lessons (DF_RUNTIME_EVOLUTION=1) and feedback for the
- * D-TRAIL pre-check that the run used (DF_DTRAIL_FEEDBACK=1). The two are independent, so each
+ * D-TRAIL pre-check that the run used (DF_DTRAIL_FEEDBACK=1). With DF_TRAJECTORY_COMPRESSION=1 the run
+ * is first compressed by the compressor service, and both learn from the packet and its failure digest
+ * instead of the full trajectory, which stays in the database. The two are independent, so each
  * learner can be switched on alone. Never fails the run: errors are logged and the run completes.
  */
 export const learnFromFinishedRun = async (input: {
@@ -61,6 +65,13 @@ export const learnFromFinishedRun = async (input: {
     state = undefined;
   }
   const evolution = input.evolution;
+  // Compress once (DF_TRAJECTORY_COMPRESSION=1): both learners read the same packet and digest.
+  let compressed: Awaited<ReturnType<typeof compressRun>>;
+  try {
+    compressed = await compressRun(input.runId);
+  } catch {
+    compressed = undefined;
+  }
   await Promise.all([
     evolution ? withTimeout((async () => {
       const summary = summarizeTrajectory({
@@ -69,12 +80,13 @@ export const learnFromFinishedRun = async (input: {
         question: input.question,
         state,
         finalText: input.finalText,
-        signals
+        signals,
+        compressed
       });
       await evolution.afterRun({ userId: input.userId, summary, model: createMastraLessonModel(input.model) });
     })(), "evolution", input.runId) : undefined,
     feedbackOn ? withTimeout(postPrecheckFeedback(input.precheckTaskId as string,
-      precheckFeedback({ question: input.question, state, finalText: input.finalText, signals })), "d-trail feedback", input.runId) : undefined
+      precheckFeedback({ question: input.question, state, finalText: input.finalText, signals, compressed })), "d-trail feedback", input.runId) : undefined
   ]);
 };
 

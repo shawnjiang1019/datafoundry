@@ -69,6 +69,22 @@ describe("pre-check feedback", () => {
     expect(feedback.question).toBe(QUESTION);
   });
 
+  it("adds the compressed run's failures, leaving out the protocol's own bookkeeping errors", () => {
+    const feedback = precheckFeedback({
+      question: QUESTION, state: state([]), finalText: "FINAL_ANSWER: x", signals: [],
+      compressed: {
+        runId: "r", text: "", tokens: 1, sourceTokens: 2, budgetSatisfied: true, archive: "a", unrepaired: 1, repeated: 0,
+        failures: [
+          { action: "preview_table", code: "ACTION_EXECUTION_FAILED", count: 1, repaired: false, message: "No files found that match the pattern" },
+          { action: "run_sql_readonly", code: "ANALYSIS_ASSERTION_IDS_REQUIRED", count: 2, repaired: true }
+        ]
+      }
+    });
+    expect(feedback.observations).toEqual([
+      "The compressed run shows preview_table failed 1 time(s) with ACTION_EXECUTION_FAILED, never repaired: No files found that match the pattern"
+    ]);
+  });
+
   it("is empty for a run without a data-analysis state", () => {
     expect(precheckFeedback({ question: "q", state: undefined, finalText: "", signals: [] }))
       .toEqual({ question: "q", observations: [], values: [] });

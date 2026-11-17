@@ -32,9 +32,13 @@ export const openDuckDb = async (path: string, options: DuckDbOpenOptions = {}):
       }
       resolve(database);
     };
-    const database = options.readOnly
-      ? new duckdb.Database(path, duckdb.OPEN_READONLY, settle)
-      : new duckdb.Database(path, settle);
+    // The agent's SQL must not reach files or the network through DuckDB (read_text, read_csv,
+    // URLs, ATTACH); its data is already in tables. Locked so no query can turn it back on.
+    const database = new duckdb.Database(path, {
+      ...(options.readOnly ? { access_mode: "READ_ONLY" } : {}),
+      enable_external_access: "false",
+      lock_configuration: "true"
+    }, settle);
   });
 };
 

@@ -37,6 +37,12 @@ const query = async (path: string, sql: string): Promise<unknown[]> => {
 };
 
 describe("acquireDuckDb", () => {
+  it("refuses SQL that reads files or turns external access back on", async () => {
+    await expect(query(databasePath, "SELECT content FROM read_text('/etc/hosts')")).rejects.toThrow(/disabled/iu);
+    await expect(query(databasePath, "SET enable_external_access = true")).rejects.toThrow(/lock/iu);
+    expect(await query(databasePath, "SELECT 1 AS one")).toEqual([{ one: 1 }]);
+  });
+
   it("serves repeated queries on one file", async () => {
     const handle = await acquireDuckDb(databasePath);
     const connection = handle.database.connect();

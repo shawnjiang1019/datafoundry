@@ -196,7 +196,7 @@ export const verifyAnalysisResult = (
   return {
     valid: !findings.some((finding) => finding.severity === "error"),
     findings,
-    verifiedValues: verifiedValues.filter((value) => !failed(value.assertionId))
+    verifiedValues
   };
 };
 

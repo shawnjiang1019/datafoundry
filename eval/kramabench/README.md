@@ -195,7 +195,7 @@ $env:OPENAI_API_KEY="placeholder"             # or a real key; see Grading
 | `DF_LLM_PROFILE` | Model profile the agent runs with |
 | `DF_RUN_TIMEOUT` | How long the SUT waits for the event stream, in seconds |
 | `OPENAI_API_KEY` | Required to exist: KramaBench builds its judge client at startup even with `--no_pipeline_eval` |
-| `DTRAIL_API_URL`, `DTRAIL_TOKEN` | Optional d-trail REST API + bearer token; required for assumption readback |
+| `DTRAIL_API_URL`, `DTRAIL_TOKEN` | Optional d-trail REST API + bearer token; required for the `DTRAIL_ASSUME` pre-check |
 | `DF_GROUNDING` | `1` to turn on evidence-aware grounding (`evidenceGrounding` in run config): before any SQL, candidate join keys suggested by column names and in-lake data dictionaries are checked against the full data, and the ones the agent could miss are shown with the schema. Off by default. Report it alongside any score |
 | `DF_ANSWER_FRAME` | `1` to add an answer frame (`answerFrame` in run config): one model call lists the defensible readings of the question's unit, population and denominator, each is counted in the data, and choices that change the counts are shown with the schema as options, never as the answer. Independent of `DF_GROUNDING`. Off by default |
 | `DF_JOIN_BINDING` | `1` to make verified joins binding (`joinBinding` in run config; needs `DF_GROUNDING=1`): for each table pair whose verified join was shown to the agent, SQL that combines the two tables must join on a verified key, and the rejected keys shown beside it are forbidden. The SQL gate enforces it before the query runs. Off by default |

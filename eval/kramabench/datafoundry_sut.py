@@ -349,9 +349,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                     made += _load_report(con, name, report, notes)
                     continue
                 try:
-                    con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
-                                "SELECT * FROM read_csv_auto(?, sample_size=-1)", [path])
-                    _fix_csv_header(con, name, path, notes)
+                    _load_csv(con, name, path, notes)
                 except duckdb.InvalidInputException:
                     # Several KramaBench CSVs are Windows-1252 (curly quotes, en dashes in 0x80-0x9F),
                     # which DuckDB's latin-1 reader rejects; transcode to a UTF-8 copy first.
@@ -360,9 +358,7 @@ def build_domain_duckdb(dataset_directory: str, out_path: str) -> str:
                             open(utf8_copy, "w", encoding="utf-8") as dst:
                         dst.write(src.read())
                     try:
-                        con.execute(f'CREATE OR REPLACE TABLE "{name}" AS '
-                                    "SELECT * FROM read_csv_auto(?, sample_size=-1)", [utf8_copy])
-                        _fix_csv_header(con, name, utf8_copy, notes)
+                        _load_csv(con, name, utf8_copy, notes)
                     finally:
                         os.remove(utf8_copy)
                 if ext == ".txt":
@@ -425,8 +421,7 @@ def _override_for(rel: str, overrides: dict[str, dict]) -> dict:
 
 def _apply_table_overrides(con, overrides: dict[str, dict], notes: dict[str, list[tuple[str, str]]]) -> None:
     """Rename columns ({old: new}, swaps allowed) and tables named in the overrides file, when present."""
-    existing = {r[0] for r in con.execute(
-        "select table_name from information_schema.tables where table_schema = 'main'").fetchall()}
+    existing = set(_main_tables(con))
     for table, change in overrides["tables"].items():
         if table not in existing:
             continue
@@ -468,6 +463,23 @@ def _report_rows(path: str) -> list[list[str]] | None:
     return report_tables.read_rows(path, _best_delimiter(head)) if head else None
 
 
+def _main_tables(con) -> list[str]:
+    return [r[0] for r in con.execute(
+        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+
+
+def _create_from_frame(con, table: str, frame) -> None:
+    """Replace `table` with the rows of a pandas frame."""
+    con.register("_frame", frame)
+    con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _frame')
+    con.unregister("_frame")
+
+
+def _load_csv(con, name: str, path: str, notes: dict[str, list[tuple[str, str]]]) -> None:
+    con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM read_csv_auto(?, sample_size=-1)', [path])
+    _fix_csv_header(con, name, path, notes)
+
+
 def _section_frame(section, source_file: str | None = None):
     import pandas as pd
 
@@ -482,9 +494,7 @@ def _load_report(con, name: str, report, notes: dict[str, list[tuple[str, str]]]
     shared = ([("title", report.title)] if report.title else []) + [n for n in report.notes if n[0] != "section"]
     tables = report_tables.section_table_names(name, report)
     for table, section in zip(tables, report.sections):
-        con.register("_report", _section_frame(section))
-        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _report')
-        con.unregister("_report")
+        _create_from_frame(con, table, _section_frame(section))
         notes[table] = shared + ([("section", section.title)] if section.title else [])
     print(f"[ingest] {name}: report layout -> {len(tables)} table(s), {len(shared)} note(s)")
     return len(tables)
@@ -493,13 +503,11 @@ def _load_report(con, name: str, report, notes: dict[str, list[tuple[str, str]]]
 def _finalize_tables(con, notes: dict[str, list[tuple[str, str]]]) -> list[dict]:
     """Type formatted numbers in every table, write notes, and describe each table for the ingest report."""
     entries = []
-    loaded = [r[0] for r in con.execute(
-        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    loaded = _main_tables(con)
     for table in loaded:
         if not table.endswith("__notes"):
             notes.setdefault(table, []).extend(report_tables.split_summary_rows(con, table))
-    tables = [r[0] for r in con.execute(
-        "select table_name from information_schema.tables where table_schema = 'main' order by table_name").fetchall()]
+    tables = _main_tables(con)
     for table in tables:
         if table.endswith("__notes"):
             continue
@@ -572,8 +580,7 @@ def _load_special(con, path: str, rel: str) -> int:
     frame = pd.DataFrame(rows)
     con.register("_special", frame)
     identifier = f'"{_safe_ident(table)}"'
-    existing = {t[0].lower() for t in con.execute(
-        "select table_name from information_schema.tables where table_schema='main'").fetchall()}
+    existing = {t.lower() for t in _main_tables(con)}
     if table.lower() in existing:
         con.execute(f"INSERT INTO {identifier} SELECT * FROM _special")
     else:
@@ -694,9 +701,7 @@ def _union_report_family(con, table: str, members: list[str], dataset_directory:
         frames.append(_section_frame(report.sections[0], os.path.relpath(member, dataset_directory)))
         for note in ([("title", report.title)] if report.title else []) + report.notes:
             seen_notes.setdefault(note[1], note)  # each state's file repeats the same footnotes
-    con.register("_family", pd.concat(frames, ignore_index=True))
-    con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _family')
-    con.unregister("_family")
+    _create_from_frame(con, table, pd.concat(frames, ignore_index=True))
     if notes is not None:
         notes[table] = list(seen_notes.values())[:50]
     print(f"[ingest] {table}: {len(members)} report-layout files unioned into one table")
@@ -722,9 +727,7 @@ def _load_html_tables(con, path: str, name: str,
             notes[table] = [("title", caption) for caption in captions]
         for column in frame.columns[frame.dtypes == object]:
             frame[column] = frame[column].astype("string")
-        con.register("_html", frame)
-        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _html')
-        con.unregister("_html")
+        _create_from_frame(con, table, frame)
     print(f"[ingest] {name}: {len(frames)} HTML table(s)")
     return len(frames)
 
@@ -1000,9 +1003,7 @@ def _load_workbook(con, path: str, name: str, override: dict | None = None,
         df.columns = [str(c) for c in df.columns]
         for col in df.columns[df.dtypes == object]:
             df[col] = df[col].astype("string")  # mixed-type columns break DuckDB's type inference
-        con.register("_sheet", df)
-        con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _sheet')
-        con.unregister("_sheet")
+        _create_from_frame(con, table, df)
         made += 1
     return made
 

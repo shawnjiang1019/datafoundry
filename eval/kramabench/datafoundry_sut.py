@@ -185,7 +185,6 @@ class DataFoundryClient:
     def __init__(self, api_base: str, email: str, password: str):
         self.api = api_base.rstrip("/")
         self.s = requests.Session()
-        self._last_thread_id: str | None = None
         self._login(email, password)
 
     def _login(self, email: str, password: str) -> None:
@@ -238,8 +237,6 @@ class DataFoundryClient:
             "enabledMcpServerIds": MCP_SERVER_IDS,
             "enabledSkillIds": [],
         }
-        if DTRAIL_ASSUME:
-            run_config["assumeVerification"] = True
         if GROUNDING:
             run_config["evidenceGrounding"] = True
         if ANSWER_FRAME:
@@ -267,7 +264,6 @@ class DataFoundryClient:
                 "forwardedProps": {"run_config": run_config},
             },
         }
-        self._last_thread_id = thread_id
         self._stream(payload)
         text = self._final_answer(thread_id)
         if ANSWER_FOLLOWUP and not text.startswith("[DataFoundry") and not _FINAL_ANSWER_RE.search(text):
@@ -312,12 +308,6 @@ class DataFoundryClient:
                     c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
                 if isinstance(c, str) and c.strip():
                     texts.append(c.strip())
-        checkpoints = conv.get("checkpoints") or [] if isinstance(conv, dict) else []
-        failure = (f"[DataFoundry run failed] {checkpoints[-1].get('errorMessage')}"
-                   if checkpoints and checkpoints[-1].get("status") == "failed" else None)
-        # A provider fault mid-run leaves partial text behind; report the fault so it is retried.
-        if failure and transient_failure_reason(failure):
-            return failure
         # The run may write its answer, be sent back (e.g. to commit evidence) and end on a later
         # message without the marker; the latest message that carries the marker is the answer.
         marked = [t for t in texts if _FINAL_ANSWER_RE.search(t)]
@@ -325,66 +315,7 @@ class DataFoundryClient:
             return marked[-1]
         if texts:
             return texts[-1]
-        return failure or "[DataFoundry] no answer"
-
-    def executed_sql(self) -> list[str]:
-        """Every statement the last run sent through run_sql_readonly, from the session trace DAG."""
-        if not self._last_thread_id:
-            return []
-        r = self.s.get(f"{self.api}/api/v1/sessions/{self._last_thread_id}/trace-dag",
-                       params={"limit": 500})
-        r.raise_for_status()
-        statements: list[str] = []
-        for node in (_unwrap(r) or {}).get("nodes") or []:
-            detail = node.get("detail") if isinstance(node, dict) else None
-            if not isinstance(detail, dict) or detail.get("toolName") != "run_sql_readonly":
-                continue
-            args = detail.get("arguments")
-            if not isinstance(args, dict):
-                try:
-                    args = json.loads(detail.get("argumentsText") or "")
-                except ValueError:
-                    args = None
-            sql = args.get("sql") if isinstance(args, dict) else None
-            if isinstance(sql, str) and sql.strip():
-                statements.append(sql)
-        return statements
-
-    def read_assumptions(self) -> dict | None:
-        """Best-effort readback of the d-trail assumptions receipt for the last run.
-
-        The receipt is advisory and only present when d-trail classified assumptions
-        (`DTRAIL_ASSUME=1` with a configured service); missing metadata yields None.
-        """
-        if not (DTRAIL_ASSUME and DTRAIL_API_URL) or not self._last_thread_id:
-            return None
-        task_id = self._find_dtrail_task_id(self._conversation(self._last_thread_id))
-        if not task_id:
-            return None
-        headers = {"Accept": "application/json"}
-        if DTRAIL_TOKEN:
-            headers["Authorization"] = f"Bearer {DTRAIL_TOKEN}"
-        r = requests.get(f"{DTRAIL_API_URL}/runs/{task_id}/assumptions", headers=headers, timeout=30)
-        return r.json() if r.status_code == 200 else None
-
-    @staticmethod
-    def _find_dtrail_task_id(conv: dict) -> str | None:
-        candidates = []
-        for cp in conv.get("checkpoints") or []:
-            md = cp.get("metadata") if isinstance(cp, dict) else None
-            if isinstance(md, dict):
-                candidates.append(md.get("dtrail_task_id"))
-        for m in conv.get("messages") or [] if isinstance(conv, dict) else []:
-            content = m.get("content", "")
-            if not isinstance(content, str):
-                continue
-            found = re.search(r'"dtrail_task_id"\s*:\s*"([^"]+)"', content)
-            if found:
-                candidates.append(found.group(1))
-        for c in candidates:
-            if isinstance(c, str) and c.strip():
-                return c.strip()
-        return None
+        return "[DataFoundry] no answer"
 
 
 # ── Domain-lake ingestion ─────────────────────────────────────────────────────
@@ -532,8 +463,6 @@ def _parse_layout(path: str, override: dict | None = None):
 
 
 def _report_rows(path: str) -> list[list[str]] | None:
-    if os.path.getsize(path) > REPORT_MAX_BYTES:
-        return None
     with open(path, encoding="utf-8", errors="replace") as handle:
         head = [line for _, line in zip(range(HEADER_SCAN_ROWS), handle)]
     return report_tables.read_rows(path, _best_delimiter(head)) if head else None
@@ -788,12 +717,11 @@ def _load_html_tables(con, path: str, name: str,
             frame.columns = [str(c[-1]) for c in frame.columns]
         frame.columns = [f"column{i}" if str(c).startswith("Unnamed:") else str(c)
                          for i, c in enumerate(frame.columns)]
-        table_name = name if len(frames) == 1 else f"{name}__t{index + 1}"
+        table = name if len(frames) == 1 else f"{name}__t{index + 1}"
         if notes is not None and captions:
-            notes[table_name] = [("title", caption) for caption in captions]
+            notes[table] = [("title", caption) for caption in captions]
         for column in frame.columns[frame.dtypes == object]:
             frame[column] = frame[column].astype("string")
-        table = name if len(frames) == 1 else f"{name}__t{index + 1}"
         con.register("_html", frame)
         con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT * FROM _html')
         con.unregister("_html")
@@ -1112,23 +1040,6 @@ def extract_final_answer(text: str) -> str:
     return value
 
 
-_TABLE_REF = re.compile(r'\b(?:from|join)\s+((?:"[^"]+"|\w+)(?:\s*\.\s*(?:"[^"]+"|\w+))*)', re.IGNORECASE)
-
-
-def referenced_tables(statements: list[str], known: list[str]) -> list[str]:
-    """Names from `known` that follow FROM/JOIN in any statement, in `known` order.
-
-    Matching against the exported tables drops CTE names, subquery aliases and
-    schema prefixes (main.t) without parsing SQL.
-    """
-    hits = {
-        ref.split(".")[-1].strip().strip('"').lower()
-        for sql in statements
-        for ref in _TABLE_REF.findall(sql)
-    }
-    return [name for name in known if name.lower() in hits]
-
-
 def _safe_ident(name: str) -> str:
     keep = "".join(c if c.isalnum() else "_" for c in name).strip("_")
     return keep or "t"
@@ -1140,9 +1051,9 @@ class DtrailAssumptionClient:
     """Submit a benchmark question to d-trail with `assume: true` and read the receipt back.
 
     Runs before the DataFoundry run, outside it: the receipt is stored beside the answer
-    and (DTRAIL_TO_AGENT=1) handed to the agent as its assumption ledger. d-trail gets, as
-    CSV sources, the tables named by `executed_sql` when given, else the whole domain
-    (fine with assume_only; a full grounding run stops at "multiple sources without a join").
+    and (DTRAIL_TO_AGENT=1) handed to the agent as its assumption ledger. d-trail gets the
+    whole domain as CSV sources (fine with assume_only; a full grounding run stops at
+    "multiple sources without a join").
     Every failure is returned as data so a d-trail problem cannot fail a benchmark task.
     """
 
@@ -1178,15 +1089,12 @@ class DtrailAssumptionClient:
         }
         return sources, budget
 
-    def check(self, question: str, domain: str, executed_sql: list[str] | None = None) -> dict:
+    def check(self, question: str, domain: str) -> dict:
         result: dict = {"mode": "assume_only" if DTRAIL_ASSUME_ONLY else "direct", "domain": domain,
                         "task_id": None, "run_status": None, "receipt": None}
         try:
             sources, budget = self._manifest(domain)
-            queried = referenced_tables(executed_sql or [], [s["name"] for s in sources])
-            result["source_selection"] = "queried" if queried else "all"
-            if queried:
-                sources = [s for s in sources if s["name"] in queried]
+            result["source_selection"] = "all"
             result["sources"] = [s["name"] for s in sources]
             r = self.s.post(f"{self.api}/runs", timeout=DTRAIL_TIMEOUT_S, json={
                 "text": question, "sources": sources, "assume": True,
@@ -1352,10 +1260,6 @@ class DataFoundrySUT(System):
         explanation = {"answer": answer, "id": query_id, "full_response": full_text}
         if assumptions is not None:
             explanation["assumptions"] = assumptions
-        else:
-            assumptions = self.client.read_assumptions()  # receipt recorded by DataFoundry, if any
-            if assumptions is not None:
-                explanation["assumptions"] = assumptions
         if self.verbose:
             print(f"DataFoundrySUT: {query_id} -> {answer!r}")
         return {

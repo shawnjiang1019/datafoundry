@@ -48,16 +48,15 @@ class _Dtrail:
     def __init__(self, result):
         self.result = result
 
-    def check(self, question, domain, executed_sql=None):
+    def check(self, question, domain):
         return self.result
 
 
 def _sut(check_result) -> tuple[sut.DataFoundrySUT, _Session]:
     client = sut.DataFoundryClient.__new__(sut.DataFoundryClient)
-    client.api, client.csrf, client._last_thread_id = "http://df", None, None
+    client.api, client.csrf = "http://df", None
     client.s = _Session()
     client._final_answer = lambda thread_id: "FINAL_ANSWER: 1"
-    client.read_assumptions = lambda: None
     system = sut.DataFoundrySUT(system_output_directory=tempfile.mkdtemp())
     system.client, system._ds_id, system._domain = client, "kb-d", "d"
     system.dtrail = _Dtrail(check_result) if check_result is not None else None
